@@ -1,10 +1,29 @@
+use dutchess_engine::game::ChessBoard as Board;
 use macroquad::prelude::*;
 
 const FILES: [char; 8] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
 #[macroquad::main("DUTChess")]
 async fn main() {
-    let mut hovered = None;
+    let board = Board::default();
+
+    let mut icons = [Texture2D::empty(); 12];
+    let load = |path| Texture2D::from_file_with_format(path, None);
+    icons[0] = load(include_bytes!("../assets/pawn_white.png"));
+    icons[1] = load(include_bytes!("../assets/knight_white.png"));
+    icons[2] = load(include_bytes!("../assets/bishop_white.png"));
+    icons[3] = load(include_bytes!("../assets/rook_white.png"));
+    icons[4] = load(include_bytes!("../assets/queen_white.png"));
+    icons[5] = load(include_bytes!("../assets/king_white.png"));
+
+    icons[6] = load(include_bytes!("../assets/pawn_black.png"));
+    icons[7] = load(include_bytes!("../assets/knight_black.png"));
+    icons[8] = load(include_bytes!("../assets/bishop_black.png"));
+    icons[9] = load(include_bytes!("../assets/rook_black.png"));
+    icons[10] = load(include_bytes!("../assets/queen_black.png"));
+    icons[11] = load(include_bytes!("../assets/king_black.png"));
+
+    let mut selected_tile = None;
     loop {
         // TODO: Should probably only recompute when necessary...
         let tile_size = screen_height() / 10.0;
@@ -14,7 +33,7 @@ async fn main() {
 
         clear_background(LIGHTGRAY);
 
-        draw_chessboard(x, y, tile_size, font_size, hovered);
+        draw_chessboard(&board, &icons, x, y, tile_size, font_size, selected_tile);
 
         if let Some(key) = get_last_key_pressed() {
             println!("{key:?}");
@@ -22,13 +41,13 @@ async fn main() {
 
         let (mouse_x, mouse_y) = mouse_position();
 
-        // if is_mouse_button_pressed(MouseButton::Left) {
-        // println!("({mouse_x}, {mouse_y})");
-        hovered = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
-        if let Some((file, rank)) = hovered {
-            println!("Cursor over {}{}", FILES[file], rank);
+        if is_mouse_button_down(MouseButton::Left) {
+            // println!("({mouse_x}, {mouse_y})");
+            selected_tile = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
+            if let Some((file, rank)) = selected_tile {
+                println!("Clicked {}{}", FILES[file], rank);
+            }
         }
-        // }
 
         next_frame().await
     }
@@ -53,11 +72,13 @@ fn mouse_to_tile(
 }
 
 fn draw_chessboard(
+    board: &Board,
+    icons: &[Texture2D],
     start_x: f32,
     start_y: f32,
     tile_size: f32,
     font_size: f32,
-    hovered: Option<(usize, usize)>,
+    selected_tile: Option<(usize, usize)>,
 ) {
     let tile_half = tile_size / 2.0;
     let board_size = tile_size * 8.0;
@@ -96,15 +117,17 @@ fn draw_chessboard(
         draw_rectangle(x, y, tile_size, tile_size, tile_color);
         let name = format!("{}{}", FILES[file], 8 - rank);
         draw_text(name.as_str(), x, y + tile_size, font_size, text_color);
+
+        for i in 0..board.state.white.len() {
+            if board.state.white[i].contains(&tile) {
+                draw_texture(icons[i], x, y, WHITE);
+            } else if board.state.black[i].contains(&tile) {
+                draw_texture(icons[i], x, y, BLACK);
+            }
+        }
     }
 
-    if let Some((file, rank)) = hovered {
-        let (tile_color, text_color) = if (file + rank) % 2 == 0 {
-            (WHITE, BLACK)
-        } else {
-            (BLACK, WHITE)
-        };
-
+    if let Some((file, rank)) = selected_tile {
         let tile_color = BROWN;
         let text_color = WHITE;
 
