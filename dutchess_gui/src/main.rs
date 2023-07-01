@@ -1,11 +1,18 @@
-use dutchess_engine::game::ChessBoard as Board;
+use dutchess_engine::*;
 use macroquad::prelude::*;
 
 const FILES: [char; 8] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
+#[derive(Default)]
+struct BoardGUI {
+    selected: Option<Position>,
+    highlighted: BitBoard,
+    board: ChessBoard,
+}
+
 #[macroquad::main("DUTChess")]
 async fn main() {
-    let board = Board::default();
+    let mut board = BoardGUI::default();
 
     let mut icons = [Texture2D::empty(); 12];
     let load = |path| Texture2D::from_file_with_format(path, None);
@@ -23,7 +30,6 @@ async fn main() {
     icons[10] = load(include_bytes!("../assets/queen_black.png"));
     icons[11] = load(include_bytes!("../assets/king_black.png"));
 
-    let mut selected_tile = None;
     loop {
         // TODO: Should probably only recompute when necessary...
         let tile_size = screen_height() / 10.0;
@@ -33,20 +39,28 @@ async fn main() {
 
         clear_background(LIGHTGRAY);
 
-        draw_chessboard(&board, &icons, x, y, tile_size, font_size, selected_tile);
+        draw_chessboard(&board, &icons, x, y, tile_size, font_size);
+        draw_ui(&board, x, y, tile_size, font_size);
 
-        if let Some(key) = get_last_key_pressed() {
-            println!("{key:?}");
-        }
+        // if let Some(key) = get_last_key_pressed() {
+        //     println!("{key:?}");
+        // }
 
         let (mouse_x, mouse_y) = mouse_position();
-
+        // if is_mouse_button_pressed(MouseButton::Left) {
+        //     board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
+        // }
         if is_mouse_button_down(MouseButton::Left) {
-            // println!("({mouse_x}, {mouse_y})");
-            selected_tile = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
-            if let Some((file, rank)) = selected_tile {
-                println!("Clicked {}{}", FILES[file], rank);
-            }
+            // if let Some(pos) = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size) {
+            //     // if let Some(texture) = board.board.at(pos) {
+            //     //     board.selected = Some((pos, texture));
+            //     // }
+            // }
+
+            board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
+        }
+        if is_mouse_button_released(MouseButton::Left) {
+            board.selected = None;
         }
 
         next_frame().await
@@ -59,27 +73,55 @@ fn mouse_to_tile(
     board_x: f32,
     board_y: f32,
     tile_size: f32,
-) -> Option<(usize, usize)> {
+) -> Option<Position> {
     let board_size = tile_size * 8.0;
 
     let file = (mouse_x > board_x && mouse_x < board_x + board_size)
         .then(|| ((mouse_x - board_x) / tile_size) as usize)?;
 
     let rank = (mouse_y > board_y && mouse_y < board_y + board_size)
-        .then(|| 8 - ((mouse_y - board_y) / tile_size) as usize)?;
+        .then(|| ((mouse_y - board_y) / tile_size) as usize)?;
 
-    Some((file, rank))
+    let file = File::from_index(file).unwrap();
+    let rank = Rank::from_index(rank).unwrap();
+
+    Some(Position::new(file, rank))
 }
 
 fn draw_chessboard(
-    board: &Board,
+    board: &BoardGUI,
     icons: &[Texture2D],
     start_x: f32,
     start_y: f32,
     tile_size: f32,
     font_size: f32,
-    selected_tile: Option<(usize, usize)>,
 ) {
+    // All tiles
+    for tile in ChessBoard::tiles() {
+        let x = start_x + *tile.file() as f32 * tile_size;
+        let y = start_y + *tile.rank() as f32 * tile_size;
+
+        let tile_color = if board.selected.is_some() && tile == board.selected.unwrap() {
+            SKYBLUE
+        } else if tile.color().is_white() {
+            BEIGE
+        } else {
+            DARKBROWN
+        };
+
+        draw_rectangle(x, y, tile_size, tile_size, tile_color);
+
+        for i in 0..board.board.state.white.len() {
+            if board.board.state.white[i].contains(&tile) {
+                draw_texture(icons[i], x, y, WHITE);
+            } else if board.board.state.black[i].contains(&tile) {
+                draw_texture(icons[i], x, y, BLACK);
+            }
+        }
+    }
+}
+
+fn draw_ui(_board: &BoardGUI, start_x: f32, start_y: f32, tile_size: f32, font_size: f32) {
     let tile_half = tile_size / 2.0;
     let board_size = tile_size * 8.0;
     let font_offset = font_size / 4.0;
@@ -99,43 +141,5 @@ fn draw_chessboard(
         let file_y_top = start_y - tile_half + font_offset;
         draw_text(file.as_str(), file_x, file_y_bottom, font_size, BLACK);
         draw_text(file.as_str(), file_x, file_y_top, font_size, BLACK);
-    }
-
-    // All tiles
-    for tile in 0..64 {
-        let file = tile % 8;
-        let rank = tile / 8;
-
-        let x = start_x + file as f32 * tile_size;
-        let y = start_y + rank as f32 * tile_size;
-        let (tile_color, text_color) = if (file + rank) % 2 == 0 {
-            (BEIGE, BLACK)
-        } else {
-            (DARKBROWN, WHITE)
-        };
-
-        draw_rectangle(x, y, tile_size, tile_size, tile_color);
-        let name = format!("{}{}", FILES[file], 8 - rank);
-        draw_text(name.as_str(), x, y + tile_size, font_size, text_color);
-
-        for i in 0..board.state.white.len() {
-            if board.state.white[i].contains(&tile) {
-                draw_texture(icons[i], x, y, WHITE);
-            } else if board.state.black[i].contains(&tile) {
-                draw_texture(icons[i], x, y, BLACK);
-            }
-        }
-    }
-
-    if let Some((file, rank)) = selected_tile {
-        let tile_color = BROWN;
-        let text_color = WHITE;
-
-        let x = start_x + file as f32 * tile_size;
-        let y = start_y + (8 - rank) as f32 * tile_size;
-
-        draw_rectangle(x, y, tile_size, tile_size, tile_color);
-        let name = format!("{}{}", FILES[file], 8 - rank);
-        draw_text(name.as_str(), x, y + tile_size, font_size, text_color);
     }
 }

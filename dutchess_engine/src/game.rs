@@ -13,20 +13,21 @@ const BOARD_SIZE: usize = 8;
 *********************************************************************************/
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-enum Color {
+pub enum Color {
     White,
     Black,
 }
 
 impl Color {
-    fn is_white(&self) -> bool {
+    pub fn is_white(&self) -> bool {
         *self == Self::White
     }
 
-    fn is_black(&self) -> bool {
+    pub fn is_black(&self) -> bool {
         *self == Self::Black
     }
 
+    /*
     // Internal; don't call this yourself
     fn from_char(color: char) -> Self {
         debug_assert!(
@@ -40,10 +41,11 @@ impl Color {
             Self::Black
         }
     }
+     */
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-enum PieceClass {
+pub enum PieceClass {
     Pawn,
     Knight,
     Bishop,
@@ -77,6 +79,18 @@ impl PieceClass {
             _ => None,
         }
     }
+
+    fn iter() -> impl Iterator<Item = Self> {
+        [
+            Self::Pawn,
+            Self::Knight,
+            Self::Bishop,
+            Self::Rook,
+            Self::Queen,
+            Self::King,
+        ]
+        .into_iter()
+    }
 }
 
 impl PartialOrd for PieceClass {
@@ -107,15 +121,22 @@ impl fmt::Display for PieceClass {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 #[repr(transparent)]
-struct Rank(u8);
+pub struct Rank(u8);
 
 impl Rank {
     fn from_char(rank: char) -> Result<Self, &'static str> {
         let rank = rank.to_digit(10).ok_or("Ranks must be a valid number")? as u8;
-        if rank < 1 || rank > 8 {
-            return Err("Ranks must be between [1,8]");
+        if rank > 7 {
+            return Err("Ranks must be between [0,7]");
         }
         Ok(Self(rank))
+    }
+
+    pub fn from_index(index: usize) -> Result<Self, &'static str> {
+        if index > 7 {
+            return Err("Index must be between [0,7]");
+        }
+        Ok(Self(index as u8))
     }
 }
 
@@ -126,8 +147,14 @@ impl Deref for Rank {
     }
 }
 
+impl fmt::Display for Rank {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0 + 1)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-struct File(u8);
+pub struct File(u8);
 
 impl File {
     fn from_char(file: char) -> Result<Self, &'static str> {
@@ -144,6 +171,27 @@ impl File {
         };
         Ok(File(file))
     }
+
+    pub fn from_index(index: usize) -> Result<Self, &'static str> {
+        if index > 7 {
+            return Err("Index must be between [0,7]");
+        }
+        Ok(Self(index as u8))
+    }
+
+    fn to_char(self) -> char {
+        match self.0 {
+            0 => 'a',
+            1 => 'b',
+            2 => 'c',
+            3 => 'd',
+            4 => 'e',
+            5 => 'f',
+            6 => 'g',
+            7 => 'h',
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl Deref for File {
@@ -153,13 +201,43 @@ impl Deref for File {
     }
 }
 
+impl fmt::Display for File {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_char())
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-struct Position {
+pub struct Position {
     file: File,
     rank: Rank,
 }
 
 impl Position {
+    pub fn new(file: File, rank: Rank) -> Self {
+        Self { file, rank }
+    }
+
+    pub fn file(&self) -> File {
+        self.file
+    }
+
+    pub fn rank(&self) -> Rank {
+        self.rank
+    }
+
+    pub fn color(&self) -> Color {
+        if (*self.file + *self.rank) % 2 == 0 {
+            Color::White
+        } else {
+            Color::Black
+        }
+    }
+
+    pub fn to_index(&self) -> usize {
+        (*self.file + *self.rank * 8) as usize
+    }
+
     fn from_uci_notation(tile: &str) -> Result<Self, &'static str> {
         let mut chars = tile.chars();
         let file = match chars.next() {
@@ -176,11 +254,17 @@ impl Position {
     }
 }
 
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.file.to_string(), self.rank.to_string())
+    }
+}
+
 /*********************************************************************************
  * Game pieces
 *********************************************************************************/
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-struct Piece {
+pub struct Piece {
     color: Color,
     class: PieceClass,
 }
@@ -188,13 +272,6 @@ struct Piece {
 impl Piece {
     fn new(color: Color, class: PieceClass) -> Self {
         Self { color, class }
-    }
-
-    fn from_char(piece: char) -> Option<Piece> {
-        let class = PieceClass::from_char(piece)?;
-        let color = Color::from_char(piece);
-
-        Some(Piece::new(color, class))
     }
 }
 
@@ -248,6 +325,31 @@ impl ChessBoard {
     fn from_fen(fen: &FEN) -> Self {
         let state = ChessBoardState::from_fen(fen);
         Self { state }
+    }
+
+    pub fn tiles() -> impl Iterator<Item = Position> {
+        (0..64).map(|i| Position {
+            file: File(i % 8),
+            rank: Rank(i / 8),
+        })
+    }
+
+    pub fn at(&self, index: Position) -> Option<Piece> {
+        for class in PieceClass::iter() {
+            if self.state.white[class].contains(&index) {
+                return Some(Piece {
+                    color: Color::White,
+                    class,
+                });
+            } else if self.state.black[class].contains(&index) {
+                return Some(Piece {
+                    color: Color::Black,
+                    class,
+                });
+            }
+        }
+
+        None
     }
 }
 
@@ -327,7 +429,6 @@ impl ChessBoardState {
             let mut file = 0;
             for piece_char in pieces.chars() {
                 if let Some(kind) = PieceClass::from_char(piece_char) {
-                    println!("Placing {piece_char}({kind:?}) on {file} {rank}");
                     if piece_char.is_ascii_uppercase() {
                         white[kind].place_piece(File(file), Rank(rank as u8))
                     } else {
@@ -340,8 +441,6 @@ impl ChessBoardState {
             }
         }
 
-        // println!("{:#064b}", *white[PieceClass::Pawn]);
-        println!("{}", white[PieceClass::Pawn]);
         (white, black)
     }
 }
@@ -365,10 +464,6 @@ impl Default for ChessBoardState {
 pub struct BitBoard(u64);
 
 impl BitBoard {
-    fn new(bits: u64) -> Self {
-        Self(bits)
-    }
-
     fn place_piece(&mut self, file: File, rank: Rank) {
         self.0 |= 1 << (*file + *rank * 8);
     }
@@ -377,15 +472,14 @@ impl BitBoard {
     //     self.0 |= 1 << index;
     // }
 
-    pub fn positions(&self) -> impl Iterator<Item = (usize, usize)> {
-        self.to_be_bytes()
-            .into_iter()
-            .enumerate()
-            .map(|(i, b)| (i, b as usize))
-    }
+    // pub fn contains(&self, tile: &usize) -> bool {
+    //     (self.0 & 1 << *tile as u64) != 0
+    // }
 
-    pub fn contains(&self, tile: &usize) -> bool {
-        (self.0 & 1 << *tile as u64) != 0
+    pub fn contains(&self, tile: &Position) -> bool {
+        // (self.0 & 1 << *tile as u64) != 0
+        (self.0 & 1 << tile.to_index() as u64) != 0
+        // (self.0 & 1 << (*tile.file + *tile.rank * 8)) != 0
     }
 }
 
@@ -507,7 +601,7 @@ impl fmt::LowerHex for BitBoard {
  * FEN Strings
 *********************************************************************************/
 // TODO: When creating this, store the individual components...
-struct FEN(String);
+pub struct FEN(String);
 
 impl FEN {
     fn new(fen: String) -> Result<Self, &'static str> {
@@ -559,9 +653,9 @@ impl FEN {
         Self::new(fen.to_string())
     }
 
-    fn to_bitboard(&self, piece: &Piece) -> BitBoard {
-        todo!("Convert FEN strings to BitBoard, based on provided piece")
-    }
+    // fn to_bitboard(&self, piece: &Piece) -> BitBoard {
+    //     todo!("Convert FEN strings to BitBoard, based on provided piece")
+    // }
 }
 
 impl Default for FEN {

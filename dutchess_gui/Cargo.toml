@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 macroquad = "0.3.26"
 dutchess_engine = { path = "../dutchess_engine" }
+
+[build-dependencies]
+macroquad = "0.3.26"
