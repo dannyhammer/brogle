@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    ops::{Add, AddAssign, Deref, DerefMut, Index, IndexMut, Sub, SubAssign},
+    ops::{Add, AddAssign, Deref, DerefMut, Index, IndexMut, Mul, Sub, SubAssign},
 };
 
 /*
@@ -43,6 +43,13 @@ impl Color {
     }
 }
 
+impl Mul<PieceKind> for Color {
+    type Output = Piece;
+    fn mul(self, rhs: PieceKind) -> Self::Output {
+        Piece::new(self, rhs)
+    }
+}
+
 impl fmt::Display for Color {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", if self.is_white() { 'w' } else { 'b' })
@@ -73,7 +80,7 @@ impl PieceKind {
         }
     }
 
-    fn bits(&self) -> u8 {
+    pub fn bits(&self) -> u8 {
         // SAFETY: This type is `repr(u8)`
         // See: https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
         unsafe { *(self as *const Self as *const u8) }
@@ -130,6 +137,13 @@ impl Ord for PieceKind {
     }
 }
 
+impl Mul<Color> for PieceKind {
+    type Output = Piece;
+    fn mul(self, rhs: Color) -> Self::Output {
+        Piece::new(rhs, self)
+    }
+}
+
 impl fmt::Display for PieceKind {
     /// By default, piece classes display as uppercase chars (white)
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -153,15 +167,15 @@ pub struct Piece(u8);
 
 impl Piece {
     fn new(color: Color, kind: PieceKind) -> Self {
-        // 0000 1000 => white
-        // 0001 0000 => black
-        let color = if color.is_white() { 8 } else { 16 };
+        // 0000 0000 => white
+        // 0000 1000 => black
+        let color = if color.is_white() { 0 } else { 8 };
         Self(kind.bits() | color)
     }
 
     pub fn color(&self) -> Color {
         // Check for the color bit for black
-        if self.0 & 16 == 0 {
+        if self.0 & 8 == 0 {
             Color::White
         } else {
             Color::Black
@@ -169,9 +183,21 @@ impl Piece {
     }
 
     pub fn kind(&self) -> PieceKind {
-        // Clear the color bits (8 + 16 = 24)
-        PieceKind::from_bits(self.0 & !24)
-        // PieceKind::from_bits(self.0 & !8 & !16)
+        // Clear the color bit
+        PieceKind::from_bits(self.0 & !8)
+    }
+
+    pub fn is_white(&self) -> bool {
+        self.color().is_white()
+    }
+
+    pub fn is_black(&self) -> bool {
+        self.color().is_black()
+    }
+
+    pub fn index(&self) -> usize {
+        let offset = if self.is_white() { 0 } else { 6 };
+        (self.kind().bits() + offset) as usize
     }
 }
 
@@ -186,28 +212,6 @@ impl fmt::Display for Piece {
         write!(f, "{piece}")
     }
 }
-
-/*
-struct BitPiece(u8);
-impl BitPiece {
-    fn new(color: Color, kind: PieceKind) -> Self {
-        let color = if color.is_white() { 8 } else { 16 };
-        Self(kind as u8 | color)
-    }
-
-    fn color(&self) -> Color {
-        if self.0 & 16 == 0 {
-            Color::Black
-        } else {
-            Color::White
-        }
-    }
-
-    fn kind(&self) -> PieceKind {
-
-    }
-}
- */
 
 /*********************************************************************************
  * Positional stuff
@@ -859,6 +863,44 @@ impl Deref for BitBoard {
         &self.0
     }
 }
+
+impl<T> Index<Piece> for [T; 12] {
+    type Output = T;
+
+    fn index(&self, piece: Piece) -> &Self::Output {
+        let idx = match piece.kind() {
+            PieceKind::Pawn => 0,
+            PieceKind::Knight => 1,
+            PieceKind::Bishop => 2,
+            PieceKind::Rook => 3,
+            PieceKind::Queen => 4,
+            PieceKind::King => 5,
+        };
+        let idx = if piece.is_white() { idx } else { idx + 6 };
+        //&self[idx]
+        &(*self.index(idx))
+    }
+}
+
+/*
+impl<'a, T> Index<Piece> for &'a [T] {
+    type Output = T;
+
+    fn index(&self, piece: Piece) -> &Self::Output {
+        let idx = match piece.kind() {
+            PieceKind::Pawn => 0,
+            PieceKind::Knight => 1,
+            PieceKind::Bishop => 2,
+            PieceKind::Rook => 3,
+            PieceKind::Queen => 4,
+            PieceKind::King => 5,
+        };
+        let idx = if piece.is_white() { idx } else { idx + 6 } as usize;
+        &self[idx]
+        // &(*self.index(idx))
+    }
+}
+ */
 
 impl Index<PieceKind> for [BitBoard; 6] {
     type Output = BitBoard;

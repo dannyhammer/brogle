@@ -46,18 +46,24 @@ async fn main() {
         // }
 
         let (mouse_x, mouse_y) = mouse_position();
-        // if is_mouse_button_pressed(MouseButton::Left) {
-        //     board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
-        // }
-        if is_mouse_button_down(MouseButton::Left) {
-            // if let Some(pos) = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size) {
-            //     // if let Some(texture) = board.board.at(pos) {
-            //     //     board.selected = Some((pos, texture));
-            //     // }
-            // }
-
+        if is_mouse_button_pressed(MouseButton::Left) {
             board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
-            println!("Clicked: {}", board.selected.unwrap());
+            if let Some(tile) = board.selected {
+                if let Some(piece) = board.board.piece_at(tile) {
+                    println!("Selected {piece}");
+                } else {
+                    println!("Clicked {tile}");
+                }
+            }
+        }
+        if is_mouse_button_down(MouseButton::Left) {
+            // board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
+            // Drag and drop
+            if let Some(tile) = board.selected {
+                if let Some(piece) = board.board.piece_at(tile) {
+                    // println!("Selected {piece}");
+                }
+            }
         }
         if is_mouse_button_released(MouseButton::Left) {
             board.selected = None;
@@ -111,14 +117,7 @@ fn draw_chessboard(
         draw_rectangle(x, y, tile_size, tile_size, tile_color);
 
         if let Some(piece) = board.board.piece_at(tile) {
-            let color = if piece.color().is_white() {
-                WHITE
-            } else {
-                DARKGRAY
-            };
-
-            let icon_index = piece.kind() as usize;
-            draw_texture(icons[icon_index], x, y, color);
+            draw_texture(icons[piece.index()], x, y, WHITE);
         }
     }
 }
