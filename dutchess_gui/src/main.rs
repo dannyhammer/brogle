@@ -1,8 +1,6 @@
 use dutchess_engine::*;
 use macroquad::prelude::*;
 
-const FILES: [char; 8] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-
 #[derive(Default)]
 struct BoardGUI {
     selected: Option<Position>,
@@ -13,6 +11,7 @@ struct BoardGUI {
 #[macroquad::main("DUTChess")]
 async fn main() {
     let mut board = BoardGUI::default();
+    println!("{}", board.board);
 
     let mut icons = [Texture2D::empty(); 12];
     let load = |path| Texture2D::from_file_with_format(path, None);
@@ -39,7 +38,7 @@ async fn main() {
 
         clear_background(LIGHTGRAY);
 
-        draw_chessboard(&board, &icons, x, y, tile_size, font_size);
+        draw_chessboard(&board, &icons, x, y, tile_size);
         draw_ui(&board, x, y, tile_size, font_size);
 
         // if let Some(key) = get_last_key_pressed() {
@@ -58,6 +57,7 @@ async fn main() {
             // }
 
             board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
+            println!("Clicked: {}", board.selected.unwrap());
         }
         if is_mouse_button_released(MouseButton::Left) {
             board.selected = None;
@@ -77,13 +77,13 @@ fn mouse_to_tile(
     let board_size = tile_size * 8.0;
 
     let file = (mouse_x > board_x && mouse_x < board_x + board_size)
-        .then(|| ((mouse_x - board_x) / tile_size) as usize)?;
+        .then(|| ((mouse_x - board_x) / tile_size) as u8)?;
 
     let rank = (mouse_y > board_y && mouse_y < board_y + board_size)
-        .then(|| ((mouse_y - board_y) / tile_size) as usize)?;
+        .then(|| ((mouse_y - board_y) / tile_size) as u8)?;
 
-    let file = File::from_index(file).unwrap();
-    let rank = Rank::from_index(rank).unwrap();
+    let file = File::new(file).unwrap();
+    let rank = Rank::new(rank).unwrap();
 
     Some(Position::new(file, rank))
 }
@@ -94,12 +94,11 @@ fn draw_chessboard(
     start_x: f32,
     start_y: f32,
     tile_size: f32,
-    font_size: f32,
 ) {
     // All tiles
-    for tile in ChessBoard::tiles() {
-        let x = start_x + *tile.file() as f32 * tile_size;
-        let y = start_y + *tile.rank() as f32 * tile_size;
+    for tile in Position::iter() {
+        let x = start_x + *tile.rank() as f32 * tile_size;
+        let y = start_y + *tile.file() as f32 * tile_size;
 
         let tile_color = if board.selected.is_some() && tile == board.selected.unwrap() {
             SKYBLUE
@@ -111,20 +110,26 @@ fn draw_chessboard(
 
         draw_rectangle(x, y, tile_size, tile_size, tile_color);
 
-        for i in 0..board.board.state.white.len() {
-            if board.board.state.white[i].contains(&tile) {
-                draw_texture(icons[i], x, y, WHITE);
-            } else if board.board.state.black[i].contains(&tile) {
-                draw_texture(icons[i], x, y, BLACK);
-            }
+        if let Some(piece) = board.board.piece_at(tile) {
+            let color = if piece.color().is_white() {
+                WHITE
+            } else {
+                DARKGRAY
+            };
+
+            let icon_index = piece.kind() as usize;
+            draw_texture(icons[icon_index], x, y, color);
         }
     }
 }
 
-fn draw_ui(_board: &BoardGUI, start_x: f32, start_y: f32, tile_size: f32, font_size: f32) {
+fn draw_ui(board: &BoardGUI, start_x: f32, start_y: f32, tile_size: f32, font_size: f32) {
     let tile_half = tile_size / 2.0;
     let board_size = tile_size * 8.0;
     let font_offset = font_size / 4.0;
+
+    let fen = board.board.state.to_fen();
+    draw_text(fen.as_str(), font_offset, font_size, font_size, BLACK);
 
     // File and Rank labels
     for i in 0..8 {
@@ -135,7 +140,7 @@ fn draw_ui(_board: &BoardGUI, start_x: f32, start_y: f32, tile_size: f32, font_s
         draw_text(rank.as_str(), rank_x_left, rank_y, font_size, BLACK);
         draw_text(rank.as_str(), rank_x_right, rank_y, font_size, BLACK);
 
-        let file = format!("{}", FILES[i]);
+        let file = format!("{}", File::new(i).unwrap().to_string());
         let file_x = start_x + tile_size * i as f32 + tile_half - font_offset;
         let file_y_bottom = start_y + board_size + tile_half + font_offset;
         let file_y_top = start_y - tile_half + font_offset;

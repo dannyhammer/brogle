@@ -1,12 +1,25 @@
 use std::{
     fmt,
-    ops::{BitAnd, BitAndAssign, BitOr, BitXor, Deref, DerefMut, Index, IndexMut, Not},
+    ops::{Add, AddAssign, Deref, DerefMut, Index, IndexMut, Sub, SubAssign},
 };
 
-/*********************************************************************************
- * Constants
-*********************************************************************************/
-const BOARD_SIZE: usize = 8;
+/*
+fn set_bit(bits: u8, n: u8) -> u8 {
+    bits | (1 << n)
+}
+
+fn clear_bit(bits: u8, n: u8) -> u8 {
+    bits & !(1 << n)
+}
+
+fn flip_bit(bits: u8, n: u8) -> u8 {
+    bits ^ (1 << n)
+}
+
+fn check_bit(bits: u8, n: u8) -> u8 {
+    bits & (1 << n)
+}
+ */
 
 /*********************************************************************************
  * General Enums
@@ -16,6 +29,8 @@ const BOARD_SIZE: usize = 8;
 pub enum Color {
     White,
     Black,
+    // Red,
+    // Blue
 }
 
 impl Color {
@@ -26,26 +41,17 @@ impl Color {
     pub fn is_black(&self) -> bool {
         *self == Self::Black
     }
+}
 
-    /*
-    // Internal; don't call this yourself
-    fn from_char(color: char) -> Self {
-        debug_assert!(
-            color.is_ascii(),
-            "Non-ASCII characters are not valid for chess pieces"
-        );
-
-        if color.is_ascii_uppercase() {
-            Self::White
-        } else {
-            Self::Black
-        }
+impl fmt::Display for Color {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", if self.is_white() { 'w' } else { 'b' })
     }
-     */
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub enum PieceClass {
+#[repr(u8)]
+pub enum PieceKind {
     Pawn,
     Knight,
     Bishop,
@@ -54,7 +60,25 @@ pub enum PieceClass {
     King,
 }
 
-impl PieceClass {
+impl PieceKind {
+    fn from_bits(bits: u8) -> PieceKind {
+        match bits {
+            0 => Self::Pawn,
+            1 => Self::Knight,
+            2 => Self::Bishop,
+            3 => Self::Rook,
+            4 => Self::Queen,
+            5 => Self::King,
+            _ => panic!("Invalid bit pattern {bits:#b} ({bits})"),
+        }
+    }
+
+    fn bits(&self) -> u8 {
+        // SAFETY: This type is `repr(u8)`
+        // See: https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
+        unsafe { *(self as *const Self as *const u8) }
+    }
+
     /// https://en.wikipedia.org/wiki/Chess_piece_relative_value#Standard_valuations
     fn value(&self) -> u32 {
         match self {
@@ -81,30 +105,32 @@ impl PieceClass {
     }
 
     fn iter() -> impl Iterator<Item = Self> {
-        [
-            Self::Pawn,
-            Self::Knight,
-            Self::Bishop,
-            Self::Rook,
-            Self::Queen,
-            Self::King,
-        ]
-        .into_iter()
+        static PIECE_KINDS: [PieceKind; 6] = [
+            PieceKind::Pawn,
+            PieceKind::Knight,
+            PieceKind::Bishop,
+            PieceKind::Rook,
+            PieceKind::Queen,
+            PieceKind::King,
+        ];
+
+        PIECE_KINDS.into_iter()
     }
 }
 
-impl PartialOrd for PieceClass {
+impl PartialOrd for PieceKind {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.value().partial_cmp(&other.value())
     }
 }
-impl Ord for PieceClass {
+
+impl Ord for PieceKind {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.value().cmp(&other.value())
     }
 }
 
-impl fmt::Display for PieceClass {
+impl fmt::Display for PieceKind {
     /// By default, piece classes display as uppercase chars (white)
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let class = match self {
@@ -119,24 +145,111 @@ impl fmt::Display for PieceClass {
     }
 }
 
+/*********************************************************************************
+ * Game pieces
+*********************************************************************************/
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct Piece(u8);
+
+impl Piece {
+    fn new(color: Color, kind: PieceKind) -> Self {
+        // 0000 1000 => white
+        // 0001 0000 => black
+        let color = if color.is_white() { 8 } else { 16 };
+        Self(kind.bits() | color)
+    }
+
+    pub fn color(&self) -> Color {
+        // Check for the color bit for black
+        if self.0 & 16 == 0 {
+            Color::White
+        } else {
+            Color::Black
+        }
+    }
+
+    pub fn kind(&self) -> PieceKind {
+        // Clear the color bits (8 + 16 = 24)
+        PieceKind::from_bits(self.0 & !24)
+        // PieceKind::from_bits(self.0 & !8 & !16)
+    }
+}
+
+impl fmt::Display for Piece {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let piece = if self.color().is_white() {
+            self.kind().to_string()
+        } else {
+            self.kind().to_string().to_ascii_lowercase()
+        };
+
+        write!(f, "{piece}")
+    }
+}
+
+/*
+struct BitPiece(u8);
+impl BitPiece {
+    fn new(color: Color, kind: PieceKind) -> Self {
+        let color = if color.is_white() { 8 } else { 16 };
+        Self(kind as u8 | color)
+    }
+
+    fn color(&self) -> Color {
+        if self.0 & 16 == 0 {
+            Color::Black
+        } else {
+            Color::White
+        }
+    }
+
+    fn kind(&self) -> PieceKind {
+
+    }
+}
+ */
+
+/*********************************************************************************
+ * Positional stuff
+*********************************************************************************/
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 #[repr(transparent)]
 pub struct Rank(u8);
 
 impl Rank {
-    fn from_char(rank: char) -> Result<Self, &'static str> {
-        let rank = rank.to_digit(10).ok_or("Ranks must be a valid number")? as u8;
-        if rank > 7 {
-            return Err("Ranks must be between [0,7]");
-        }
-        Ok(Self(rank))
+    fn iter() -> impl Iterator<Item = Self> {
+        (Self::min().0..=Self::max().0).map(|i| Self(i))
     }
 
-    pub fn from_index(index: usize) -> Result<Self, &'static str> {
-        if index > 7 {
-            return Err("Index must be between [0,7]");
+    pub fn new(rank: u8) -> Result<Self, String> {
+        let rank = Self(rank);
+        if rank > Self::max() || rank < Self::min() {
+            return Err(format!(
+                "Invalid rank value {rank}. Ranks must be between [{},{}]",
+                Self::min(),
+                Self::max()
+            ));
         }
-        Ok(Self(index as u8))
+        Ok(rank)
+    }
+
+    fn from_char(rank: char) -> Result<Self, String> {
+        debug_assert!(rank.is_ascii(), "Rank chars must be ASCII!");
+        Self::new(rank.to_digit(10).ok_or("Ranks must be a valid number")? as u8)
+    }
+
+    pub fn from_index(index: usize) -> Result<Self, String> {
+        debug_assert!(index <= 64, "Rank indices must be [0,64)");
+        Self::new(index as u8 % 8)
+    }
+
+    fn min() -> Self {
+        Self(0)
+    }
+
+    fn max() -> Self {
+        Self(7)
     }
 }
 
@@ -147,50 +260,89 @@ impl Deref for Rank {
     }
 }
 
-impl fmt::Display for Rank {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0 + 1)
+impl Add for Rank {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::new(self.0 + rhs.0).expect("Attempted to add beyond Rank's bounds")
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+impl Sub for Rank {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::new(self.0 - rhs.0).expect("Attempted to subtract beyond Rank's bounds")
+    }
+}
+
+impl AddAssign for Rank {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+impl SubAssign for Rank {
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
+
+impl Add<File> for Rank {
+    type Output = Position;
+    fn add(self, file: File) -> Self::Output {
+        Position::new(file, self)
+    }
+}
+
+impl fmt::Display for Rank {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", 8 - self.0)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct File(u8);
 
 impl File {
-    fn from_char(file: char) -> Result<Self, &'static str> {
-        let file = match file {
-            'a' => 0,
-            'b' => 1,
-            'c' => 2,
-            'd' => 3,
-            'e' => 4,
-            'f' => 5,
-            'g' => 6,
-            'h' => 7,
-            _ => return Err("Files must be between [a,h]"),
-        };
-        Ok(File(file))
+    fn iter() -> impl Iterator<Item = Self> {
+        (Self::min().0..=Self::max().0).map(|i| Self(i))
     }
 
-    pub fn from_index(index: usize) -> Result<Self, &'static str> {
-        if index > 7 {
-            return Err("Index must be between [0,7]");
+    pub fn new(file: u8) -> Result<Self, String> {
+        let file = Self(file);
+        if file > Self::max() || file < Self::min() {
+            return Err(format!(
+                "Invalid file value {file}. Files must be between [{},{}]",
+                Self::min(),
+                Self::max()
+            ));
         }
-        Ok(Self(index as u8))
+        Ok(file)
     }
 
-    fn to_char(self) -> char {
-        match self.0 {
-            0 => 'a',
-            1 => 'b',
-            2 => 'c',
-            3 => 'd',
-            4 => 'e',
-            5 => 'f',
-            6 => 'g',
-            7 => 'h',
-            _ => unreachable!(),
+    pub fn from_char(file: char) -> Result<Self, String> {
+        debug_assert!(file.is_ascii(), "File chars must be ASCII!");
+
+        // Subtract the ASCII value for `a` (or `A`) to zero the number
+        let file = file as u8 - if file.is_ascii_lowercase() { 'a' } else { 'A' } as u8;
+
+        if file >= 8 {
+            return Err(format!("Files must be between [a,h]"));
         }
+
+        Self::new(file)
+    }
+
+    pub fn from_index(index: usize) -> Result<Self, String> {
+        debug_assert!(index <= 64, "File indices must be [0,64)");
+        Self::new(index as u8 / 8)
+    }
+
+    fn min() -> Self {
+        Self(0)
+    }
+
+    fn max() -> Self {
+        Self(7)
     }
 }
 
@@ -201,161 +353,221 @@ impl Deref for File {
     }
 }
 
+impl Add for File {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::new(self.0 + rhs.0).expect("Attempted to add beyond File's bounds")
+    }
+}
+
+impl Sub for File {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::new(self.0 - rhs.0).expect("Attempted to subtract beyond File's bounds")
+    }
+}
+
+impl AddAssign for File {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+impl SubAssign for File {
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
+
+impl Add<Rank> for File {
+    type Output = Position;
+    fn add(self, rank: Rank) -> Self::Output {
+        rank + self
+    }
+}
+
 impl fmt::Display for File {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_char())
+        write!(f, "{}", (self.0 + 'a' as u8) as char)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub struct Position {
-    file: File,
-    rank: Rank,
-}
+pub struct Position(u8);
+// pub struct Position {
+//     file: File,
+//     rank: Rank,
+// }
 
 impl Position {
+    pub fn iter() -> impl Iterator<Item = Self> {
+        File::iter()
+            .map(|file| Rank::iter().map(move |rank| Self::new(file, rank)))
+            .flatten()
+    }
+
     pub fn new(file: File, rank: Rank) -> Self {
-        Self { file, rank }
+        Self(*file + *rank * 8)
+        // Self { file, rank }
+    }
+
+    fn from_index(index: usize) -> Result<Self, String> {
+        if index >= 64 {
+            return Err(format!("Valid positions are indices [0,63)"));
+        }
+        Ok(Self(index as u8))
+        // Ok(Self {
+        //     file: File::from_index(index)?,
+        //     rank: Rank::from_index(index)?,
+        // })
     }
 
     pub fn file(&self) -> File {
-        self.file
+        File(self.0 / 8)
+        // self.file
     }
 
     pub fn rank(&self) -> Rank {
-        self.rank
+        Rank(self.0 % 8)
+        // self.rank
+    }
+
+    fn index(self) -> usize {
+        self.0 as usize
+        // (*self.file() + *self.rank() * 8) as usize
     }
 
     pub fn color(&self) -> Color {
-        if (*self.file + *self.rank) % 2 == 0 {
+        if (*self.file() + *self.rank()) % 2 == 0 {
             Color::White
         } else {
             Color::Black
         }
     }
 
-    pub fn to_index(&self) -> usize {
-        (*self.file + *self.rank * 8) as usize
-    }
-
-    fn from_uci_notation(tile: &str) -> Result<Self, &'static str> {
+    fn from_uci(tile: &str) -> Result<Self, String> {
         let mut chars = tile.chars();
         let file = match chars.next() {
             Some(c) => File::from_char(c)?,
-            None => return Err("Invalid tile parsed; no `file` found!"),
+            None => return Err(format!("Invalid tile parsed \"{tile}\"; no `file` found!")),
         };
 
         let rank = match chars.next() {
             Some(c) => Rank::from_char(c)?,
-            None => return Err("Invalid tile parsed; no `rank` found!"),
+            None => return Err(format!("Invalid tile parsed \"{tile}\"; no `rank` found!")),
         };
 
-        Ok(Self { file, rank })
+        Ok(Self::new(file, rank))
+    }
+
+    fn to_uci(self) -> String {
+        format!("{}{}", self.file(), self.rank())
     }
 }
+
+impl TryFrom<usize> for Position {
+    type Error = String;
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        Ok(Self::new(
+            File::from_index(value)?,
+            Rank::from_index(value)?,
+        ))
+    }
+}
+
+// impl Add<Rank> for Position {
+//     type Output = Self;
+//     fn add(mut self, rank: Rank) -> Self::Output {
+//         self.rank += rank;
+//         self
+//     }
+// }
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.file.to_string(), self.rank.to_string())
-    }
-}
-
-/*********************************************************************************
- * Game pieces
-*********************************************************************************/
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub struct Piece {
-    color: Color,
-    class: PieceClass,
-}
-
-impl Piece {
-    fn new(color: Color, class: PieceClass) -> Self {
-        Self { color, class }
-    }
-}
-
-impl fmt::Display for Piece {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let piece = if self.color.is_white() {
-            self.class.to_string()
-        } else {
-            self.class.to_string().to_ascii_lowercase()
-        };
-
-        write!(f, "{piece}")
+        write!(f, "{}", self.to_uci())
     }
 }
 
 /*********************************************************************************
  * Game board
 *********************************************************************************/
-// #[derive(PartialEq, Eq, Debug, Hash)]
-// struct ChessTile {
-//     resident: Option<Piece>,
-//     rank: Rank,
-//     file: File,
-// }
 
-#[derive(PartialEq, Eq, Debug, Hash, Default)]
+#[derive(PartialEq, Eq, Debug, Hash)]
 pub struct ChessBoard {
-    // tiles: [[ChessTile; BOARD_SIZE]; BOARD_SIZE],
+    // white_pieces: Vec<Piece>,
+    // black_pieces: Vec<Piece>,
     pub state: ChessBoardState,
-    // Index by [`PieceClass`] to get the bitboard of that piece's locations
-    // white: [BitBoard; 6],
-    // black: [BitBoard; 6],
-    /*
-    white_pawns: BitBoard,
-    white_knights: BitBoard,
-    white_bishops: BitBoard,
-    white_rooks: BitBoard,
-    white_queens: BitBoard,
-    white_king: BitBoard,
-
-    black_pawns: BitBoard,
-    black_knights: BitBoard,
-    black_bishops: BitBoard,
-    black_rooks: BitBoard,
-    black_queens: BitBoard,
-    black_king: BitBoard,
-     */
 }
 
 impl ChessBoard {
     fn from_fen(fen: &FEN) -> Self {
         let state = ChessBoardState::from_fen(fen);
-        Self { state }
-    }
-
-    pub fn tiles() -> impl Iterator<Item = Position> {
-        (0..64).map(|i| Position {
-            file: File(i % 8),
-            rank: Rank(i / 8),
-        })
-    }
-
-    pub fn at(&self, index: Position) -> Option<Piece> {
-        for class in PieceClass::iter() {
-            if self.state.white[class].contains(&index) {
-                return Some(Piece {
-                    color: Color::White,
-                    class,
-                });
-            } else if self.state.black[class].contains(&index) {
-                return Some(Piece {
-                    color: Color::Black,
-                    class,
-                });
-            }
+        // let white_pieces = Piece::from_fen(fen);
+        Self {
+            state,
+            // white_pieces,
+            // black_pieces,
         }
+    }
 
-        None
+    pub fn piece_at(&self, tile: Position) -> Option<Piece> {
+        self.state.piece_at(tile)
+    }
+
+    fn place_at(&mut self, tile: Position, piece: Piece) {
+        let bitboard = self.state.bitboard_mut(piece);
+        bitboard.place_at(tile);
     }
 }
 
+impl Default for ChessBoard {
+    fn default() -> Self {
+        Self::from_fen(&FEN::default())
+    }
+}
+
+impl fmt::Display for ChessBoard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut board = String::new();
+
+        for rank in Rank::iter() {
+            for _ in File::iter() {
+                board += "+---";
+            }
+
+            board += "+\n";
+
+            for file in File::iter() {
+                let occupant = if let Some(piece) = self.piece_at(file + rank) {
+                    piece.to_string()
+                } else {
+                    String::from(" ")
+                };
+
+                board += &format!("| {occupant} ");
+            }
+
+            board += "|\n";
+        }
+        for _ in File::iter() {
+            board += "+---";
+        }
+        board += "+";
+
+        write!(f, "{}", board)
+    }
+}
+
+// impl Index<Position> for ChessBoard {
+//     type Output = Option<Piece>;
+//     fn index(&self, index: Position) -> &Self::Output {
+
+//     }
+// }
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct ChessBoardState {
-    // pieces: [[Option<Piece>; BOARD_SIZE]; BOARD_SIZE],
     // Index by [`PieceClass`] to get the bitboard of that piece's locations
     pub white: [BitBoard; 6],
     pub black: [BitBoard; 6],
@@ -397,7 +609,7 @@ impl ChessBoardState {
 
         let en_passant_tile = match split.next().unwrap() {
             "-" => None,
-            tile => Some(Position::from_uci_notation(tile).unwrap()),
+            tile => Some(Position::from_uci(tile).unwrap()),
         };
 
         let halfmove = split.next().unwrap().parse().unwrap();
@@ -417,6 +629,64 @@ impl ChessBoardState {
         }
     }
 
+    pub fn to_fen(&self) -> FEN {
+        let mut placements: [String; 8] = Default::default();
+
+        for rank in Rank::iter() {
+            let mut empty_spaces = 0;
+            for file in File::iter() {
+                if let Some(piece) = self.piece_at(file + rank) {
+                    if empty_spaces != 0 {
+                        placements[*rank as usize] += &empty_spaces.to_string();
+                        empty_spaces = 0;
+                    }
+                    placements[*rank as usize] += &piece.to_string();
+                } else {
+                    empty_spaces += 1;
+                }
+            }
+
+            if empty_spaces != 0 {
+                placements[*rank as usize] += &empty_spaces.to_string();
+            }
+        }
+        let placements = placements.join("/");
+
+        let active_color = self.current_player;
+
+        let mut castling = String::with_capacity(4);
+        if self.can_white_kingside_castle {
+            castling += "K"
+        }
+        if self.can_white_queenside_castle {
+            castling += "Q"
+        }
+        if self.can_black_kingside_castle {
+            castling += "k"
+        }
+        if self.can_black_queenside_castle {
+            castling += "q"
+        }
+        if castling.is_empty() {
+            castling = String::from("-");
+        }
+
+        let en_passant_target = if let Some(tile) = self.en_passant_tile {
+            tile.to_string()
+        } else {
+            String::from("-")
+        };
+
+        let halfmove = self.halfmove;
+        let fullmove = self.fullmove;
+
+        let fen = format!(
+            "{placements} {active_color} {castling} {en_passant_target} {halfmove} {fullmove}"
+        );
+
+        FEN(fen)
+    }
+
     /// Internal helper for parsing piece placement from a *valid* FEN string.
     ///
     /// This should never be called directly with a parameter that did not come from a FEN instance.
@@ -428,12 +698,14 @@ impl ChessBoardState {
         for (rank, pieces) in placements.split('/').enumerate() {
             let mut file = 0;
             for piece_char in pieces.chars() {
-                if let Some(kind) = PieceClass::from_char(piece_char) {
-                    if piece_char.is_ascii_uppercase() {
-                        white[kind].place_piece(File(file), Rank(rank as u8))
+                if let Some(kind) = PieceKind::from_char(piece_char) {
+                    let bitboard = if piece_char.is_ascii_uppercase() {
+                        &mut white
                     } else {
-                        black[kind].place_piece(File(file), Rank(rank as u8))
-                    }
+                        &mut black
+                    };
+
+                    bitboard[kind].place_at(File(file) + Rank(rank as u8));
                     file += 1;
                 } else {
                     file += piece_char.to_digit(10).unwrap() as u8;
@@ -443,11 +715,67 @@ impl ChessBoardState {
 
         (white, black)
     }
+
+    fn piece_at(&self, tile: Position) -> Option<Piece> {
+        for kind in PieceKind::iter() {
+            if self.white[kind].contains(tile) {
+                return Some(Piece::new(Color::White, kind));
+            } else if self.black[kind].contains(tile) {
+                return Some(Piece::new(Color::Black, kind));
+            }
+        }
+
+        /*
+        for (i, white) in self.white.iter().enumerate() {
+            if white.contains(tile) {
+                let kind = PieceKind::Pawn;
+                return Some(Piece {
+                    kind,
+                    color: Color::White,
+                });
+            }
+        }
+
+        for (i, black) in self.white.iter().enumerate() {
+            if black.contains(tile) {
+                let kind = PieceKind::Pawn;
+                return Some(Piece {
+                    kind,
+                    color: Color::Black,
+                });
+            }
+        }
+         */
+
+        None
+    }
+
+    fn bitboard(&self, piece: Piece) -> &BitBoard {
+        if piece.color().is_white() {
+            &self.white[piece.kind()]
+        } else {
+            &self.black[piece.kind()]
+        }
+    }
+
+    fn bitboard_mut(&mut self, piece: Piece) -> &mut BitBoard {
+        if piece.color().is_white() {
+            &mut self.white[piece.kind()]
+        } else {
+            &mut self.black[piece.kind()]
+        }
+    }
 }
 
 impl Default for ChessBoardState {
     fn default() -> Self {
         Self::from_fen(&FEN::default())
+    }
+}
+
+impl fmt::Display for ChessBoardState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", *self.to_fen())
     }
 }
 
@@ -464,22 +792,63 @@ impl Default for ChessBoardState {
 pub struct BitBoard(u64);
 
 impl BitBoard {
-    fn place_piece(&mut self, file: File, rank: Rank) {
-        self.0 |= 1 << (*file + *rank * 8);
+    fn file_mask(file: File) -> Self {
+        // Mask for the A (first) file
+        let mask = 0x0101010101010101;
+        Self(mask << *file)
     }
 
-    // fn place_at_index(&mut self, index: usize) {
-    //     self.0 |= 1 << index;
+    fn rank_mask(rank: Rank) -> Self {
+        // Mask for the 1 (first) rank
+        let mask = 0x000000000000000FF;
+        Self(mask << *rank)
+    }
+
+    // fn place_at_fr(&mut self, file: File, rank: Rank) {
+    //     self.place_at(file + rank)
     // }
 
-    // pub fn contains(&self, tile: &usize) -> bool {
-    //     (self.0 & 1 << *tile as u64) != 0
-    // }
+    fn place_at(&mut self, tile: Position) {
+        self.place_at_index(tile.index())
+    }
 
-    pub fn contains(&self, tile: &Position) -> bool {
-        // (self.0 & 1 << *tile as u64) != 0
-        (self.0 & 1 << tile.to_index() as u64) != 0
-        // (self.0 & 1 << (*tile.file + *tile.rank * 8)) != 0
+    fn contains(&self, tile: Position) -> bool {
+        self.contains_index(tile.index())
+    }
+
+    fn remove(&mut self, tile: Position) {
+        self.remove_index(tile.index());
+    }
+
+    fn place_at_index(&mut self, index: usize) {
+        debug_assert!(index < 64, "Index must be between [0,64)");
+        self.0 |= 1 << index;
+    }
+
+    fn remove_index(&mut self, index: usize) {
+        debug_assert!(index < 64, "Index must be between [0,64)");
+        self.0 ^= !(1 << index);
+    }
+
+    fn contains_index(&self, index: usize) -> bool {
+        debug_assert!(index < 64, "Index must be between [0,64)");
+        (self.0 & 1 << index) != 0
+    }
+
+    fn rank_up(self, n: u8) -> Self {
+        Self(*self >> (8 * n))
+    }
+
+    fn rank_down(self, n: u8) -> Self {
+        Self(*self << (8 * n))
+    }
+
+    fn file_up(self, n: u8) -> Self {
+        Self(*self >> n)
+    }
+
+    fn file_down(self, n: u8) -> Self {
+        Self(*self << n)
     }
 }
 
@@ -490,38 +859,33 @@ impl Deref for BitBoard {
         &self.0
     }
 }
-impl DerefMut for BitBoard {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 
-impl Index<PieceClass> for [BitBoard; 6] {
+impl Index<PieceKind> for [BitBoard; 6] {
     type Output = BitBoard;
 
-    fn index(&self, index: PieceClass) -> &Self::Output {
+    fn index(&self, index: PieceKind) -> &Self::Output {
         let idx = match index {
-            PieceClass::Pawn => 0,
-            PieceClass::Knight => 1,
-            PieceClass::Bishop => 2,
-            PieceClass::Rook => 3,
-            PieceClass::Queen => 4,
-            PieceClass::King => 5,
+            PieceKind::Pawn => 0,
+            PieceKind::Knight => 1,
+            PieceKind::Bishop => 2,
+            PieceKind::Rook => 3,
+            PieceKind::Queen => 4,
+            PieceKind::King => 5,
         };
 
         &self[idx]
     }
 }
 
-impl IndexMut<PieceClass> for [BitBoard; 6] {
-    fn index_mut(&mut self, index: PieceClass) -> &mut Self::Output {
+impl IndexMut<PieceKind> for [BitBoard; 6] {
+    fn index_mut(&mut self, index: PieceKind) -> &mut Self::Output {
         let idx = match index {
-            PieceClass::Pawn => 0,
-            PieceClass::Knight => 1,
-            PieceClass::Bishop => 2,
-            PieceClass::Rook => 3,
-            PieceClass::Queen => 4,
-            PieceClass::King => 5,
+            PieceKind::Pawn => 0,
+            PieceKind::Knight => 1,
+            PieceKind::Bishop => 2,
+            PieceKind::Rook => 3,
+            PieceKind::Queen => 4,
+            PieceKind::King => 5,
         };
 
         &mut self[idx]
@@ -530,9 +894,7 @@ impl IndexMut<PieceClass> for [BitBoard; 6] {
 
 impl fmt::Display for BitBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // let bytes = self.to_ne_bytes();
-        let bytes = self.to_be_bytes();
-        // let bytes = self.to_le_bytes();
+        let bytes = self.to_ne_bytes();
         write!(
             f,
             "{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}",
@@ -652,17 +1014,13 @@ impl FEN {
     fn from_str(fen: &str) -> Result<Self, &'static str> {
         Self::new(fen.to_string())
     }
-
-    // fn to_bitboard(&self, piece: &Piece) -> BitBoard {
-    //     todo!("Convert FEN strings to BitBoard, based on provided piece")
-    // }
 }
 
 impl Default for FEN {
     fn default() -> Self {
-        // Self::from_str("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
         // Safe unwrap: default FEN is always valid
         Self::from_str("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
+        // Self::from_str("8/8/8/4p1K1/2k1P3/8/8/8 b - - 0 1").unwrap()
     }
 }
 
@@ -715,3 +1073,9 @@ impl Game {
 /*********************************************************************************
  * Utility functions
 *********************************************************************************/
+
+pub struct MoveGenerator {}
+
+impl MoveGenerator {
+    //
+}
