@@ -86,6 +86,17 @@ impl PieceKind {
             _ => Err(format!("Invalid piece char '{kind}'")),
         }
     }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Pawn => "Pawn",
+            Self::Knight => "Knight",
+            Self::Bishop => "Bishop",
+            Self::Rook => "Rook",
+            Self::Queen => "Queen",
+            Self::King => "King",
+        }
+    }
 }
 
 impl PartialOrd for PieceKind {

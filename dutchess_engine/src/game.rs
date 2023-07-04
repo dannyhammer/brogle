@@ -5,6 +5,46 @@ use std::{
 
 use crate::{Color, File, Piece, PieceKind, Position, Rank};
 
+#[derive(PartialEq, Eq, Debug, Hash)]
+pub enum MoveLegality {
+    /// Move is completely legal
+    Legal, // TODO: Contain the move?
+
+    /// Can't capture the same color piece
+    CaptureSameColor(Color),
+
+    /// King is in check by the pieces at the provided positions
+    PutsKingInCheck(Vec<Position>),
+
+    /// That piece doesn't move that way.
+    InvalidMovement(PieceKind),
+
+    /// There isn't a piece at the selected tile
+    NoPieceAtTile(Position),
+}
+
+impl MoveLegality {
+    pub fn is_legal(&self) -> bool {
+        *self == Self::Legal
+    }
+}
+
+impl fmt::Display for MoveLegality {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let reason = match self {
+            Self::Legal => format!("Move is legal"),
+            Self::CaptureSameColor(color) => {
+                format!("Cannot capture a piece with the same color ({color})")
+            }
+            Self::PutsKingInCheck(attacking) => format!("That move puts your King in check by the pieces at the following positions: {attacking:?}"),
+            Self::InvalidMovement(kind) => format!("The {} doesn't move that way...", kind.name()),
+            Self::NoPieceAtTile(from) => format!("There's no piece at {from} to be moved"),
+        };
+
+        write!(f, "{reason}")
+    }
+}
+
 /*********************************************************************************
  * Game board
 *********************************************************************************/
@@ -25,21 +65,47 @@ impl ChessBoard {
         self.state.to_fen()
     }
 
+    pub fn piece_at(&self, tile: Position) -> Option<&Piece> {
+        self.state.piece(tile).as_ref()
+    }
+
     /// Fetch the piece at the requested position, if it exists.
-    pub fn get(&self, tile: Position) -> Option<Piece> {
+    fn get(&self, tile: Position) -> Option<Piece> {
         *self.state.piece(tile)
     }
 
     /// Set the piece at the specified position.
-    pub fn set(&mut self, tile: Position, piece: Piece) {
-        *self.state.piece_mut(tile) = Some(piece);
-        self.board.set(tile, piece);
+    fn set(&mut self, tile: Position, piece: Piece) {
+        self.board.set(tile, piece); // Update the bitboards
+        *self.state.piece_mut(tile) = Some(piece); // Update the state
     }
 
     /// Remove a piece from the specified position, returning it if it exists.
-    pub fn clear(&mut self, tile: Position) -> Option<Piece> {
-        self.board.clear(tile);
-        self.state.piece_mut(tile).take()
+    fn clear(&mut self, tile: Position) -> Option<Piece> {
+        self.board.clear(tile); // Update the bitboards
+        self.state.piece_mut(tile).take() // Update the state
+    }
+
+    /// Returns `true` if the move was made successful, and `false` if it cannot be made.
+    pub fn make_move(&mut self, from: Position, to: Position) -> bool {
+        let Some(piece) = self.clear(from) else { return false };
+        self.set(to, piece);
+        true
+    }
+
+    /// Returns whether the move is legal to make, given the current game state.
+    pub fn legality(&mut self, from: Position, to: Position) -> MoveLegality {
+        // Can't make a move if `from` has no piece!
+        let Some(piece) = self.get(from) else { return MoveLegality::NoPieceAtTile(from) };
+
+        if let Some(target) = self.get(to) {
+            // Cannot capture your own team's piece
+            if piece.color() == target.color() {
+                return MoveLegality::CaptureSameColor(piece.color());
+            }
+        }
+
+        MoveLegality::Legal
     }
 }
 

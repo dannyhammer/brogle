@@ -4,6 +4,7 @@ use macroquad::prelude::*;
 #[derive(Default)]
 struct BoardGUI {
     selected: Option<Position>,
+    selected_piece: Option<Piece>,
     highlighted: BitBoard,
     board: ChessBoard,
 }
@@ -44,27 +45,70 @@ async fn main() {
         // if let Some(key) = get_last_key_pressed() {
         //     println!("{key:?}");
         // }
-
         let (mouse_x, mouse_y) = mouse_position();
+
+        if is_mouse_button_pressed(MouseButton::Right) {
+            board.selected = None;
+            // let selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
+            // if selected == board.selected {
+            // }
+        }
+
         if is_mouse_button_pressed(MouseButton::Left) {
-            if let Some(tile) = board.selected {
-                // A tile has already been selected
-                if let Some(piece) = board.board.get(tile) {
-                    // A piece is already selected; move it to the newly-selected tile
+            let prev = board.selected;
+            let curr = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
+
+            // If the user clicked a tile, we need to check if they want to move a piece.
+            if let Some(curr_tile) = curr {
+                // print!("Current: {curr_tile}, ");
+
+                // If there was a previously-selected tile, we need to move a piece!
+                if let Some(prev_tile) = prev {
+                    // print!("Previous: {prev_tile}, ");
+
+                    let legality = board.board.legality(prev_tile, curr_tile);
+                    if legality.is_legal() {
+                        if board.board.make_move(prev_tile, curr_tile) {
+                            // Move was made, so de-select everything
+                            board.selected = None;
+                        } else {
+                            // Move was not made, so leave selection
+                            board.selected = curr;
+                        }
+                    } else {
+                        // Move was not legal to make
+                        println!("{legality}");
+                        board.selected = None;
+                    }
+
+                    // // If there was a piece on that tile, we need to move it
+                    // if let Some(piece) = board.board.clear(prev_tile) {
+                    //     // println!("Moving {piece} from {prev_tile} to {curr_tile}");
+                    //     board.board.set(curr_tile, piece);
+                    //     board.selected = None;
+                    // } else {
+                    //     // Since the prev tile had no piece, we mark this as the new selection
+                    //     // println!("Prev tile {prev_tile} had no piece");
+                    //     board.selected = curr;
+                    // }
                 } else {
-                    // println!("Clicked {tile}");
+                    // No new tile was selected, but we have a previous selection
+                    // println!("Currently selected {curr_tile}, but no previous selection exists");
+                    board.selected = curr;
                 }
+            } else {
+                // println!("There was no current selection");
             }
 
-            board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
-            if let Some(tile) = board.selected {
-                if let Some(piece) = board.board.get(tile) {
-                    println!("Selected {piece}");
-                } else {
-                    println!("Clicked {tile}");
-                }
-            }
+            // if let Some(tile) = board.selected {
+            //     if let Some(piece) = board.board.get(tile) {
+            //         println!("Selected {piece}");
+            //     } else {
+            //         println!("Clicked {tile}");
+            //     }
+            // }
         }
+        /*
         if is_mouse_button_down(MouseButton::Left) {
             // board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
             // Drag and drop
@@ -76,8 +120,9 @@ async fn main() {
                 }
             }
         }
+         */
         if is_mouse_button_released(MouseButton::Left) {
-            board.selected = None;
+            // board.selected = None;
         }
 
         next_frame().await
@@ -127,7 +172,7 @@ fn draw_chessboard(
 
         draw_rectangle(x, y, tile_size, tile_size, tile_color);
 
-        if let Some(piece) = board.board.get(tile) {
+        if let Some(piece) = board.board.piece_at(tile) {
             draw_texture(icons[piece.index()], x, y, WHITE);
         }
     }
