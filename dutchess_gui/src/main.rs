@@ -47,9 +47,18 @@ async fn main() {
 
         let (mouse_x, mouse_y) = mouse_position();
         if is_mouse_button_pressed(MouseButton::Left) {
+            if let Some(tile) = board.selected {
+                // A tile has already been selected
+                if let Some(piece) = board.board.get(tile) {
+                    // A piece is already selected; move it to the newly-selected tile
+                } else {
+                    // println!("Clicked {tile}");
+                }
+            }
+
             board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
             if let Some(tile) = board.selected {
-                if let Some(piece) = board.board.piece_at(tile) {
+                if let Some(piece) = board.board.get(tile) {
                     println!("Selected {piece}");
                 } else {
                     println!("Clicked {tile}");
@@ -60,8 +69,10 @@ async fn main() {
             // board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
             // Drag and drop
             if let Some(tile) = board.selected {
-                if let Some(piece) = board.board.piece_at(tile) {
-                    // println!("Selected {piece}");
+                if let Some(piece) = board.board.get(tile) {
+                    println!("Picking up {piece}");
+                    // pick_up_piece();
+                    // board.board.remove(tile);
                 }
             }
         }
@@ -116,7 +127,7 @@ fn draw_chessboard(
 
         draw_rectangle(x, y, tile_size, tile_size, tile_color);
 
-        if let Some(piece) = board.board.piece_at(tile) {
+        if let Some(piece) = board.board.get(tile) {
             draw_texture(icons[piece.index()], x, y, WHITE);
         }
     }
@@ -127,7 +138,7 @@ fn draw_ui(board: &BoardGUI, start_x: f32, start_y: f32, tile_size: f32, font_si
     let board_size = tile_size * 8.0;
     let font_offset = font_size / 4.0;
 
-    let fen = board.board.state.to_fen();
+    let fen = board.board.fen();
     draw_text(fen.as_str(), font_offset, font_size, font_size, BLACK);
 
     // File and Rank labels
