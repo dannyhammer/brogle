@@ -36,8 +36,8 @@ async fn main() {
     loop {
         // TODO: Should probably only recompute when necessary...
         let tile_size = screen_height() / 10.0;
-        let x = screen_width() / 2.0 - (tile_size * 4.0);
-        let y = screen_height() / 2.0 - (tile_size * 4.0);
+        let x = (screen_width() / 2.0) - (tile_size * 4.0);
+        let y = (screen_height() / 2.0) - (tile_size * 4.0);
         let font_size = tile_size / 3.0;
 
         clear_background(LIGHTGRAY);
@@ -60,8 +60,9 @@ async fn main() {
         if is_mouse_button_pressed(MouseButton::Left) {
             board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
             if let Some(tile) = board.selected {
+                println!("Clicked {tile}");
                 if let Some(piece) = board.board.piece_at(tile) {
-                    board.highlighted = board.board.legal_moves_of(piece, tile);
+                    board.highlighted = board.board.legal_moves_of(&piece, tile);
                 }
             }
         }
@@ -160,14 +161,23 @@ fn mouse_to_tile(
 ) -> Option<Position> {
     let board_size = tile_size * 8.0;
 
+    // println!("X: {mouse_x}, {board_x}, {board_size}");
+    // println!("Y: {mouse_y}, {board_y}, {board_size}");
+    // Files are the x axis
     let file = (mouse_x > board_x && mouse_x < board_x + board_size)
         .then(|| ((mouse_x - board_x) / tile_size) as u8)?;
 
-    let rank = (mouse_y > board_y && mouse_y < board_y + board_size)
-        .then(|| ((mouse_y - board_y) / tile_size) as u8)?;
+    // Ranks are the y axis
+    // We subtract from 7 here because ranks go in "descending" order
+    // Equivalent to subtracting by 8 then adding 1 for the start-at-one offset
+    let rank = (mouse_y > board_y && mouse_y < board_size + board_y)
+        .then(|| 7 - ((mouse_y - board_y) / tile_size) as u8)?;
 
-    let file = File::new(file).unwrap();
-    let rank = Rank::new(rank).unwrap();
+    // println!("Clicking FILE({file}), RANK({rank})");
+    let file = File::new(file).ok()?;
+    let rank = Rank::new(rank).ok()?;
+
+    // println!("{file}{rank}");
 
     Some(Position::new(file, rank))
 }
@@ -179,18 +189,21 @@ fn draw_chessboard(
     start_y: f32,
     tile_size: f32,
 ) {
-    // All tiles
+    // We start drawing at the bottom of the board and work our way up
+    let start_y = start_y + tile_size * 7.0;
+
     for tile in Position::iter() {
-        let x = start_x + tile.rank().index() as f32 * tile_size;
-        let y = start_y + tile.file().index() as f32 * tile_size;
+        let x = start_x + tile.file().index() as f32 * tile_size;
+        let y = start_y - tile.rank().index() as f32 * tile_size;
 
         let mut tile_color = if tile.is_light() { BEIGE } else { DARKBROWN };
 
         if let Some(selected) = board.selected {
-            // if let Some(piece) = board.board.piece_at(selected) {
-            if board.board.piece_at(selected).is_some() {
-                if tile == selected {
+            if tile == selected {
+                if board.board.piece_at(selected).is_some() {
                     tile_color = SKYBLUE;
+                } else {
+                    tile_color = YELLOW;
                 }
             }
         }
@@ -199,6 +212,10 @@ fn draw_chessboard(
             tile_color = if tile.is_light() { LIGHTGRAY } else { DARKGRAY };
         }
 
+        // let r = tile.file().index() as f32 / 8.0;
+        // let g = tile.rank().index() as f32 / 8.0;
+        // let b = (r + g) * 0.5;
+        // let tile_color = macroquad::color::Color::new(r, g, b, 1.0);
         draw_rectangle(x, y, tile_size, tile_size, tile_color);
 
         if let Some(piece) = board.board.piece_at(tile) {
@@ -207,28 +224,46 @@ fn draw_chessboard(
     }
 }
 
+// fn draw_tile(x: f32, y: f32, size: f32, color: macroquad::color::Color, piece: Option<Piece>) {
+//     draw_rectangle(x, y, size, size, color);
+//     if let Some(piece) = piece {
+//         draw_texture(icons[piece.index()], x, y, WHITE);
+//     }
+// }
+
 fn draw_ui(board: &BoardGUI, start_x: f32, start_y: f32, tile_size: f32, font_size: f32) {
     let tile_half = tile_size / 2.0;
     let board_size = tile_size * 8.0;
     let font_offset = font_size / 4.0;
+    // We start drawing at the bottom of the board and work our way up
+    let start_y = start_y + tile_size * 7.0;
 
     let fen = board.board.fen();
     draw_text(fen.as_str(), font_offset, font_size, font_size, BLACK);
 
     // File and Rank labels
     for i in 0..8 {
-        let rank = format!("{}", 8 - i);
-        let rank_y = start_y + tile_size * i as f32 + tile_half + font_offset;
+        let rank = format!("{}", i + 1);
+        let rank_y = start_y - tile_size * i as f32 + tile_half + font_offset;
         let rank_x_left = start_x - tile_half - font_offset;
         let rank_x_right = start_x + board_size + tile_half - font_offset;
         draw_text(rank.as_str(), rank_x_left, rank_y, font_size, BLACK);
         draw_text(rank.as_str(), rank_x_right, rank_y, font_size, BLACK);
 
-        let file = format!("{}", File::new(i).unwrap().to_string());
+        let file = format!("{}", File::new(i).unwrap());
         let file_x = start_x + tile_size * i as f32 + tile_half - font_offset;
-        let file_y_bottom = start_y + board_size + tile_half + font_offset;
-        let file_y_top = start_y - tile_half + font_offset;
-        draw_text(file.as_str(), file_x, file_y_bottom, font_size, BLACK);
+        let file_y_top = start_y - board_size + tile_half + font_offset;
+        let file_y_bottom = start_y + tile_size + tile_half + font_offset;
         draw_text(file.as_str(), file_x, file_y_top, font_size, BLACK);
+        draw_text(file.as_str(), file_x, file_y_bottom, font_size, BLACK);
+    }
+
+    for tile in Position::iter() {
+        let x = start_x + tile.file().index() as f32 * tile_size + font_offset;
+        let y = start_y - tile.rank().index() as f32 * tile_size + tile_size - font_offset;
+        let color = if tile.is_light() { BLACK } else { WHITE };
+
+        let tile_id = format!("{}", tile.index());
+        draw_text(&tile_id, x, y, font_size, color);
     }
 }

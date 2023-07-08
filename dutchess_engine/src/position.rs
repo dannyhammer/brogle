@@ -15,6 +15,7 @@ impl Position {
     }
 
     pub fn new(file: File, rank: Rank) -> Self {
+        // least-significant file mapping
         Self(file.0 + rank.0 * 8)
     }
 
@@ -26,19 +27,31 @@ impl Position {
     }
 
     pub fn file(&self) -> File {
-        File(self.0 / 8)
+        File(self.0 % 8)
     }
 
     pub fn rank(&self) -> Rank {
-        Rank(self.0 % 8)
+        Rank(self.0 / 8)
     }
 
-    pub fn index(self) -> usize {
+    pub fn index(&self) -> usize {
         self.0 as usize
     }
 
+    // pub fn diag_index(&self) -> usize {
+    //     (self.rank().index() - self.file().index()) & 15
+    // }
+
+    // pub fn anti_diag_index(&self) -> usize {
+    //     (self.rank().index() + self.file().index()) ^ 7
+    // }
+
     pub fn is_light(&self) -> bool {
-        (self.file().0 + self.rank().0) % 2 == 0
+        (self.file().0 + self.rank().0) % 2 != 0
+    }
+
+    pub fn is_dark(&self) -> bool {
+        !self.is_light()
     }
 
     pub fn from_uci(tile: &str) -> Result<Self, String> {
@@ -136,13 +149,13 @@ impl<T> IndexMut<Position> for [T; 64] {
 impl<T> Index<Position> for [[T; 8]; 8] {
     type Output = T;
     fn index(&self, index: Position) -> &Self::Output {
-        &self[index.rank()][index.file()]
+        &self[index.file()][index.rank()]
     }
 }
 
 impl<T> IndexMut<Position> for [[T; 8]; 8] {
     fn index_mut(&mut self, index: Position) -> &mut Self::Output {
-        &mut self[index.rank()][index.file()]
+        &mut self[index.file()][index.rank()]
     }
 }
 
@@ -165,9 +178,7 @@ impl Rank {
         let rank = Self(rank);
         if rank > Self::max() || rank < Self::min() {
             return Err(format!(
-                "Invalid rank value {rank}. Ranks must be between [{},{}]",
-                Self::min(),
-                Self::max()
+                "Invalid rank value {rank}. Ranks must be between [0,8)",
             ));
         }
         Ok(rank)
@@ -183,8 +194,18 @@ impl Rank {
         Self::new(index as u8 % 8)
     }
 
-    pub fn index(self) -> usize {
+    pub fn index(&self) -> usize {
+        self.index_le()
+    }
+
+    // Index in Little Endian (default)
+    pub fn index_le(&self) -> usize {
         self.0 as usize
+    }
+
+    // Index in Big Endian
+    pub fn index_be(&self) -> usize {
+        self.index_le() ^ 56
     }
 
     fn min() -> Self {
@@ -270,7 +291,7 @@ impl<T> IndexMut<Rank> for [T; 8] {
 
 impl fmt::Display for Rank {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", 8 - self.0)
+        write!(f, "{}", self.0 + 1)
     }
 }
 
@@ -312,8 +333,18 @@ impl File {
         Self::new(index as u8 / 8)
     }
 
-    pub fn index(self) -> usize {
+    pub fn index(&self) -> usize {
+        self.index_le()
+    }
+
+    // Index in Little Endian (default)
+    pub fn index_le(&self) -> usize {
         self.0 as usize
+    }
+
+    // Index in Big Endian
+    pub fn index_be(&self) -> usize {
+        self.index_le() ^ 7
     }
 
     fn min() -> Self {
@@ -400,5 +431,32 @@ impl<T> IndexMut<File> for [T; 8] {
 impl fmt::Display for File {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", (self.0 + 'a' as u8) as char)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_positions() {
+        // for rank in 0..8 {
+        //     let rank = Rank(rank);
+        //     for file in 0..8 {
+        //         let file = File(file);
+        //     }
+        // }
+
+        let a1 = Position::new(File(0), Rank(0));
+        assert_eq!(a1.to_string(), String::from("a1"));
+
+        let h1 = Position::new(File(7), Rank(0));
+        assert_eq!(h1.to_string(), String::from("h1"));
+
+        let a8 = Position::new(File(0), Rank(7));
+        assert_eq!(a8.to_string(), String::from("a8"));
+
+        let h8 = Position::new(File(7), Rank(7));
+        assert_eq!(h8.to_string(), String::from("h8"));
     }
 }
