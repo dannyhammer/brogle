@@ -4,13 +4,16 @@ use macroquad::prelude::*;
 #[derive(Default)]
 struct BoardGUI {
     selected: Option<Position>,
-    selected_piece: Option<Piece>,
     highlighted: BitBoard,
     board: ChessBoard,
 }
 
 #[macroquad::main("DUTChess")]
 async fn main() {
+    // let x: u32 = 16384;
+    // println!("LEFT -1: {}", x << -1);
+    // println!("RIGHT 1: {}", x >> 1);
+
     let mut board = BoardGUI::default();
     println!("{}", board.board);
 
@@ -55,6 +58,15 @@ async fn main() {
         }
 
         if is_mouse_button_pressed(MouseButton::Left) {
+            board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
+            if let Some(tile) = board.selected {
+                if let Some(piece) = board.board.piece_at(tile) {
+                    board.highlighted = board.board.legal_moves_of(piece, tile);
+                }
+            }
+        }
+        /*
+        if is_mouse_button_pressed(MouseButton::Left) {
             let prev = board.selected;
             let curr = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
 
@@ -66,18 +78,23 @@ async fn main() {
                 if let Some(prev_tile) = prev {
                     // print!("Previous: {prev_tile}, ");
 
-                    let legality = board.board.legality(prev_tile, curr_tile);
-                    if legality.is_legal() {
+                    // let legality = board.board.legality(prev_tile, curr_tile);
+                    // if legality.is_legal() {
+                    if board.board.is_legal(prev_tile, curr_tile) {
                         if board.board.make_move(prev_tile, curr_tile) {
                             // Move was made, so de-select everything
                             board.selected = None;
                         } else {
                             // Move was not made, so leave selection
                             board.selected = curr;
+                            if let Some(piece) = board.board.piece_at(curr_tile) {
+                                board.highlighted = board.board.legal_moves_of(piece);
+                            }
                         }
                     } else {
                         // Move was not legal to make
-                        println!("{legality}");
+                        // println!("{legality}");
+                        println!("Move is not legal!");
                         board.selected = None;
                     }
 
@@ -95,6 +112,10 @@ async fn main() {
                     // No new tile was selected, but we have a previous selection
                     // println!("Currently selected {curr_tile}, but no previous selection exists");
                     board.selected = curr;
+                    if let Some(piece) = board.board.piece_at(curr_tile) {
+                        board.highlighted = board.board.legal_moves_of(piece);
+                        println!("{}", board.highlighted);
+                    }
                 }
             } else {
                 // println!("There was no current selection");
@@ -108,6 +129,7 @@ async fn main() {
             //     }
             // }
         }
+         */
         /*
         if is_mouse_button_down(MouseButton::Left) {
             // board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
@@ -159,16 +181,23 @@ fn draw_chessboard(
 ) {
     // All tiles
     for tile in Position::iter() {
-        let x = start_x + *tile.rank() as f32 * tile_size;
-        let y = start_y + *tile.file() as f32 * tile_size;
+        let x = start_x + tile.rank().index() as f32 * tile_size;
+        let y = start_y + tile.file().index() as f32 * tile_size;
 
-        let tile_color = if board.selected.is_some() && tile == board.selected.unwrap() {
-            SKYBLUE
-        } else if tile.color().is_white() {
-            BEIGE
-        } else {
-            DARKBROWN
-        };
+        let mut tile_color = if tile.is_light() { BEIGE } else { DARKBROWN };
+
+        if let Some(selected) = board.selected {
+            // if let Some(piece) = board.board.piece_at(selected) {
+            if board.board.piece_at(selected).is_some() {
+                if tile == selected {
+                    tile_color = SKYBLUE;
+                }
+            }
+        }
+
+        if board.highlighted.get(tile) {
+            tile_color = if tile.is_light() { LIGHTGRAY } else { DARKGRAY };
+        }
 
         draw_rectangle(x, y, tile_size, tile_size, tile_color);
 

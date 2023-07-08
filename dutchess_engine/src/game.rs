@@ -1,6 +1,9 @@
 use std::{
     fmt,
-    ops::{Deref, Index},
+    ops::{
+        BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Index, Not, Shl, ShlAssign,
+        Shr, ShrAssign,
+    },
 };
 
 use crate::{Color, File, Piece, PieceKind, Position, Rank};
@@ -49,11 +52,12 @@ impl fmt::Display for MoveLegality {
  * Game board
 *********************************************************************************/
 
-#[derive(PartialEq, Eq, Debug, Hash, Default)]
+#[derive(PartialEq, Eq, Debug, Hash)]
 pub struct ChessBoard {
     state: ChessBoardState,
     board: BitBoards,
     history: Vec<Move>,
+    legal_moves: Vec<Move>,
 }
 
 impl ChessBoard {
@@ -94,6 +98,7 @@ impl ChessBoard {
     }
 
     /// Returns whether the move is legal to make, given the current game state.
+    /*
     pub fn legality(&mut self, from: Position, to: Position) -> MoveLegality {
         // Can't make a move if `from` has no piece!
         let Some(piece) = self.get(from) else { return MoveLegality::NoPieceAtTile(from) };
@@ -106,6 +111,62 @@ impl ChessBoard {
         }
 
         MoveLegality::Legal
+    }
+     */
+
+    pub fn is_legal(&mut self, from: Position, to: Position) -> bool {
+        // TODO: Check if exists in all legal moves.
+        self.legal_moves().contains(&Move::new(from, to))
+    }
+
+    pub fn legal_moves(&self) -> &[Move] {
+        &self.legal_moves
+    }
+
+    fn generate_all_legal_moves(&mut self) {
+        // self.legal_moves.extend(self.generate_pawn_moves())
+
+        for tile in Position::iter() {
+            if let Some(piece) = self.get(tile) {
+                // let legal_tiles = match piece.kind() {
+                // PieceKind::Pawn => self.generate_pawn_positions(tile),
+                // PieceKind::Knight => self.generate_knight_moves(),
+                // PieceKind::Bishop => self.generate_bishop_moves(),
+                // PieceKind::Rook => self.generate_rook_moves(),
+                // PieceKind::Queen => self.generate_queen_moves(),
+                // PieceKind::King => self.generate_king_moves(),
+                //     _ => todo!(),
+                // };
+            }
+        }
+
+        /*
+        for piece in self.pieces() {
+        }
+         */
+    }
+
+    pub fn attacked_by(&self, piece: &Piece) -> Vec<Position> {
+        vec![]
+    }
+
+    pub fn legal_moves_of(&self, piece: &Piece, tile: Position) -> BitBoard {
+        self.board.moves_for(piece, tile)
+    }
+}
+
+impl Default for ChessBoard {
+    fn default() -> Self {
+        let state = ChessBoardState::default();
+        let board = BitBoards::from(state.pieces);
+        let mut s = Self {
+            state,
+            board,
+            history: Vec::with_capacity(64),
+            legal_moves: Vec::with_capacity(1024),
+        };
+        s.generate_all_legal_moves();
+        s
     }
 }
 
@@ -273,17 +334,17 @@ impl ChessBoardState {
             for file in File::iter() {
                 if let Some(piece) = self.piece(file + rank) {
                     if empty_spaces != 0 {
-                        placements[*rank as usize] += &empty_spaces.to_string();
+                        placements[rank.0 as usize] += &empty_spaces.to_string();
                         empty_spaces = 0;
                     }
-                    placements[*rank as usize] += &piece.to_string();
+                    placements[rank.0 as usize] += &piece.to_string();
                 } else {
                     empty_spaces += 1;
                 }
             }
 
             if empty_spaces != 0 {
-                placements[*rank as usize] += &empty_spaces.to_string();
+                placements[rank.0 as usize] += &empty_spaces.to_string();
             }
         }
         let placements = placements.join("/");
@@ -335,7 +396,8 @@ impl ChessBoardState {
 impl Default for ChessBoardState {
     fn default() -> Self {
         // Safe unwrap: Default FEN is always valid
-        Self::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
+        // Self::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
+        Self::from_fen("8/8/8/2b5/2b5/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
     }
 }
 
@@ -348,54 +410,6 @@ impl fmt::Display for ChessBoardState {
 /*********************************************************************************
  * Board representations
 *********************************************************************************/
-
-/*
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub struct ChessArrayBoard([Option<Piece>; 64]);
-
-impl ChessArrayBoard {
-    fn to_bitboard(&self, f: impl FnOnce(&Piece) -> bool + Copy) -> BitBoard {
-        let mut bits = 0;
-
-        for (i, piece) in self.iter().enumerate() {
-            if let Some(piece) = piece {
-                if f(piece) {
-                    bits |= 1 << i;
-                }
-            }
-        }
-
-        BitBoard(bits)
-    }
-
-    fn set(&mut self, index: usize, piece: Piece) {
-        self[index] = Some(piece);
-    }
-
-    fn get(&mut self, index: usize) -> Option<Piece> {
-        self[index]
-    }
-}
-
-impl Deref for ChessArrayBoard {
-    type Target = [Option<Piece>; 64];
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for ChessArrayBoard {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl Default for ChessArrayBoard {
-    fn default() -> Self {
-        Self([None; 64])
-    }
-}
- */
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub struct BitBoards {
@@ -435,6 +449,7 @@ impl BitBoards {
             Color::White => self.white.set_index(index),
             Color::Black => self.black.set_index(index),
         }
+        // self[piece.color()].set_index(index);
 
         match piece.kind() {
             PieceKind::Pawn => self.pawn.set_index(index),
@@ -444,6 +459,7 @@ impl BitBoards {
             PieceKind::Queen => self.queen.set_index(index),
             PieceKind::King => self.king.set_index(index),
         }
+        // self[piece.kind()].set_index(index);
 
         self.occupied.set_index(index);
     }
@@ -490,6 +506,87 @@ impl BitBoards {
             Some(PieceKind::King)
         }
     }
+
+    fn get_piece_set(&self, piece: &Piece) -> BitBoard {
+        let color = self[piece.color()];
+        let kind = self[piece.kind()];
+        color & kind
+    }
+
+    /// Get a bitboard of all pieces that can be captured by `attacker`
+    fn possible_captures(&self, attacker: &Piece) -> BitBoard {
+        let attacker_bits = self.get_piece_set(attacker);
+        let opponent = self[attacker.color().opponent()];
+
+        attacker_bits & opponent
+    }
+
+    fn piece(&self, piece: &Piece) -> BitBoard {
+        let color = self[piece.color()];
+        let kind = self[piece.kind()];
+        color & kind
+    }
+
+    fn moves_for(&self, piece: &Piece, tile: Position) -> BitBoard {
+        let moves = match piece.kind() {
+            PieceKind::Pawn => self.pawn_moves(tile, piece.color()),
+            PieceKind::Knight => self.knight_moves(tile),
+            PieceKind::Bishop => self.bishop_moves(tile),
+            PieceKind::Rook => self.rook_moves(tile),
+            PieceKind::Queen => self.bishop_moves(tile) | self.rook_moves(tile),
+            PieceKind::King => self.king_moves(tile),
+        };
+
+        moves & !self[piece.color()]
+    }
+
+    fn pawn_moves(&self, tile: Position, color: Color) -> BitBoard {
+        let src = BitBoard::from(tile);
+        if color.is_white() {
+            src.north()
+        } else {
+            src.south()
+        }
+    }
+
+    fn knight_moves(&self, tile: Position) -> BitBoard {
+        let src = BitBoard::from(tile);
+        let n = src.north();
+        let s = src.south();
+        let e = src.east();
+        let w = src.west();
+
+        n.northwest()
+            | n.northeast()
+            | s.southwest()
+            | s.southeast()
+            | e.northeast()
+            | e.southeast()
+            | w.northwest()
+            | w.southwest()
+    }
+
+    fn bishop_moves(&self, tile: Position) -> BitBoard {
+        let src = BitBoard::from(tile);
+        todo!()
+    }
+
+    fn rook_moves(&self, tile: Position) -> BitBoard {
+        let src = BitBoard::from(tile);
+        todo!()
+    }
+
+    fn king_moves(&self, tile: Position) -> BitBoard {
+        let src = BitBoard::from(tile);
+        src.north()
+            | src.northeast()
+            | src.east()
+            | src.southeast()
+            | src.south()
+            | src.southwest()
+            | src.west()
+            | src.northwest()
+    }
 }
 
 impl From<[Option<Piece>; 64]> for BitBoards {
@@ -507,6 +604,39 @@ impl From<[Option<Piece>; 64]> for BitBoards {
         boards
     }
 }
+
+impl Index<PieceKind> for BitBoards {
+    type Output = BitBoard;
+    fn index(&self, index: PieceKind) -> &Self::Output {
+        match index {
+            PieceKind::Pawn => &self.pawn,
+            PieceKind::Knight => &self.knight,
+            PieceKind::Bishop => &self.bishop,
+            PieceKind::Rook => &self.rook,
+            PieceKind::Queen => &self.queen,
+            PieceKind::King => &self.king,
+        }
+    }
+}
+
+impl Index<Color> for BitBoards {
+    type Output = BitBoard;
+    fn index(&self, index: Color) -> &Self::Output {
+        match index {
+            Color::White => &self.white,
+            Color::Black => &self.black,
+        }
+    }
+}
+
+// impl Index<Piece> for BitBoards {
+//     type Output = BitBoard;
+//     fn index(&self, index: Piece) -> &Self::Output {
+//         let color = self[index.color()];
+//         let kind = self[index.kind()];
+//         color & kind
+//     }
+// }
 
 /*
 fn set_bit(bits: u8, n: u8) -> u8 {
@@ -536,6 +666,9 @@ fn check_bit(bits: u8, n: u8) -> u8 {
 pub struct BitBoard(u64);
 
 impl BitBoard {
+    pub fn new(bits: u64) -> Self {
+        Self(bits)
+    }
     fn from_color<'a>(pieces: impl IntoIterator<Item = &'a Option<Piece>>, color: Color) -> Self {
         Self::from_eq(pieces, |piece| piece.color() == color)
     }
@@ -561,34 +694,35 @@ impl BitBoard {
         Self(bits)
     }
 
+    fn is_empty(&self) -> bool {
+        self.0 == EMPTY_BOARD
+    }
+
     fn file_mask(file: File) -> Self {
-        // Mask for the A (first) file
-        static FILE_A_MASK: u64 = 0x0101010101010101;
-        Self(FILE_A_MASK << *file)
+        Self(FILE_A << file.0)
     }
 
     fn rank_mask(rank: Rank) -> Self {
-        // Mask for the 1 (first) rank
-        static RANK_1_MASK: u64 = 0x000000000000000FF;
-        Self(RANK_1_MASK << *rank)
+        Self(RANK_1 << rank.0)
     }
 
     fn set(&mut self, tile: Position) {
-        // debug_assert!(tile.index() < 64, "Index must be between [0,64)");
         // self.0 |= 1 << tile.index();
         self.set_index(tile.index())
     }
 
-    fn get(&self, tile: Position) -> bool {
-        // debug_assert!(tile.index() < 64, "Index must be between [0,64)");
+    pub fn get(&self, tile: Position) -> bool {
         // (self.0 & 1 << tile.index()) != 0
         self.get_index(tile.index())
     }
 
     fn clear(&mut self, tile: Position) {
-        // debug_assert!(tile.index() < 64, "Index must be between [0,64)");
         // self.0 ^= !(1 << tile.index());
         self.clear_index(tile.index())
+    }
+
+    fn toggle(&mut self, mask: Self) {
+        *self ^= mask
     }
 
     fn set_index(&mut self, index: usize) {
@@ -606,28 +740,98 @@ impl BitBoard {
         self.0 ^= !(1 << index);
     }
 
-    fn rank_up(self, n: u8) -> Self {
-        Self(*self >> (8 * n))
+    // Rank up
+    fn north(self) -> Self {
+        Self(self.0 >> 8)
     }
 
-    fn rank_down(self, n: u8) -> Self {
-        Self(*self << (8 * n))
+    // Rank down
+    fn south(self) -> Self {
+        Self(self.0 << 8)
     }
 
-    fn file_up(self, n: u8) -> Self {
-        Self(*self >> n)
+    // File up
+    fn west(self) -> Self {
+        Self((self.0 & NOT_FILE_H) >> 1)
     }
 
-    fn file_down(self, n: u8) -> Self {
-        Self(*self << n)
+    // File down
+    fn east(self) -> Self {
+        Self((self.0 & NOT_FILE_A) << 1)
     }
-}
 
-// TODO: Should we just impl deref here? Or do we need more fine-grained control?
-impl Deref for BitBoard {
-    type Target = u64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    fn northeast(self) -> Self {
+        // Self((self.0 & NOT_FILE_H) << 9)
+        self.north().east()
+    }
+
+    fn southeast(self) -> Self {
+        // Self((self.0 & NOT_FILE_H) >> 7)
+        self.south().east()
+    }
+
+    fn northwest(self) -> Self {
+        // Self((self.0 & NOT_FILE_A) << 7)
+        self.north().west()
+    }
+
+    fn southwest(self) -> Self {
+        // Self((self.0 & NOT_FILE_A) >> 9)
+        self.south().west()
+    }
+
+    /// Get the value of the bit at `index`
+    fn get_bit_at(&self, index: usize) -> bool {
+        index <= 64 && self.0 & (1 << index) != 0
+    }
+
+    fn least_significant_one(&self) -> BitBoard {
+        *self & !*self
+    }
+
+    fn bitscan(&self) -> u8 {
+        let mut bits = self.0;
+        let mut index = 0;
+        loop {
+            if bits % 2 == 1 || index == 63 {
+                return index;
+            } else {
+                bits <<= 1;
+                index += 1;
+            }
+        }
+    }
+
+    // Brian Kernighan's method
+    fn population(&self) -> u8 {
+        let mut bits = self.0;
+        let mut pop = 0;
+        while bits != 0 {
+            pop += 1;
+            bits &= bits - 1;
+        }
+
+        pop
+    }
+
+    // fn flip_vertical(&self) -> Self {
+
+    // }
+
+    fn north_fill(&self) -> Self {
+        let mut bits = self.0;
+        bits |= bits << 8;
+        bits |= bits << 16;
+        bits |= bits << 32;
+        Self(bits)
+    }
+
+    fn south_fill(&self) -> Self {
+        let mut bits = self.0;
+        bits |= bits >> 8;
+        bits |= bits >> 16;
+        bits |= bits >> 32;
+        Self(bits)
     }
 }
 
@@ -650,9 +854,15 @@ impl<T> Index<Piece> for [T; 12] {
 }
  */
 
+impl From<Position> for BitBoard {
+    fn from(value: Position) -> Self {
+        Self(1 << value.index())
+    }
+}
+
 impl fmt::Display for BitBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let bytes = self.to_ne_bytes();
+        let bytes = self.0.to_ne_bytes();
         write!(
             f,
             "{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}",
@@ -661,42 +871,83 @@ impl fmt::Display for BitBoard {
     }
 }
 
-/*
+// impl IntoIterator for BitBoard {
+//     type Item = Position;
+//     type IntoIter = ;
+// }
+
 // Operations
 impl BitAnd for BitBoard {
     type Output = Self;
     fn bitand(self, rhs: Self) -> Self::Output {
-        Self::new(self.0.bitand(rhs.0))
+        Self(self.0.bitand(rhs.0))
     }
 }
 
 impl BitAndAssign for BitBoard {
     fn bitand_assign(&mut self, rhs: Self) {
-        //
+        *self = *self & rhs
     }
 }
 
 impl BitOr for BitBoard {
     type Output = Self;
     fn bitor(self, rhs: Self) -> Self::Output {
-        Self::new(self.0.bitor(rhs.0))
+        Self(self.0.bitor(rhs.0))
+    }
+}
+
+impl BitOrAssign for BitBoard {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = *self | rhs
     }
 }
 
 impl BitXor for BitBoard {
     type Output = Self;
     fn bitxor(self, rhs: Self) -> Self::Output {
-        Self::new(self.0.bitxor(rhs.0))
+        Self(self.0.bitxor(rhs.0))
+    }
+}
+
+impl BitXorAssign for BitBoard {
+    fn bitxor_assign(&mut self, rhs: Self) {
+        *self = *self ^ rhs
     }
 }
 
 impl Not for BitBoard {
     type Output = Self;
     fn not(self) -> Self::Output {
-        Self::new(self.0.not())
+        Self(self.0.not())
     }
 }
- */
+
+impl Shl for BitBoard {
+    type Output = Self;
+    fn shl(self, rhs: Self) -> Self::Output {
+        Self(self.0 << rhs.0)
+    }
+}
+
+impl ShlAssign for BitBoard {
+    fn shl_assign(&mut self, rhs: Self) {
+        *self = *self << rhs
+    }
+}
+
+impl Shr for BitBoard {
+    type Output = Self;
+    fn shr(self, rhs: Self) -> Self::Output {
+        Self(self.0 >> rhs.0)
+    }
+}
+
+impl ShrAssign for BitBoard {
+    fn shr_assign(&mut self, rhs: Self) {
+        *self = *self >> rhs
+    }
+}
 
 /*
 // Formatting
@@ -727,9 +978,24 @@ pub struct Move {
     to: Position,
 }
 
+impl Move {
+    pub fn new(from: Position, to: Position) -> Self {
+        // Self(from | to << 4)
+        Self { from, to }
+    }
+
+    pub fn from(&self) -> Position {
+        self.from
+    }
+
+    pub fn to(&self) -> Position {
+        self.to
+    }
+}
+
 impl fmt::Display for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.from, self.to)
+        write!(f, "{}{}", self.from(), self.to())
     }
 }
 
@@ -742,3 +1008,20 @@ pub struct MoveGenerator {}
 impl MoveGenerator {
     //
 }
+
+// fn index(file: File, rank: Rank) -> usize {
+//     8 * rank.index() + file.index()
+// }
+
+static FILE_A: u64 = 0x0101010101010101;
+static FILE_H: u64 = 0x8080808080808080;
+static NOT_FILE_A: u64 = 0xfefefefefefefefe; // ~0x0101010101010101
+static NOT_FILE_H: u64 = 0x7f7f7f7f7f7f7f7f; // ~0x8080808080808080
+static RANK_1: u64 = 0x00000000000000FF;
+static RANK_8: u64 = 0xFF00000000000000;
+static A1_H8_DIAG: u64 = 0x8040201008040201;
+static H1_A8_DIAG: u64 = 0x0102040810204080;
+static LIGHT_SQUARES: u64 = 0x55AA55AA55AA55AA;
+static DARKS_SQUARES: u64 = 0xAA55AA55AA55AA55;
+static EMPTY_BOARD: u64 = 0x0000000000000000;
+static FULL_BOARD: u64 = 0xFFFFFFFFFFFFFFFF;

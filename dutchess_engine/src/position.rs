@@ -1,12 +1,11 @@
 use std::{
     fmt,
-    ops::{Add, AddAssign, Deref, Index, IndexMut, Sub, SubAssign},
+    ops::{Add, AddAssign, Index, IndexMut, Sub, SubAssign},
 };
 
-use crate::Color;
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub struct Position(u8);
+#[repr(transparent)]
+pub struct Position(pub(crate) u8);
 
 impl Position {
     pub fn iter() -> impl Iterator<Item = Self> {
@@ -16,7 +15,7 @@ impl Position {
     }
 
     pub fn new(file: File, rank: Rank) -> Self {
-        Self(*file + *rank * 8)
+        Self(file.0 + rank.0 * 8)
     }
 
     pub fn from_index(index: usize) -> Result<Self, String> {
@@ -38,12 +37,8 @@ impl Position {
         self.0 as usize
     }
 
-    pub fn color(&self) -> Color {
-        if (*self.file() + *self.rank()) % 2 == 0 {
-            Color::White
-        } else {
-            Color::Black
-        }
+    pub fn is_light(&self) -> bool {
+        (self.file().0 + self.rank().0) % 2 == 0
     }
 
     pub fn from_uci(tile: &str) -> Result<Self, String> {
@@ -159,7 +154,7 @@ impl fmt::Display for Position {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 #[repr(transparent)]
-pub struct Rank(u8);
+pub struct Rank(pub(crate) u8);
 
 impl Rank {
     pub fn iter() -> impl Iterator<Item = Self> {
@@ -201,13 +196,6 @@ impl Rank {
     }
 }
 
-impl Deref for Rank {
-    type Target = u8;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl Add for Rank {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
@@ -230,6 +218,32 @@ impl AddAssign for Rank {
 
 impl SubAssign for Rank {
     fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
+
+impl Add<u8> for Rank {
+    type Output = Self;
+    fn add(self, rhs: u8) -> Self::Output {
+        Self::new(self.0 + rhs).expect("Attempted to add beyond Rank's bounds")
+    }
+}
+
+impl Sub<u8> for Rank {
+    type Output = Self;
+    fn sub(self, rhs: u8) -> Self::Output {
+        Self::new(self.0 - rhs).expect("Attempted to subtract beyond Rank's bounds")
+    }
+}
+
+impl AddAssign<u8> for Rank {
+    fn add_assign(&mut self, rhs: u8) {
+        *self = *self + rhs;
+    }
+}
+
+impl SubAssign<u8> for Rank {
+    fn sub_assign(&mut self, rhs: u8) {
         *self = *self - rhs;
     }
 }
@@ -261,7 +275,7 @@ impl fmt::Display for Rank {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct File(u8);
+pub struct File(pub(crate) u8);
 
 impl File {
     pub fn iter() -> impl Iterator<Item = Self> {
@@ -311,13 +325,6 @@ impl File {
     }
 }
 
-impl Deref for File {
-    type Target = u8;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl Add for File {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
@@ -340,6 +347,32 @@ impl AddAssign for File {
 
 impl SubAssign for File {
     fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
+
+impl Add<u8> for File {
+    type Output = Self;
+    fn add(self, rhs: u8) -> Self::Output {
+        Self::new(self.0 + rhs).expect("Attempted to add beyond File's bounds")
+    }
+}
+
+impl Sub<u8> for File {
+    type Output = Self;
+    fn sub(self, rhs: u8) -> Self::Output {
+        Self::new(self.0 - rhs).expect("Attempted to subtract beyond File's bounds")
+    }
+}
+
+impl AddAssign<u8> for File {
+    fn add_assign(&mut self, rhs: u8) {
+        *self = *self + rhs;
+    }
+}
+
+impl SubAssign<u8> for File {
+    fn sub_assign(&mut self, rhs: u8) {
         *self = *self - rhs;
     }
 }

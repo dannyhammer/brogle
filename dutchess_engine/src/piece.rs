@@ -15,6 +15,13 @@ impl Color {
     pub fn is_black(&self) -> bool {
         *self == Self::Black
     }
+
+    pub fn opponent(&self) -> Self {
+        match self {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        }
+    }
 }
 
 impl Mul<PieceKind> for Color {
