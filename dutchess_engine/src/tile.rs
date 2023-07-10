@@ -5,9 +5,9 @@ use std::{
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 #[repr(transparent)]
-pub struct Position(pub(crate) u8);
+pub struct Tile(pub(crate) u8);
 
-impl Position {
+impl Tile {
     pub fn iter() -> impl Iterator<Item = Self> {
         File::iter()
             .map(|file| Rank::iter().map(move |rank| Self::new(file, rank)))
@@ -74,92 +74,92 @@ impl Position {
     }
 }
 
-impl TryFrom<usize> for Position {
+impl TryFrom<usize> for Tile {
     type Error = String;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         Self::from_index(value)
     }
 }
 
-impl Add<Rank> for Position {
+impl Add<Rank> for Tile {
     type Output = Self;
     fn add(self, rhs: Rank) -> Self::Output {
         Self::new(self.file(), self.rank() + rhs)
     }
 }
 
-impl Add<File> for Position {
+impl Add<File> for Tile {
     type Output = Self;
     fn add(self, rhs: File) -> Self::Output {
         Self::new(self.file() + rhs, self.rank())
     }
 }
 
-impl Sub<Rank> for Position {
+impl Sub<Rank> for Tile {
     type Output = Self;
     fn sub(self, rhs: Rank) -> Self::Output {
         Self::new(self.file(), self.rank() - rhs)
     }
 }
 
-impl Sub<File> for Position {
+impl Sub<File> for Tile {
     type Output = Self;
     fn sub(self, rhs: File) -> Self::Output {
         Self::new(self.file() - rhs, self.rank())
     }
 }
 
-impl AddAssign<Rank> for Position {
+impl AddAssign<Rank> for Tile {
     fn add_assign(&mut self, rhs: Rank) {
         *self = *self + rhs;
     }
 }
 
-impl SubAssign<Rank> for Position {
+impl SubAssign<Rank> for Tile {
     fn sub_assign(&mut self, rhs: Rank) {
         *self = *self - rhs;
     }
 }
 
-impl AddAssign<File> for Position {
+impl AddAssign<File> for Tile {
     fn add_assign(&mut self, rhs: File) {
         *self = *self + rhs;
     }
 }
 
-impl SubAssign<File> for Position {
+impl SubAssign<File> for Tile {
     fn sub_assign(&mut self, rhs: File) {
         *self = *self - rhs;
     }
 }
 
-impl<T> Index<Position> for [T; 64] {
+impl<T> Index<Tile> for [T; 64] {
     type Output = T;
-    fn index(&self, index: Position) -> &Self::Output {
+    fn index(&self, index: Tile) -> &Self::Output {
         &self[index.index()]
     }
 }
 
-impl<T> IndexMut<Position> for [T; 64] {
-    fn index_mut(&mut self, index: Position) -> &mut Self::Output {
+impl<T> IndexMut<Tile> for [T; 64] {
+    fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
         &mut self[index.index()]
     }
 }
 
-impl<T> Index<Position> for [[T; 8]; 8] {
+impl<T> Index<Tile> for [[T; 8]; 8] {
     type Output = T;
-    fn index(&self, index: Position) -> &Self::Output {
+    fn index(&self, index: Tile) -> &Self::Output {
         &self[index.file()][index.rank()]
     }
 }
 
-impl<T> IndexMut<Position> for [[T; 8]; 8] {
-    fn index_mut(&mut self, index: Position) -> &mut Self::Output {
+impl<T> IndexMut<Tile> for [[T; 8]; 8] {
+    fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
         &mut self[index.file()][index.rank()]
     }
 }
 
-impl fmt::Display for Position {
+impl fmt::Display for Tile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_uci())
     }
@@ -270,9 +270,9 @@ impl SubAssign<u8> for Rank {
 }
 
 impl Add<File> for Rank {
-    type Output = Position;
+    type Output = Tile;
     fn add(self, file: File) -> Self::Output {
-        Position::new(file, self)
+        Tile::new(file, self)
     }
 }
 
@@ -409,7 +409,7 @@ impl SubAssign<u8> for File {
 }
 
 impl Add<Rank> for File {
-    type Output = Position;
+    type Output = Tile;
     fn add(self, rank: Rank) -> Self::Output {
         rank + self
     }
@@ -447,16 +447,16 @@ mod tests {
         //     }
         // }
 
-        let a1 = Position::new(File(0), Rank(0));
+        let a1 = Tile::new(File(0), Rank(0));
         assert_eq!(a1.to_string(), String::from("a1"));
 
-        let h1 = Position::new(File(7), Rank(0));
+        let h1 = Tile::new(File(7), Rank(0));
         assert_eq!(h1.to_string(), String::from("h1"));
 
-        let a8 = Position::new(File(0), Rank(7));
+        let a8 = Tile::new(File(0), Rank(7));
         assert_eq!(a8.to_string(), String::from("a8"));
 
-        let h8 = Position::new(File(7), Rank(7));
+        let h8 = Tile::new(File(7), Rank(7));
         assert_eq!(h8.to_string(), String::from("h8"));
     }
 }

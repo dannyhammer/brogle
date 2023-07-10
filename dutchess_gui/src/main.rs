@@ -2,10 +2,10 @@ use dutchess_engine::*;
 use macroquad::prelude::*;
 
 #[derive(Default)]
-struct BoardGUI {
-    selected: Option<Position>,
+struct GUI {
+    selected: Option<Tile>,
     highlighted: BitBoard,
-    board: ChessBoard,
+    engine: Engine,
 }
 
 #[macroquad::main("DUTChess")]
@@ -14,8 +14,8 @@ async fn main() {
     // println!("LEFT -1: {}", x << -1);
     // println!("RIGHT 1: {}", x >> 1);
 
-    let mut board = BoardGUI::default();
-    println!("{}", board.board);
+    let mut board = GUI::default();
+    println!("{}", board.engine);
 
     let mut icons = [Texture2D::empty(); 12];
     let load = |path| Texture2D::from_file_with_format(path, None);
@@ -61,8 +61,8 @@ async fn main() {
             board.selected = mouse_to_tile(mouse_x, mouse_y, x, y, tile_size);
             if let Some(tile) = board.selected {
                 println!("Clicked {tile}");
-                if let Some(piece) = board.board.piece_at(tile) {
-                    board.highlighted = board.board.legal_moves_of(&piece, tile);
+                if let Some(piece) = board.engine.piece_at(tile) {
+                    board.highlighted = board.engine.legal_moves_of(&piece, tile);
                 }
             }
         }
@@ -158,7 +158,7 @@ fn mouse_to_tile(
     board_x: f32,
     board_y: f32,
     tile_size: f32,
-) -> Option<Position> {
+) -> Option<Tile> {
     let board_size = tile_size * 8.0;
 
     // println!("X: {mouse_x}, {board_x}, {board_size}");
@@ -179,20 +179,14 @@ fn mouse_to_tile(
 
     // println!("{file}{rank}");
 
-    Some(Position::new(file, rank))
+    Some(Tile::new(file, rank))
 }
 
-fn draw_chessboard(
-    board: &BoardGUI,
-    icons: &[Texture2D],
-    start_x: f32,
-    start_y: f32,
-    tile_size: f32,
-) {
+fn draw_chessboard(board: &GUI, icons: &[Texture2D], start_x: f32, start_y: f32, tile_size: f32) {
     // We start drawing at the bottom of the board and work our way up
     let start_y = start_y + tile_size * 7.0;
 
-    for tile in Position::iter() {
+    for tile in Tile::iter() {
         let x = start_x + tile.file().index() as f32 * tile_size;
         let y = start_y - tile.rank().index() as f32 * tile_size;
 
@@ -200,7 +194,7 @@ fn draw_chessboard(
 
         if let Some(selected) = board.selected {
             if tile == selected {
-                if board.board.piece_at(selected).is_some() {
+                if board.engine.piece_at(selected).is_some() {
                     tile_color = SKYBLUE;
                 } else {
                     tile_color = YELLOW;
@@ -218,7 +212,7 @@ fn draw_chessboard(
         // let tile_color = macroquad::color::Color::new(r, g, b, 1.0);
         draw_rectangle(x, y, tile_size, tile_size, tile_color);
 
-        if let Some(piece) = board.board.piece_at(tile) {
+        if let Some(piece) = board.engine.piece_at(tile) {
             draw_texture(icons[piece.index()], x, y, WHITE);
         }
     }
@@ -231,14 +225,14 @@ fn draw_chessboard(
 //     }
 // }
 
-fn draw_ui(board: &BoardGUI, start_x: f32, start_y: f32, tile_size: f32, font_size: f32) {
+fn draw_ui(board: &GUI, start_x: f32, start_y: f32, tile_size: f32, font_size: f32) {
     let tile_half = tile_size / 2.0;
     let board_size = tile_size * 8.0;
     let font_offset = font_size / 4.0;
     // We start drawing at the bottom of the board and work our way up
     let start_y = start_y + tile_size * 7.0;
 
-    let fen = board.board.fen();
+    let fen = board.engine.fen();
     draw_text(fen.as_str(), font_offset, font_size, font_size, BLACK);
 
     // File and Rank labels
@@ -258,7 +252,7 @@ fn draw_ui(board: &BoardGUI, start_x: f32, start_y: f32, tile_size: f32, font_si
         draw_text(file.as_str(), file_x, file_y_bottom, font_size, BLACK);
     }
 
-    for tile in Position::iter() {
+    for tile in Tile::iter() {
         let x = start_x + tile.file().index() as f32 * tile_size + font_offset;
         let y = start_y - tile.rank().index() as f32 * tile_size + tile_size - font_offset;
         let color = if tile.is_light() { BLACK } else { WHITE };

@@ -5,12 +5,12 @@ use derive_more::{
     ShrAssign,
 };
 
-use crate::{Color, File, Piece, PieceKind, Position, Rank};
+use crate::{Color, File, Piece, PieceKind, Rank, Tile};
 
 use crate::utils::*;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
-pub struct BitBoards {
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
+pub struct ChessBoard {
     /// All tiles occupied by a piece
     occupied: BitBoard,
     /// All unoccupied tiles
@@ -32,16 +32,17 @@ pub struct BitBoards {
     white_attack: BitBoard,
     black_attack: BitBoard,
      */
+    piece: BitBoard,
 }
 
-impl BitBoards {
-    pub fn get(&self, tile: Position) -> Option<Piece> {
+impl ChessBoard {
+    pub fn get(&self, tile: Tile) -> Option<Piece> {
         let color = self.color_at(tile)?;
         let kind = self.kind_at(tile)?;
         Some(Piece::new(color, kind))
     }
 
-    pub fn set(&mut self, tile: Position, piece: Piece) {
+    pub fn set(&mut self, tile: Tile, piece: Piece) {
         let index = tile.index();
         match piece.color() {
             Color::White => self.white.set_index(index),
@@ -62,7 +63,7 @@ impl BitBoards {
         self.occupied.set_index(index);
     }
 
-    pub fn clear(&mut self, tile: Position) {
+    pub fn clear(&mut self, tile: Tile) {
         self.white.clear(tile);
         self.black.clear(tile);
         self.pawn.clear(tile);
@@ -73,7 +74,7 @@ impl BitBoards {
         self.king.clear(tile);
     }
 
-    fn color_at(&self, tile: Position) -> Option<Color> {
+    fn color_at(&self, tile: Tile) -> Option<Color> {
         if !self.occupied.get(tile) {
             return None;
         }
@@ -85,7 +86,7 @@ impl BitBoards {
         }
     }
 
-    fn kind_at(&self, tile: Position) -> Option<PieceKind> {
+    fn kind_at(&self, tile: Tile) -> Option<PieceKind> {
         if !self.occupied.get(tile) {
             return None;
         }
@@ -119,7 +120,7 @@ impl BitBoards {
         attacker_bits & opponent
     }
 
-    fn piece(&self, piece: &Piece) -> BitBoard {
+    pub fn piece(&self, piece: &Piece) -> BitBoard {
         let color = self[piece.color()];
         let kind = self[piece.kind()];
         color & kind
@@ -133,57 +134,22 @@ impl BitBoards {
     //     self[kind]
     // }
 
-    pub fn moves_for(&self, piece: &Piece, tile: Position) -> BitBoard {
-        // println!("Computing moves for {piece} at {tile}");
-        let moves = match piece.kind() {
-            PieceKind::Pawn => self.pawn_moves(tile, piece.color()),
-            PieceKind::Knight => self.knight_moves(tile),
-            PieceKind::Bishop => self.bishop_moves(tile),
-            PieceKind::Rook => self.rook_moves(tile),
-            PieceKind::Queen => self.queen_moves(tile),
-            PieceKind::King => self.king_moves(tile),
-        };
-
-        moves & !self[piece.color()]
-    }
-
-    fn pawn_moves(&self, tile: Position, color: Color) -> BitBoard {
-        let src = BitBoard::from(tile);
-        if color.is_white() {
-            src.north()
-        } else {
-            src.south()
+    // pub fn iter<'a>(&'a self) -> BoardIter<'a> {
+    pub fn iter(&self) -> BoardIter<'_> {
+        BoardIter {
+            board: &self,
+            occupancy: self.occupied,
         }
-    }
-
-    fn knight_moves(&self, tile: Position) -> BitBoard {
-        KNIGHT_MASKS[tile.index()]
-    }
-
-    fn bishop_moves(&self, tile: Position) -> BitBoard {
-        BISHOP_MASKS[tile.index()]
-    }
-
-    fn rook_moves(&self, tile: Position) -> BitBoard {
-        ROOK_MASKS[tile.index()]
-    }
-
-    fn queen_moves(&self, tile: Position) -> BitBoard {
-        QUEEN_MASKS[tile.index()]
-    }
-
-    fn king_moves(&self, tile: Position) -> BitBoard {
-        KING_MASKS[tile.index()]
     }
 }
 
-impl From<[Option<Piece>; 64]> for BitBoards {
+impl From<[Option<Piece>; 64]> for ChessBoard {
     fn from(value: [Option<Piece>; 64]) -> Self {
         let mut boards = Self::default();
 
         for (i, piece) in value.into_iter().enumerate() {
             if let Some(piece) = piece {
-                boards.set(Position::from_index(i).unwrap(), piece)
+                boards.set(Tile::from_index(i).unwrap(), piece)
             } else {
                 boards.empty.set_index(i);
             }
@@ -193,7 +159,7 @@ impl From<[Option<Piece>; 64]> for BitBoards {
     }
 }
 
-impl Index<PieceKind> for BitBoards {
+impl Index<PieceKind> for ChessBoard {
     type Output = BitBoard;
     fn index(&self, index: PieceKind) -> &Self::Output {
         match index {
@@ -207,7 +173,7 @@ impl Index<PieceKind> for BitBoards {
     }
 }
 
-impl Index<Color> for BitBoards {
+impl Index<Color> for ChessBoard {
     type Output = BitBoard;
     fn index(&self, index: Color) -> &Self::Output {
         match index {
@@ -216,6 +182,61 @@ impl Index<Color> for BitBoards {
         }
     }
 }
+
+/*
+impl Index<Piece> for BitBoards {
+    type Output = BitBoard;
+    fn index(&self, index: Piece) -> &Self::Output {
+        let color = self[index.color()];
+        let kind = self[index.kind()];
+
+        unsafe {
+            // let ptr = self as *const Self;
+            // let ptr = ptr as *mut Self;
+            // let ptr = &mut *ptr;
+            // ptr.piece = color & kind;
+
+            (&mut *((self as *const Self) as *mut Self)).piece = color & kind;
+        }
+
+        &self.piece
+    }
+}
+ */
+
+pub struct BoardIter<'a> {
+    board: &'a ChessBoard,
+    occupancy: BitBoard,
+}
+impl<'a> Iterator for BoardIter<'a> {
+    type Item = Piece;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let lsb = self.occupancy.pop_lsb()?;
+        self.board.get(Tile(lsb))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.occupancy.population() as usize;
+        (size, Some(size))
+    }
+}
+
+impl<'a> ExactSizeIterator for BoardIter<'a> {}
+
+/*
+impl<'a> IntoIterator for BitBoards {
+    type Item = Option<&'a Piece>;
+    type IntoIter = BoardIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        BoardIter {
+            board: &self,
+            current: None,
+        }
+    }
+}
+ */
 
 // impl Index<Piece> for BitBoards {
 //     type Output = BitBoard;
@@ -276,6 +297,19 @@ fn check_bit(bits: u8, n: u8) -> u8 {
 pub struct BitBoard(u64);
 
 impl BitBoard {
+    pub const FILE_A: Self = Self(0x0101010101010101);
+    pub const FILE_H: Self = Self(0x8080808080808080);
+    pub const NOT_FILE_A: Self = Self(0xfefefefefefefefe);
+    pub const NOT_FILE_H: Self = Self(0x7f7f7f7f7f7f7f7f);
+    pub const RANK_1: Self = Self(0x00000000000000FF);
+    pub const RANK_8: Self = Self(0xFF00000000000000);
+    pub const A1_H8_DIAG: Self = Self(0x8040201008040201);
+    pub const H1_A8_DIAG: Self = Self(0x0102040810204080);
+    pub const LIGHT_SQUARES: Self = Self(0x55AA55AA55AA55AA);
+    pub const DARKS_SQUARES: Self = Self(0xAA55AA55AA55AA55);
+    pub const EMPTY_BOARD: Self = Self(0x0000000000000000);
+    pub const FULL_BOARD: Self = Self(0xFFFFFFFFFFFFFFFF);
+
     pub fn new(bits: u64) -> Self {
         Self(bits)
     }
@@ -314,41 +348,69 @@ impl BitBoard {
     }
 
     fn from_file(file: File) -> Self {
-        Self(FILE_A << file.0)
+        // Self(FILE_A << file.0)
+        Self::FILE_A << file.0
     }
 
     fn from_rank(rank: Rank) -> Self {
-        Self(RANK_1 << rank.0 * 8)
+        // Self(RANK_1 << rank.0 * 8)
+        Self::RANK_1 << rank.0 * 8
     }
 
-    fn diagonal(tile: Position) -> Self {
-        let diag_index = tile.rank().index();
-        let diag = A1_H8_DIAG >> diag_index;
+    // fn diagonal(tile: Tile) -> Self {
+    //     let diag_index = tile.rank().index();
+    //     // let diag = A1_H8_DIAG >> diag_index;
+    //     // let diag = A1_H8_DIAG >> diag_index;
 
-        BitBoard::from(tile) | BitBoard(diag)
-    }
+    //     BitBoard::from(tile) | BitBoard(diag)
+    // }
 
-    fn anti_diagonal(tile: Position) -> Self {
-        Self(0)
-    }
+    // fn anti_diagonal(tile: Tile) -> Self {
+    //     Self(0)
+    // }
 
     fn is_empty(&self) -> bool {
-        self.0 == EMPTY_BOARD
+        // self.0 == EMPTY_BOARD
+        *self == Self::EMPTY_BOARD
     }
 
-    pub fn set(&mut self, tile: Position) {
+    pub fn set(&mut self, tile: Tile) {
         // self.0 |= 1 << tile.index();
         self.set_index(tile.index())
     }
 
-    pub fn get(&self, tile: Position) -> bool {
+    pub fn get(&self, tile: Tile) -> bool {
         // (self.0 & 1 << tile.index()) != 0
         self.get_index(tile.index())
     }
 
-    pub fn clear(&mut self, tile: Position) {
+    pub fn clear(&mut self, tile: Tile) {
         // self.0 ^= !(1 << tile.index());
         self.clear_index(tile.index())
+    }
+
+    /// Remove all tiles from `other` in `self`
+    pub fn remove(&mut self, other: &Self) {
+        self.0 &= !other.0
+    }
+
+    pub fn lsb(&self) -> Option<u8> {
+        (!self.is_empty()).then_some(self.0.trailing_zeros() as u8)
+    }
+
+    pub fn pop_lsb(&mut self) -> Option<u8> {
+        let lsb = self.lsb();
+        self.clear_lsb();
+        lsb
+    }
+
+    /// Clears the lowest non-zero bit from `self`, if there is a square to clear.
+    pub fn clear_lsb(&mut self) {
+        self.0 &= self.0.wrapping_sub(1);
+    }
+
+    fn lsb_tile(&self) -> Option<Tile> {
+        self.lsb().map(|lsb| Tile(lsb))
     }
 
     fn toggle(&mut self, mask: Self) {
@@ -370,6 +432,17 @@ impl BitBoard {
         self.0 ^= !(1 << index);
     }
 
+    /// Returns `true` if `other` is a subset of `self`.
+    fn contains_all(&self, other: &Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Returns `true` if `self` contains any bits of `other`.
+    fn contains_any(&self, other: &Self) -> bool {
+        // self.0 & other.0 != EMPTY_BOARD
+        *self & *other != Self::EMPTY_BOARD
+    }
+
     // Rank up
     pub fn north(self) -> Self {
         Self(self.0 << 8)
@@ -383,33 +456,39 @@ impl BitBoard {
     // File up
     pub fn west(self) -> Self {
         // Post-shift mask
-        Self((self.0 >> 1) & NOT_FILE_H)
+        // Self((self.0 >> 1) & NOT_FILE_H)
+        (self >> 1) & Self::NOT_FILE_H
     }
 
     // File down
     pub fn east(self) -> Self {
         // Post-shift mask
-        Self((self.0 << 1) & NOT_FILE_A)
+        // Self((self.0 << 1) & NOT_FILE_A)
+        (self << 1) & Self::NOT_FILE_A
     }
 
     pub fn northeast(self) -> Self {
-        // Self((self.0 & NOT_FILE_H) << 9)
-        self.north().east()
+        // Post-shift mask
+        // Self((self.0 << 9) & NOT_FILE_A)
+        (self << 9) & Self::NOT_FILE_A
     }
 
     pub fn southeast(self) -> Self {
-        // Self((self.0 & NOT_FILE_H) >> 7)
-        self.south().east()
+        // Post-shift mask
+        // Self((self.0 >> 7) & NOT_FILE_A)
+        (self >> 7) & Self::NOT_FILE_A
     }
 
     pub fn northwest(self) -> Self {
-        // Self((self.0 & NOT_FILE_A) << 7)
-        self.north().west()
+        // Post-shift mask
+        // Self((self.0 << 7) & NOT_FILE_H)
+        (self << 7) & Self::NOT_FILE_H
     }
 
     pub fn southwest(self) -> Self {
-        // Self((self.0 & NOT_FILE_A) >> 9)
-        self.south().west()
+        // Post-shift mask
+        // Self((self.0 >> 9) & NOT_FILE_H)
+        (self >> 9) & Self::NOT_FILE_H
     }
 
     /// Get the value of the bit at `index`
@@ -417,33 +496,12 @@ impl BitBoard {
         index <= 64 && self.0 & (1 << index) != 0
     }
 
-    fn least_significant_one(&self) -> BitBoard {
-        *self & !*self
+    pub fn iter(&self) -> BitBoardIter {
+        self.into_iter()
     }
 
-    fn bitscan(&self) -> u8 {
-        let mut bits = self.0;
-        let mut index = 0;
-        loop {
-            if bits % 2 == 1 || index == 63 {
-                return index;
-            } else {
-                bits <<= 1;
-                index += 1;
-            }
-        }
-    }
-
-    // Brian Kernighan's method
     fn population(&self) -> u8 {
-        let mut bits = self.0;
-        let mut pop = 0;
-        while bits != 0 {
-            pop += 1;
-            bits &= bits - 1;
-        }
-
-        pop
+        self.0.count_ones() as u8
     }
 
     // fn flip_vertical(&self) -> Self {
@@ -486,8 +544,8 @@ impl<T> Index<Piece> for [T; 12] {
 }
  */
 
-impl From<Position> for BitBoard {
-    fn from(value: Position) -> Self {
+impl From<Tile> for BitBoard {
+    fn from(value: Tile) -> Self {
         Self(1 << value.index())
     }
 }
@@ -528,3 +586,47 @@ impl fmt::LowerHex for BitBoard {
     }
 }
  */
+
+pub struct BitBoardIter {
+    bb: BitBoard,
+}
+
+impl Iterator for BitBoardIter {
+    type Item = Tile;
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.bb.lsb_tile()?;
+        self.bb.clear_lsb();
+        Some(next)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = 0;
+        (size, Some(size))
+    }
+}
+
+impl ExactSizeIterator for BitBoardIter {}
+
+impl IntoIterator for BitBoard {
+    type Item = Tile;
+    type IntoIter = BitBoardIter;
+    fn into_iter(self) -> Self::IntoIter {
+        BitBoardIter { bb: self }
+    }
+}
+
+impl IntoIterator for &BitBoard {
+    type Item = Tile;
+    type IntoIter = BitBoardIter;
+    fn into_iter(self) -> Self::IntoIter {
+        BitBoardIter { bb: *self }
+    }
+}
+
+impl IntoIterator for &mut BitBoard {
+    type Item = Tile;
+    type IntoIter = BitBoardIter;
+    fn into_iter(self) -> Self::IntoIter {
+        BitBoardIter { bb: *self }
+    }
+}

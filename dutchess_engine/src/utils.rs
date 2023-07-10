@@ -1,40 +1,13 @@
 use crate::{BitBoard, PieceKind};
 
-pub static FILE_A: u64 = 0x0101010101010101;
-pub static FILE_H: u64 = 0x8080808080808080;
-pub static NOT_FILE_A: u64 = 0xfefefefefefefefe;
-pub static NOT_FILE_H: u64 = 0x7f7f7f7f7f7f7f7f;
-pub static RANK_1: u64 = 0x00000000000000FF;
-pub static RANK_8: u64 = 0xFF00000000000000;
-pub static A1_H8_DIAG: u64 = 0x8040201008040201;
-pub static H1_A8_DIAG: u64 = 0x0102040810204080;
-pub static LIGHT_SQUARES: u64 = 0x55AA55AA55AA55AA;
-pub static DARKS_SQUARES: u64 = 0xAA55AA55AA55AA55;
-pub static EMPTY_BOARD: u64 = 0x0000000000000000;
-pub static FULL_BOARD: u64 = 0xFFFFFFFFFFFFFFFF;
-
-pub const BISHOP_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/bishop_masks.blob")) };
-
-pub const ROOK_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/rook_masks.blob")) };
-
-pub const KNIGHT_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/knight_masks.blob")) };
-
-pub const KING_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/king_masks.blob")) };
-
-pub const QUEEN_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/queen_masks.blob")) };
-
 enum CastleSide {
     Queenside,
     Kingside,
 }
 
 enum MoveType {
-    Standard,
+    Quiet,
+    Capture(PieceKind),
     EnPassantCapture,
     Castle(CastleSide),
     Promote(PieceKind),

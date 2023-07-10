@@ -1,6 +1,10 @@
 use std::{fmt, ops::Index};
 
-use crate::{BitBoard, BitBoards, Color, File, Piece, PieceKind, Position, Rank};
+use crate::{
+    moves_for,
+    uci::{UciCommand, UciResponse},
+    BitBoard, ChessBoard, Color, File, Piece, PieceKind, Rank, Tile,
+};
 
 #[derive(PartialEq, Eq, Debug, Hash)]
 pub enum MoveLegality {
@@ -11,13 +15,13 @@ pub enum MoveLegality {
     CaptureSameColor(Color),
 
     /// King is in check by the pieces at the provided positions
-    PutsKingInCheck(Vec<Position>),
+    PutsKingInCheck(Vec<Tile>),
 
     /// That piece doesn't move that way.
     InvalidMovement(PieceKind),
 
     /// There isn't a piece at the selected tile
-    NoPieceAtTile(Position),
+    NoPieceAtTile(Tile),
 }
 
 impl MoveLegality {
@@ -46,50 +50,88 @@ impl fmt::Display for MoveLegality {
  * Game board
 *********************************************************************************/
 
+type TranspositionTable = ();
+
 #[derive(PartialEq, Eq, Debug, Hash)]
-pub struct ChessBoard {
-    state: ChessBoardState,
-    board: BitBoards,
+pub struct Engine {
+    /// State of the game, including castling rights, piece placement, etc.
+    ///
+    /// This is analogous to a FEN string.
+    state: GameState,
+
+    /// BitBoard representation of the game board.
+    board: ChessBoard,
+
+    /// A history of all moves made in this game.
     history: Vec<Move>,
+
+    /// A list of all available (legal) moves at the current game state.
     legal_moves: Vec<Move>,
+
+    /// Transposition table for game states.
+    ttable: TranspositionTable,
 }
 
-impl ChessBoard {
+impl Engine {
     pub fn new() -> Self {
-        Self::default()
+        let state = GameState::default();
+        let board = ChessBoard::from(state.pieces);
+        let s = Self {
+            state,
+            board,
+            history: Vec::with_capacity(64),
+            legal_moves: Vec::with_capacity(1024),
+            ttable: (),
+        };
+        // s.generate_all_legal_moves();
+        s
     }
 
     pub fn fen(&self) -> String {
         self.state.to_fen()
     }
 
-    pub fn piece_at(&self, tile: Position) -> Option<Piece> {
+    pub fn piece_at(&self, tile: Tile) -> Option<Piece> {
         *self.state.piece(tile)
         // self.board.get(tile)
     }
 
     /// Fetch the piece at the requested position, if it exists.
-    fn get(&self, tile: Position) -> Option<Piece> {
+    fn get(&self, tile: Tile) -> Option<Piece> {
         *self.state.piece(tile)
     }
 
     /// Set the piece at the specified position.
-    fn set(&mut self, tile: Position, piece: Piece) {
+    fn set(&mut self, tile: Tile, piece: Piece) {
         self.board.set(tile, piece); // Update the bitboards
         *self.state.piece_mut(tile) = Some(piece); // Update the state
     }
 
     /// Remove a piece from the specified position, returning it if it exists.
-    fn clear(&mut self, tile: Position) -> Option<Piece> {
+    fn clear(&mut self, tile: Tile) -> Option<Piece> {
         self.board.clear(tile); // Update the bitboards
         self.state.piece_mut(tile).take() // Update the state
     }
 
     /// Returns `true` if the move was made successful, and `false` if it cannot be made.
-    pub fn make_move(&mut self, from: Position, to: Position) -> bool {
+    pub fn make_move(&mut self, from: Tile, to: Tile) -> bool {
         let Some(piece) = self.clear(from) else { return false };
         self.set(to, piece);
         true
+    }
+
+    pub fn process_command(&mut self, cmd: UciCommand) -> UciResponse {
+        use UciCommand::*;
+        match cmd {
+            // Quit => {
+            //     format!("Goodbye!")
+            // }
+            _ => todo!(),
+        }
+    }
+
+    pub fn parse_input(&self, input: &str) -> Result<UciCommand, String> {
+        UciCommand::new(input)
     }
 
     /// Returns whether the move is legal to make, given the current game state.
@@ -109,7 +151,7 @@ impl ChessBoard {
     }
      */
 
-    pub fn is_legal(&mut self, from: Position, to: Position) -> bool {
+    pub fn is_legal(&mut self, from: Tile, to: Tile) -> bool {
         // TODO: Check if exists in all legal moves.
         self.legal_moves().contains(&Move::new(from, to))
     }
@@ -143,31 +185,22 @@ impl ChessBoard {
     }
      */
 
-    pub fn attacked_by(&self, piece: &Piece) -> Vec<Position> {
+    pub fn attacked_by(&self, piece: &Piece) -> Vec<Tile> {
         vec![]
     }
 
-    pub fn legal_moves_of(&self, piece: &Piece, tile: Position) -> BitBoard {
-        self.board.moves_for(piece, tile)
+    pub fn legal_moves_of(&self, piece: &Piece, tile: Tile) -> BitBoard {
+        moves_for(piece, tile, &self.board)
     }
 }
 
-impl Default for ChessBoard {
+impl Default for Engine {
     fn default() -> Self {
-        let state = ChessBoardState::default();
-        let board = BitBoards::from(state.pieces);
-        let mut s = Self {
-            state,
-            board,
-            history: Vec::with_capacity(64),
-            legal_moves: Vec::with_capacity(1024),
-        };
-        // s.generate_all_legal_moves();
-        s
+        Self::new()
     }
 }
 
-impl fmt::Display for ChessBoard {
+impl fmt::Display for Engine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut board = String::new();
 
@@ -199,9 +232,9 @@ impl fmt::Display for ChessBoard {
     }
 }
 
-impl Index<Position> for ChessBoard {
+impl Index<Tile> for Engine {
     type Output = Option<Piece>;
-    fn index(&self, index: Position) -> &Self::Output {
+    fn index(&self, index: Tile) -> &Self::Output {
         &self.state.pieces[index]
     }
 }
@@ -210,7 +243,7 @@ impl Index<Position> for ChessBoard {
 ///
 /// Analogous to a FEN string.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub struct ChessBoardState {
+pub struct GameState {
     /// Can be indexed by [`Position`]
     pieces: [Option<Piece>; 64],
 
@@ -219,7 +252,7 @@ pub struct ChessBoardState {
     can_white_queenside_castle: bool,
     can_black_kingside_castle: bool,
     can_black_queenside_castle: bool,
-    en_passant_tile: Option<Position>,
+    en_passant_tile: Option<Tile>,
 
     /// Used to enforce the fifty-move rule.
     /// Is incremented after each move.
@@ -231,7 +264,7 @@ pub struct ChessBoardState {
     fullmove: u8,
 }
 
-impl ChessBoardState {
+impl GameState {
     fn from_fen(fen: &str) -> Result<Self, &'static str> {
         let mut split = fen.split(' ');
         let placements = split.next().ok_or("Empty string is not valid FEN")?;
@@ -292,7 +325,7 @@ impl ChessBoardState {
         let en_passant_tile = match en_passant_target {
             "-" => None,
             tile => {
-                let Ok(pos) = Position::from_uci(tile) else { return Err("Invalid En Passant target when parsing FEN string") };
+                let Ok(pos) = Tile::from_uci(tile) else { return Err("Invalid En Passant target when parsing FEN string") };
                 Some(pos)
             }
         };
@@ -382,17 +415,17 @@ impl ChessBoardState {
         fen
     }
 
-    fn piece(&self, tile: Position) -> &Option<Piece> {
+    fn piece(&self, tile: Tile) -> &Option<Piece> {
         // &self.pieces[tile]
         &self.pieces[tile.index()]
     }
 
-    fn piece_mut(&mut self, tile: Position) -> &mut Option<Piece> {
+    fn piece_mut(&mut self, tile: Tile) -> &mut Option<Piece> {
         &mut self.pieces[tile]
     }
 }
 
-impl Default for ChessBoardState {
+impl Default for GameState {
     fn default() -> Self {
         // Safe unwrap: Default FEN is always valid
         Self::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
@@ -406,7 +439,7 @@ impl Default for ChessBoardState {
     }
 }
 
-impl fmt::Display for ChessBoardState {
+impl fmt::Display for GameState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_fen())
     }
@@ -418,21 +451,21 @@ impl fmt::Display for ChessBoardState {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Move {
-    from: Position,
-    to: Position,
+    from: Tile,
+    to: Tile,
 }
 
 impl Move {
-    pub fn new(from: Position, to: Position) -> Self {
+    pub fn new(from: Tile, to: Tile) -> Self {
         // Self(from | to << 4)
         Self { from, to }
     }
 
-    pub fn from(&self) -> Position {
+    pub fn from(&self) -> Tile {
         self.from
     }
 
-    pub fn to(&self) -> Position {
+    pub fn to(&self) -> Tile {
         self.to
     }
 }
