@@ -1,5 +1,6 @@
 pub mod bitboard;
 pub mod engine;
+mod maskgen;
 pub mod movegen;
 pub mod piece;
 pub mod tile;

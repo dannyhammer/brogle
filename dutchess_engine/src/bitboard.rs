@@ -74,6 +74,14 @@ impl ChessBoard {
         self.king.clear(tile);
     }
 
+    pub const fn color(&self, color: Color) -> BitBoard {
+        if color.is_white() {
+            self.white
+        } else {
+            self.black
+        }
+    }
+
     fn color_at(&self, tile: Tile) -> Option<Color> {
         if !self.occupied.get(tile) {
             return None;
@@ -310,16 +318,20 @@ impl BitBoard {
     pub const EMPTY_BOARD: Self = Self(0x0000000000000000);
     pub const FULL_BOARD: Self = Self(0xFFFFFFFFFFFFFFFF);
 
-    pub fn new(bits: u64) -> Self {
+    pub const fn new(bits: u64) -> Self {
         Self(bits)
     }
 
-    pub fn from_index(index: usize) -> Result<Self, String> {
+    pub const fn from_index(index: usize) -> Result<Self, &'static str> {
         if index < 64 {
             Ok(Self(1 << index))
         } else {
-            Err(format!("Index must be between [0,64)"))
+            Err("Index must be between [0,64)")
         }
+    }
+
+    pub const fn from_tile(tile: Tile) -> Self {
+        Self(1 << tile.index())
     }
 
     fn from_color<'a>(pieces: impl IntoIterator<Item = &'a Option<Piece>>, color: Color) -> Self {
@@ -347,14 +359,16 @@ impl BitBoard {
         Self(bits)
     }
 
-    fn from_file(file: File) -> Self {
+    const fn from_file(file: File) -> Self {
         // Self(FILE_A << file.0)
-        Self::FILE_A << file.0
+        // Self::FILE_A << file.0
+        Self(Self::FILE_A.0 << file.0)
     }
 
-    fn from_rank(rank: Rank) -> Self {
+    const fn from_rank(rank: Rank) -> Self {
         // Self(RANK_1 << rank.0 * 8)
-        Self::RANK_1 << rank.0 * 8
+        // Self::RANK_1 << rank.0 * 8
+        Self(Self::RANK_1.0 << rank.0 * 8)
     }
 
     // fn diagonal(tile: Tile) -> Self {
@@ -369,9 +383,14 @@ impl BitBoard {
     //     Self(0)
     // }
 
-    fn is_empty(&self) -> bool {
-        // self.0 == EMPTY_BOARD
-        *self == Self::EMPTY_BOARD
+    pub const fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+
+    const fn is_empty(&self) -> bool {
+        self.0 == Self::EMPTY_BOARD.0
+        // *self == Self::EMPTY_BOARD
+        // self.eq(&Self::EMPTY_BOARD)
     }
 
     pub fn set(&mut self, tile: Tile) {
@@ -379,7 +398,7 @@ impl BitBoard {
         self.set_index(tile.index())
     }
 
-    pub fn get(&self, tile: Tile) -> bool {
+    pub const fn get(&self, tile: Tile) -> bool {
         // (self.0 & 1 << tile.index()) != 0
         self.get_index(tile.index())
     }
@@ -394,8 +413,13 @@ impl BitBoard {
         self.0 &= !other.0
     }
 
-    pub fn lsb(&self) -> Option<u8> {
-        (!self.is_empty()).then_some(self.0.trailing_zeros() as u8)
+    pub const fn lsb(&self) -> Option<u8> {
+        // (!self.is_empty()).then_some(self.0.trailing_zeros() as u8)
+        if self.is_empty() {
+            None
+        } else {
+            Some(self.0.trailing_zeros() as u8)
+        }
     }
 
     pub fn pop_lsb(&mut self) -> Option<u8> {
@@ -409,8 +433,13 @@ impl BitBoard {
         self.0 &= self.0.wrapping_sub(1);
     }
 
-    fn lsb_tile(&self) -> Option<Tile> {
-        self.lsb().map(|lsb| Tile(lsb))
+    const fn lsb_tile(&self) -> Option<Tile> {
+        // self.lsb().map(|lsb| Tile(lsb))
+        if let Some(lsb) = self.lsb() {
+            Some(Tile(lsb))
+        } else {
+            None
+        }
     }
 
     fn toggle(&mut self, mask: Self) {
@@ -422,7 +451,7 @@ impl BitBoard {
         self.0 |= 1 << index;
     }
 
-    fn get_index(&self, index: usize) -> bool {
+    const fn get_index(&self, index: usize) -> bool {
         debug_assert!(index < 64, "Index must be between [0,64)");
         (self.0 & 1 << index) != 0
     }
@@ -433,66 +462,90 @@ impl BitBoard {
     }
 
     /// Returns `true` if `other` is a subset of `self`.
-    fn contains_all(&self, other: &Self) -> bool {
+    const fn contains_all(&self, other: &Self) -> bool {
         self.0 & other.0 == other.0
     }
 
     /// Returns `true` if `self` contains any bits of `other`.
-    fn contains_any(&self, other: &Self) -> bool {
-        // self.0 & other.0 != EMPTY_BOARD
-        *self & *other != Self::EMPTY_BOARD
+    const fn contains_any(&self, other: &Self) -> bool {
+        self.0 & other.0 != Self::EMPTY_BOARD.0
+        // *self & *other != Self::EMPTY_BOARD
+    }
+
+    pub const fn not(self) -> Self {
+        Self(!self.0)
+    }
+
+    pub const fn and(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+
+    pub const fn or(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub const fn xor(self, other: Self) -> Self {
+        Self(self.0 ^ other.0)
+    }
+
+    pub const fn rshift(self, n: u8) -> Self {
+        Self(self.0 >> n)
+    }
+
+    pub const fn lshift(self, n: u8) -> Self {
+        Self(self.0 << n)
     }
 
     // Rank up
-    pub fn north(self) -> Self {
+    pub const fn north(self) -> Self {
         Self(self.0 << 8)
     }
 
     // Rank down
-    pub fn south(self) -> Self {
+    pub const fn south(self) -> Self {
         Self(self.0 >> 8)
     }
 
     // File up
-    pub fn west(self) -> Self {
+    pub const fn west(self) -> Self {
         // Post-shift mask
-        // Self((self.0 >> 1) & NOT_FILE_H)
-        (self >> 1) & Self::NOT_FILE_H
+        Self((self.0 >> 1) & Self::NOT_FILE_H.0)
+        // (self >> 1) & Self::NOT_FILE_H
     }
 
     // File down
-    pub fn east(self) -> Self {
+    pub const fn east(self) -> Self {
         // Post-shift mask
-        // Self((self.0 << 1) & NOT_FILE_A)
-        (self << 1) & Self::NOT_FILE_A
+        Self((self.0 << 1) & Self::NOT_FILE_A.0)
+        // (self << 1) & Self::NOT_FILE_A
     }
 
-    pub fn northeast(self) -> Self {
+    pub const fn northeast(self) -> Self {
         // Post-shift mask
-        // Self((self.0 << 9) & NOT_FILE_A)
-        (self << 9) & Self::NOT_FILE_A
+        Self((self.0 << 9) & Self::NOT_FILE_A.0)
+        // (self << 9) & Self::NOT_FILE_A
     }
 
-    pub fn southeast(self) -> Self {
+    pub const fn southeast(self) -> Self {
         // Post-shift mask
-        // Self((self.0 >> 7) & NOT_FILE_A)
-        (self >> 7) & Self::NOT_FILE_A
+        Self((self.0 >> 7) & Self::NOT_FILE_A.0)
+        // (self >> 7) & Self::NOT_FILE_A
     }
 
-    pub fn northwest(self) -> Self {
+    pub const fn northwest(self) -> Self {
         // Post-shift mask
-        // Self((self.0 << 7) & NOT_FILE_H)
-        (self << 7) & Self::NOT_FILE_H
+        Self((self.0 << 7) & Self::NOT_FILE_H.0)
+        // (self << 7) & Self::NOT_FILE_H
     }
 
-    pub fn southwest(self) -> Self {
+    pub const fn southwest(self) -> Self {
         // Post-shift mask
-        // Self((self.0 >> 9) & NOT_FILE_H)
-        (self >> 9) & Self::NOT_FILE_H
+        Self((self.0 >> 9) & Self::NOT_FILE_H.0)
+        // (self >> 9) & Self::NOT_FILE_H
     }
 
     /// Get the value of the bit at `index`
-    fn get_bit_at(&self, index: usize) -> bool {
+    const fn get_bit_at(&self, index: usize) -> bool {
         index <= 64 && self.0 & (1 << index) != 0
     }
 
@@ -500,7 +553,7 @@ impl BitBoard {
         self.into_iter()
     }
 
-    fn population(&self) -> u8 {
+    const fn population(&self) -> u8 {
         self.0.count_ones() as u8
     }
 
@@ -508,7 +561,7 @@ impl BitBoard {
 
     // }
 
-    fn north_fill(&self) -> Self {
+    const fn north_fill(&self) -> Self {
         let mut bits = self.0;
         bits |= bits << 8;
         bits |= bits << 16;
@@ -516,7 +569,7 @@ impl BitBoard {
         Self(bits)
     }
 
-    fn south_fill(&self) -> Self {
+    const fn south_fill(&self) -> Self {
         let mut bits = self.0;
         bits |= bits >> 8;
         bits |= bits >> 16;
@@ -546,7 +599,7 @@ impl<T> Index<Piece> for [T; 12] {
 
 impl From<Tile> for BitBoard {
     fn from(value: Tile) -> Self {
-        Self(1 << value.index())
+        Self::from_tile(value)
     }
 }
 
@@ -600,7 +653,7 @@ impl Iterator for BitBoardIter {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = 0;
+        let size = self.bb.population() as usize;
         (size, Some(size))
     }
 }

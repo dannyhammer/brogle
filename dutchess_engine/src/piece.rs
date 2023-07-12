@@ -8,15 +8,16 @@ pub enum Color {
 }
 
 impl Color {
-    pub fn is_white(&self) -> bool {
-        *self == Self::White
+    pub const fn is_white(&self) -> bool {
+        // *self == Self::White
+        matches!(self, Self::White)
     }
 
-    pub fn is_black(&self) -> bool {
-        *self == Self::Black
+    pub const fn is_black(&self) -> bool {
+        matches!(self, Self::Black)
     }
 
-    pub fn opponent(&self) -> Self {
+    pub const fn opponent(&self) -> Self {
         match self {
             Color::White => Color::Black,
             Color::Black => Color::White,
@@ -50,7 +51,7 @@ pub enum PieceKind {
 }
 
 impl PieceKind {
-    pub(crate) fn from_bits(bits: u8) -> PieceKind {
+    pub(crate) const fn from_bits(bits: u8) -> PieceKind {
         match bits {
             0 => Self::Pawn,
             1 => Self::Knight,
@@ -58,11 +59,11 @@ impl PieceKind {
             3 => Self::Rook,
             4 => Self::Queen,
             5 => Self::King,
-            _ => panic!("Invalid bit pattern {bits:#b} ({bits})"),
+            _ => panic!(), //panic!("Invalid bit pattern {bits:#b} ({bits})"),
         }
     }
 
-    pub fn bits(&self) -> u8 {
+    pub const fn bits(&self) -> u8 {
         // SAFETY: This type is `repr(u8)`
         // See: https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
         // unsafe { *(self as *const Self as *const u8) }
@@ -70,15 +71,15 @@ impl PieceKind {
     }
 
     /// https://en.wikipedia.org/wiki/Chess_piece_relative_value#Standard_valuations
-    fn value(&self) -> u32 {
+    const fn value(&self) -> u32 {
         match self {
             Self::Pawn => 1,
             Self::Knight => 3,
             Self::Bishop => 3,
             Self::Rook => 5,
             Self::Queen => 9,
-            // A King is invaluable
-            Self::King => u32::MAX,
+            // A King is invaluable, but we need some high number for computing move values.
+            Self::King => 30, // TODO: Better value for King
         }
     }
 
@@ -94,7 +95,7 @@ impl PieceKind {
         }
     }
 
-    pub fn name(&self) -> &'static str {
+    pub const fn name(&self) -> &'static str {
         match self {
             Self::Pawn => "Pawn",
             Self::Knight => "Knight",
@@ -150,14 +151,14 @@ impl fmt::Display for PieceKind {
 pub struct Piece(u8);
 
 impl Piece {
-    pub fn new(color: Color, kind: PieceKind) -> Self {
+    pub const fn new(color: Color, kind: PieceKind) -> Self {
         // 0000 0000 => white
         // 0000 1000 => black
         let color = if color.is_white() { 0 } else { 8 };
         Self(kind.bits() | color)
     }
 
-    pub fn color(&self) -> Color {
+    pub const fn color(&self) -> Color {
         // Check for the color bit for black
         if self.0 & 8 == 0 {
             Color::White
@@ -166,20 +167,20 @@ impl Piece {
         }
     }
 
-    pub fn kind(&self) -> PieceKind {
+    pub const fn kind(&self) -> PieceKind {
         // Clear the color bit
         PieceKind::from_bits(self.0 & !8)
     }
 
-    pub fn is_white(&self) -> bool {
+    pub const fn is_white(&self) -> bool {
         self.color().is_white()
     }
 
-    pub fn is_black(&self) -> bool {
+    pub const fn is_black(&self) -> bool {
         self.color().is_black()
     }
 
-    pub fn index(&self) -> usize {
+    pub const fn index(&self) -> usize {
         let offset = if self.is_white() { 0 } else { 6 };
         (self.kind().bits() + offset) as usize
     }

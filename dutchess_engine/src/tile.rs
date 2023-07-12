@@ -14,7 +14,7 @@ impl Tile {
             .flatten()
     }
 
-    pub fn new(file: File, rank: Rank) -> Self {
+    pub const fn new(file: File, rank: Rank) -> Self {
         // least-significant file mapping
         Self(file.0 + rank.0 * 8)
     }
@@ -26,15 +26,15 @@ impl Tile {
         Ok(Self(index as u8))
     }
 
-    pub fn file(&self) -> File {
+    pub const fn file(&self) -> File {
         File(self.0 % 8)
     }
 
-    pub fn rank(&self) -> Rank {
+    pub const fn rank(&self) -> Rank {
         Rank(self.0 / 8)
     }
 
-    pub fn index(&self) -> usize {
+    pub const fn index(&self) -> usize {
         self.0 as usize
     }
 
@@ -46,11 +46,11 @@ impl Tile {
     //     (self.rank().index() + self.file().index()) ^ 7
     // }
 
-    pub fn is_light(&self) -> bool {
+    pub const fn is_light(&self) -> bool {
         (self.file().0 + self.rank().0) % 2 != 0
     }
 
-    pub fn is_dark(&self) -> bool {
+    pub const fn is_dark(&self) -> bool {
         !self.is_light()
     }
 
@@ -171,17 +171,21 @@ pub struct Rank(pub(crate) u8);
 
 impl Rank {
     pub fn iter() -> impl Iterator<Item = Self> {
-        (Self::min().0..=Self::max().0).map(|i| Self(i))
+        // (Self::min().0..=Self::max().0).map(|i| Self(i))
+        (0..8).map(|i| Self(i))
     }
 
     pub fn new(rank: u8) -> Result<Self, String> {
-        let rank = Self(rank);
-        if rank > Self::max() || rank < Self::min() {
+        if rank > 7 {
             return Err(format!(
                 "Invalid rank value {rank}. Ranks must be between [0,8)",
             ));
         }
-        Ok(rank)
+        Ok(Self(rank))
+    }
+
+    pub const fn new_unchecked(rank: u8) -> Self {
+        Self(rank)
     }
 
     fn from_char(rank: char) -> Result<Self, String> {
@@ -194,26 +198,18 @@ impl Rank {
         Self::new(index as u8 % 8)
     }
 
-    pub fn index(&self) -> usize {
+    pub const fn index(&self) -> usize {
         self.index_le()
     }
 
     // Index in Little Endian (default)
-    pub fn index_le(&self) -> usize {
+    pub const fn index_le(&self) -> usize {
         self.0 as usize
     }
 
     // Index in Big Endian
-    pub fn index_be(&self) -> usize {
+    pub const fn index_be(&self) -> usize {
         self.index_le() ^ 56
-    }
-
-    fn min() -> Self {
-        Self(0)
-    }
-
-    fn max() -> Self {
-        Self(7)
     }
 }
 
@@ -300,19 +296,16 @@ pub struct File(pub(crate) u8);
 
 impl File {
     pub fn iter() -> impl Iterator<Item = Self> {
-        (Self::min().0..=Self::max().0).map(|i| Self(i))
+        (0..8).map(|i| Self(i))
     }
 
     pub fn new(file: u8) -> Result<Self, String> {
-        let file = Self(file);
-        if file > Self::max() || file < Self::min() {
+        if file > 7 {
             return Err(format!(
-                "Invalid file value {file}. Files must be between [{},{}]",
-                Self::min(),
-                Self::max()
+                "Invalid file value {file}. Ranks must be between [0,8)",
             ));
         }
-        Ok(file)
+        Ok(Self(file))
     }
 
     pub fn from_char(file: char) -> Result<Self, String> {
@@ -333,26 +326,18 @@ impl File {
         Self::new(index as u8 / 8)
     }
 
-    pub fn index(&self) -> usize {
+    pub const fn index(&self) -> usize {
         self.index_le()
     }
 
     // Index in Little Endian (default)
-    pub fn index_le(&self) -> usize {
+    pub const fn index_le(&self) -> usize {
         self.0 as usize
     }
 
     // Index in Big Endian
-    pub fn index_be(&self) -> usize {
+    pub const fn index_be(&self) -> usize {
         self.index_le() ^ 7
-    }
-
-    fn min() -> Self {
-        Self(0)
-    }
-
-    fn max() -> Self {
-        Self(7)
     }
 }
 

@@ -202,7 +202,7 @@ impl Default for Engine {
 
 impl fmt::Display for Engine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut board = String::new();
+        let mut board = String::with_capacity(577);
 
         for rank in Rank::iter() {
             for _ in File::iter() {
@@ -228,7 +228,7 @@ impl fmt::Display for Engine {
         }
         board += "+";
 
-        write!(f, "{}", board)
+        write!(f, "{board}")
     }
 }
 
