@@ -1,4 +1,4 @@
-use std::{fmt, ops::Mul};
+use std::{fmt, ops::Not};
 
 /// Represents the color of a player, piece, tile, etc. within a chess board.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -23,13 +23,16 @@ impl Color {
             Color::Black => Color::White,
         }
     }
+
+    pub const fn index(&self) -> usize {
+        *self as usize
+    }
 }
 
-impl Mul<PieceKind> for Color {
-    type Output = Piece;
-    /// Multiplying a [`PieceKind`] by a [`Color`] will yield a [`Piece`]
-    fn mul(self, rhs: PieceKind) -> Self::Output {
-        Piece::new(self, rhs)
+impl Not for Color {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        self.opponent()
     }
 }
 
@@ -59,14 +62,11 @@ impl PieceKind {
             3 => Self::Rook,
             4 => Self::Queen,
             5 => Self::King,
-            _ => panic!(), //panic!("Invalid bit pattern {bits:#b} ({bits})"),
+            _ => panic!("Invalid bit pattern, must be [0,6)"), //panic!("Invalid bit pattern {bits:#b} ({bits})"),
         }
     }
 
     pub const fn bits(&self) -> u8 {
-        // SAFETY: This type is `repr(u8)`
-        // See: https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
-        // unsafe { *(self as *const Self as *const u8) }
         *self as u8
     }
 
@@ -105,6 +105,21 @@ impl PieceKind {
             Self::King => "King",
         }
     }
+
+    pub const fn char(&self) -> char {
+        match self {
+            Self::Pawn => 'P',
+            Self::Knight => 'N',
+            Self::Bishop => 'B',
+            Self::Rook => 'R',
+            Self::Queen => 'Q',
+            Self::King => 'K',
+        }
+    }
+
+    pub const fn index(&self) -> usize {
+        *self as usize
+    }
 }
 
 impl PartialOrd for PieceKind {
@@ -121,26 +136,10 @@ impl Ord for PieceKind {
     }
 }
 
-impl Mul<Color> for PieceKind {
-    type Output = Piece;
-    /// Multiplying a [`PieceKind`] by a [`Color`] will yield a [`Piece`]
-    fn mul(self, rhs: Color) -> Self::Output {
-        Piece::new(rhs, self)
-    }
-}
-
 impl fmt::Display for PieceKind {
     /// By default, piece classes display as uppercase chars (white)
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let class = match self {
-            Self::Pawn => 'P',
-            Self::Knight => 'N',
-            Self::Bishop => 'B',
-            Self::Rook => 'R',
-            Self::Queen => 'Q',
-            Self::King => 'K',
-        };
-        write!(f, "{class}",)
+        write!(f, "{}", self.char())
     }
 }
 
@@ -184,16 +183,18 @@ impl Piece {
         let offset = if self.is_white() { 0 } else { 6 };
         (self.kind().bits() + offset) as usize
     }
+
+    pub fn char(&self) -> char {
+        if self.is_white() {
+            self.kind().char().to_ascii_uppercase()
+        } else {
+            self.kind().char().to_ascii_lowercase()
+        }
+    }
 }
 
 impl fmt::Display for Piece {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let piece = if self.color().is_white() {
-            self.kind().to_string()
-        } else {
-            self.kind().to_string().to_ascii_lowercase()
-        };
-
-        write!(f, "{piece}")
+        write!(f, "{}", self.char())
     }
 }

@@ -18,7 +18,7 @@ fn king_moves() -> [BitBoard; 64] {
     let mut boards = [BitBoard::default(); 64];
 
     for i in 0..64 {
-        let bb = BitBoard::from_index(i).unwrap();
+        let bb = BitBoard::from_index(i);
 
         boards[i as usize] = bb.north()
             | bb.northeast()
@@ -37,7 +37,7 @@ fn knight_moves() -> [BitBoard; 64] {
     let mut boards = [BitBoard::default(); 64];
 
     for i in 0..64 {
-        let bb = BitBoard::from_index(i).unwrap();
+        let bb = BitBoard::from_index(i);
 
         let mut n = bb.north();
         let mut s = bb.south();
@@ -61,7 +61,7 @@ fn rook_moves() -> [BitBoard; 64] {
     let mut boards = [BitBoard::default(); 64];
 
     for i in 0..64 {
-        let bb = BitBoard::from_index(i).unwrap();
+        let bb = BitBoard::from_index(i);
 
         let mut n = bb.north();
         let mut s = bb.south();
@@ -84,7 +84,7 @@ fn bishop_moves() -> [BitBoard; 64] {
     let mut boards = [BitBoard::default(); 64];
 
     for i in 0..64 {
-        let bb = BitBoard::from_index(i).unwrap();
+        let bb = BitBoard::from_index(i);
 
         let mut ne = bb.northeast();
         let mut nw = bb.northwest();

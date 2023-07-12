@@ -1,13 +1,88 @@
 use std::{
     fmt,
     ops::{Add, AddAssign, Index, IndexMut, Sub, SubAssign},
+    str::FromStr,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+use crate::Color;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Tile(pub(crate) u8);
 
 impl Tile {
+    pub const A1: Tile = Self::new(File::A, Rank::ONE);
+    pub const A2: Tile = Self::new(File::A, Rank::TWO);
+    pub const A3: Tile = Self::new(File::A, Rank::THREE);
+    pub const A4: Tile = Self::new(File::A, Rank::FOUR);
+    pub const A5: Tile = Self::new(File::A, Rank::FIVE);
+    pub const A6: Tile = Self::new(File::A, Rank::SIX);
+    pub const A7: Tile = Self::new(File::A, Rank::SEVEN);
+    pub const A8: Tile = Self::new(File::A, Rank::EIGHT);
+
+    pub const B1: Tile = Self::new(File::B, Rank::ONE);
+    pub const B2: Tile = Self::new(File::B, Rank::TWO);
+    pub const B3: Tile = Self::new(File::B, Rank::THREE);
+    pub const B4: Tile = Self::new(File::B, Rank::FOUR);
+    pub const B5: Tile = Self::new(File::B, Rank::FIVE);
+    pub const B6: Tile = Self::new(File::B, Rank::SIX);
+    pub const B7: Tile = Self::new(File::B, Rank::SEVEN);
+    pub const B8: Tile = Self::new(File::B, Rank::EIGHT);
+
+    pub const C1: Tile = Self::new(File::C, Rank::ONE);
+    pub const C2: Tile = Self::new(File::C, Rank::TWO);
+    pub const C3: Tile = Self::new(File::C, Rank::THREE);
+    pub const C4: Tile = Self::new(File::C, Rank::FOUR);
+    pub const C5: Tile = Self::new(File::C, Rank::FIVE);
+    pub const C6: Tile = Self::new(File::C, Rank::SIX);
+    pub const C7: Tile = Self::new(File::C, Rank::SEVEN);
+    pub const C8: Tile = Self::new(File::C, Rank::EIGHT);
+
+    pub const D1: Tile = Self::new(File::D, Rank::ONE);
+    pub const D2: Tile = Self::new(File::D, Rank::TWO);
+    pub const D3: Tile = Self::new(File::D, Rank::THREE);
+    pub const D4: Tile = Self::new(File::D, Rank::FOUR);
+    pub const D5: Tile = Self::new(File::D, Rank::FIVE);
+    pub const D6: Tile = Self::new(File::D, Rank::SIX);
+    pub const D7: Tile = Self::new(File::D, Rank::SEVEN);
+    pub const D8: Tile = Self::new(File::D, Rank::EIGHT);
+
+    pub const E1: Tile = Self::new(File::E, Rank::ONE);
+    pub const E2: Tile = Self::new(File::E, Rank::TWO);
+    pub const E3: Tile = Self::new(File::E, Rank::THREE);
+    pub const E4: Tile = Self::new(File::E, Rank::FOUR);
+    pub const E5: Tile = Self::new(File::E, Rank::FIVE);
+    pub const E6: Tile = Self::new(File::E, Rank::SIX);
+    pub const E7: Tile = Self::new(File::E, Rank::SEVEN);
+    pub const E8: Tile = Self::new(File::E, Rank::EIGHT);
+
+    pub const F1: Tile = Self::new(File::F, Rank::ONE);
+    pub const F2: Tile = Self::new(File::F, Rank::TWO);
+    pub const F3: Tile = Self::new(File::F, Rank::THREE);
+    pub const F4: Tile = Self::new(File::F, Rank::FOUR);
+    pub const F5: Tile = Self::new(File::F, Rank::FIVE);
+    pub const F6: Tile = Self::new(File::F, Rank::SIX);
+    pub const F7: Tile = Self::new(File::F, Rank::SEVEN);
+    pub const F8: Tile = Self::new(File::F, Rank::EIGHT);
+
+    pub const G1: Tile = Self::new(File::G, Rank::ONE);
+    pub const G2: Tile = Self::new(File::G, Rank::TWO);
+    pub const G3: Tile = Self::new(File::G, Rank::THREE);
+    pub const G4: Tile = Self::new(File::G, Rank::FOUR);
+    pub const G5: Tile = Self::new(File::G, Rank::FIVE);
+    pub const G6: Tile = Self::new(File::G, Rank::SIX);
+    pub const G7: Tile = Self::new(File::G, Rank::SEVEN);
+    pub const G8: Tile = Self::new(File::G, Rank::EIGHT);
+
+    pub const H1: Tile = Self::new(File::H, Rank::ONE);
+    pub const H2: Tile = Self::new(File::H, Rank::TWO);
+    pub const H3: Tile = Self::new(File::H, Rank::THREE);
+    pub const H4: Tile = Self::new(File::H, Rank::FOUR);
+    pub const H5: Tile = Self::new(File::H, Rank::FIVE);
+    pub const H6: Tile = Self::new(File::H, Rank::SIX);
+    pub const H7: Tile = Self::new(File::H, Rank::SEVEN);
+    pub const H8: Tile = Self::new(File::H, Rank::EIGHT);
+
     pub fn iter() -> impl Iterator<Item = Self> {
         File::iter()
             .map(|file| Rank::iter().map(move |rank| Self::new(file, rank)))
@@ -16,7 +91,8 @@ impl Tile {
 
     pub const fn new(file: File, rank: Rank) -> Self {
         // least-significant file mapping
-        Self(file.0 + rank.0 * 8)
+        // Self(file.0 + rank.0 * 8)
+        Self(file.0 ^ rank.0 << 3)
     }
 
     pub fn from_index(index: usize) -> Result<Self, String> {
@@ -26,12 +102,18 @@ impl Tile {
         Ok(Self(index as u8))
     }
 
+    pub const fn inner(&self) -> u8 {
+        self.0
+    }
+
     pub const fn file(&self) -> File {
-        File(self.0 % 8)
+        // File(self.0 % 8)
+        File(self.0 & 7)
     }
 
     pub const fn rank(&self) -> Rank {
-        Rank(self.0 / 8)
+        // Rank(self.0 / 8)
+        Rank(self.0 >> 3)
     }
 
     pub const fn index(&self) -> usize {
@@ -71,6 +153,74 @@ impl Tile {
 
     fn to_uci(self) -> String {
         format!("{}{}", self.file(), self.rank())
+    }
+
+    pub const fn north(&self) -> Option<Self> {
+        if let Some(next) = self.rank().increase() {
+            Some(Self::new(self.file(), next))
+        } else {
+            None
+        }
+    }
+
+    pub const fn south(&self) -> Option<Self> {
+        if let Some(next) = self.rank().decrease() {
+            Some(Self::new(self.file(), next))
+        } else {
+            None
+        }
+    }
+
+    pub const fn west(&self) -> Option<Self> {
+        if let Some(next) = self.file().decrease() {
+            Some(Self::new(next, self.rank()))
+        } else {
+            None
+        }
+    }
+
+    pub const fn east(&self) -> Option<Self> {
+        if let Some(next) = self.file().increase() {
+            Some(Self::new(next, self.rank()))
+        } else {
+            None
+        }
+    }
+
+    pub const fn forward(&self, color: Color) -> Option<Self> {
+        match color {
+            Color::White => self.north(),
+            Color::Black => self.south(),
+        }
+    }
+
+    pub const fn backward(&self, color: Color) -> Option<Self> {
+        match color {
+            Color::White => self.south(),
+            Color::Black => self.north(),
+        }
+    }
+
+    pub const fn left(&self, color: Color) -> Option<Self> {
+        match color {
+            Color::White => self.west(),
+            Color::Black => self.east(),
+        }
+    }
+
+    pub const fn right(&self, color: Color) -> Option<Self> {
+        match color {
+            Color::White => self.east(),
+            Color::Black => self.west(),
+        }
+    }
+}
+
+impl FromStr for Tile {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_uci(s)
     }
 }
 
@@ -170,13 +320,22 @@ impl fmt::Display for Tile {
 pub struct Rank(pub(crate) u8);
 
 impl Rank {
+    pub const ONE: Self = Self(0);
+    pub const TWO: Self = Self(1);
+    pub const THREE: Self = Self(2);
+    pub const FOUR: Self = Self(3);
+    pub const FIVE: Self = Self(4);
+    pub const SIX: Self = Self(5);
+    pub const SEVEN: Self = Self(6);
+    pub const EIGHT: Self = Self(7);
+
     pub fn iter() -> impl Iterator<Item = Self> {
         // (Self::min().0..=Self::max().0).map(|i| Self(i))
         (0..8).map(|i| Self(i))
     }
 
     pub fn new(rank: u8) -> Result<Self, String> {
-        if rank > 7 {
+        if rank > Self::EIGHT.0 {
             return Err(format!(
                 "Invalid rank value {rank}. Ranks must be between [0,8)",
             ));
@@ -198,6 +357,10 @@ impl Rank {
         Self::new(index as u8 % 8)
     }
 
+    pub const fn inner(&self) -> u8 {
+        self.0
+    }
+
     pub const fn index(&self) -> usize {
         self.index_le()
     }
@@ -210,6 +373,52 @@ impl Rank {
     // Index in Big Endian
     pub const fn index_be(&self) -> usize {
         self.index_le() ^ 56
+    }
+
+    pub const fn increase(&self) -> Option<Self> {
+        if self.0 == 7 {
+            None
+        } else {
+            Some(Self(self.0 + 1))
+        }
+    }
+
+    pub const fn decrease(&self) -> Option<Self> {
+        if self.0 == 0 {
+            None
+        } else {
+            Some(Self(self.0 - 1))
+        }
+    }
+
+    pub const fn wrapping_increase(&self) -> Self {
+        Self(self.0.wrapping_add(1))
+    }
+
+    pub const fn wrapping_decrease(&self) -> Self {
+        Self(self.0.wrapping_sub(1))
+    }
+
+    pub const fn first_rank(&self, color: Color) -> Self {
+        match color {
+            Color::White => Self::ONE,
+            Color::Black => Self::EIGHT,
+        }
+    }
+
+    pub const fn second_rank(&self, color: Color) -> Self {
+        match color {
+            Color::White => Self::TWO,
+            Color::Black => Self::SEVEN,
+        }
+    }
+
+    /// Rank just before promoting a pawn
+    pub const fn seventh_rank(&self, color: Color) -> Self {
+        match color {
+            Color::White => Self::SEVEN,
+            Color::Black => Self::TWO,
+        }
     }
 }
 
@@ -295,6 +504,15 @@ impl fmt::Display for Rank {
 pub struct File(pub(crate) u8);
 
 impl File {
+    pub const A: Self = Self(0);
+    pub const B: Self = Self(1);
+    pub const C: Self = Self(2);
+    pub const D: Self = Self(3);
+    pub const E: Self = Self(4);
+    pub const F: Self = Self(5);
+    pub const G: Self = Self(6);
+    pub const H: Self = Self(7);
+
     pub fn iter() -> impl Iterator<Item = Self> {
         (0..8).map(|i| Self(i))
     }
@@ -326,6 +544,10 @@ impl File {
         Self::new(index as u8 / 8)
     }
 
+    pub const fn inner(&self) -> u8 {
+        self.0
+    }
+
     pub const fn index(&self) -> usize {
         self.index_le()
     }
@@ -338,6 +560,30 @@ impl File {
     // Index in Big Endian
     pub const fn index_be(&self) -> usize {
         self.index_le() ^ 7
+    }
+
+    pub const fn increase(&self) -> Option<Self> {
+        if self.0 == 7 {
+            None
+        } else {
+            Some(Self(self.0 + 1))
+        }
+    }
+
+    pub const fn decrease(&self) -> Option<Self> {
+        if self.0 == 0 {
+            None
+        } else {
+            Some(Self(self.0 - 1))
+        }
+    }
+
+    pub const fn wrapping_increase(&self) -> Self {
+        Self(self.0.wrapping_add(1))
+    }
+
+    pub const fn wrapping_decrease(&self) -> Self {
+        Self(self.0.wrapping_sub(1))
     }
 }
 

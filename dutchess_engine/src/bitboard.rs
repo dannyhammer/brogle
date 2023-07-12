@@ -317,48 +317,23 @@ impl BitBoard {
     pub const DARKS_SQUARES: Self = Self(0xAA55AA55AA55AA55);
     pub const EMPTY_BOARD: Self = Self(0x0000000000000000);
     pub const FULL_BOARD: Self = Self(0xFFFFFFFFFFFFFFFF);
+    pub const EDGES: Self = Self(0xFF818181818181FF);
 
     pub const fn new(bits: u64) -> Self {
         Self(bits)
     }
 
-    pub const fn from_index(index: usize) -> Result<Self, &'static str> {
-        if index < 64 {
-            Ok(Self(1 << index))
-        } else {
-            Err("Index must be between [0,64)")
-        }
+    pub const fn from_index(index: usize) -> Self {
+        debug_assert!(index < 64, "Index must be between [0,64)");
+        Self(1 << index)
     }
 
     pub const fn from_tile(tile: Tile) -> Self {
-        Self(1 << tile.index())
+        // Self(1 << tile.index())
+        Self::from_index(tile.index())
     }
 
-    fn from_color<'a>(pieces: impl IntoIterator<Item = &'a Option<Piece>>, color: Color) -> Self {
-        Self::from_eq(pieces, |piece| piece.color() == color)
-    }
-
-    fn from_kind<'a>(pieces: impl IntoIterator<Item = &'a Option<Piece>>, kind: PieceKind) -> Self {
-        Self::from_eq(pieces, |piece| piece.kind() == kind)
-    }
-
-    fn from_eq<'a>(
-        pieces: impl IntoIterator<Item = &'a Option<Piece>>,
-        f: impl FnOnce(&Piece) -> bool + Copy,
-    ) -> Self {
-        let mut bits = 0;
-
-        for (i, piece) in pieces.into_iter().enumerate() {
-            if let Some(piece) = piece {
-                if f(&piece) {
-                    bits |= 1 << i;
-                }
-            }
-        }
-
-        Self(bits)
-    }
-
+    /*
     const fn from_file(file: File) -> Self {
         // Self(FILE_A << file.0)
         // Self::FILE_A << file.0
@@ -370,6 +345,7 @@ impl BitBoard {
         // Self::RANK_1 << rank.0 * 8
         Self(Self::RANK_1.0 << rank.0 * 8)
     }
+     */
 
     // fn diagonal(tile: Tile) -> Self {
     //     let diag_index = tile.rank().index();
@@ -382,6 +358,15 @@ impl BitBoard {
     // fn anti_diagonal(tile: Tile) -> Self {
     //     Self(0)
     // }
+
+    pub const fn to_tile(&self) -> Tile {
+        Tile(self.0.trailing_zeros() as u8)
+    }
+
+    /// Reverse this [`BitBoard`], viewing it from the opponent's perspective.
+    pub const fn flip(&self) -> Self {
+        Self(self.0.swap_bytes())
+    }
 
     pub const fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
@@ -553,8 +538,8 @@ impl BitBoard {
         self.into_iter()
     }
 
-    const fn population(&self) -> u8 {
-        self.0.count_ones() as u8
+    const fn population(&self) -> u32 {
+        self.0.count_ones()
     }
 
     // fn flip_vertical(&self) -> Self {
