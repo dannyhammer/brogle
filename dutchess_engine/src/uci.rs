@@ -1,6 +1,11 @@
-use std::{fmt, io::Write};
+use std::{
+    fmt,
+    io::{self, Write},
+};
 
 use log::{Level, Metadata, Record};
+
+use crate::utils::DEFAULT_FEN;
 
 pub struct UciLogger;
 
@@ -22,7 +27,7 @@ impl log::Log for UciLogger {
     }
 }
 
-pub type UciResult<T> = Result<T, String>;
+pub type UciResult<T> = Result<T, InvalidUciError>;
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct SearchOptions {
@@ -37,6 +42,39 @@ pub struct SearchOptions {
     move_time: Option<u32>,
     infinite: bool,
 }
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub enum UciPosition {
+    FEN(String),
+    StartPos,
+}
+
+impl UciPosition {
+    pub fn fen(&self) -> &str {
+        if let Self::FEN(fen) = self {
+            fen.as_str()
+        } else {
+            DEFAULT_FEN
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub enum UciRegistration<'a> {
+    Later,
+    Now(&'a str /* name */, &'a str /* code */),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub enum InvalidUciError {
+    NoInputProvided,
+    UnrecognizedCommand,
+    NotEnoughArguments,
+    InvalidArgument,
+}
+// impl Error for InvalidUciError {
+//     //
+// }
 
 // pub trait UciEngine {
 //     type Error;
@@ -95,7 +133,7 @@ pub struct SearchOptions {
 ///
 /// These are all the commands the engine gets from the interface.
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum UciCommand {
+pub enum UciCommand<'a> {
     /// `uci`
     ///
     /// Tell engine to use the uci (universal chess interface),
@@ -160,7 +198,7 @@ pub enum UciCommand {
     /// Example:
     ///    "register later"
     ///    "register name Stefan MK code 4359874324"
-    Register(Vec<String> /* later, name, code */),
+    Register(UciRegistration<'a>),
 
     /// `ucinewgame`
     ///
@@ -181,7 +219,10 @@ pub enum UciCommand {
     /// if the game was played  from the start position the string "startpos" will be sent
     /// Note: no "new" command is needed. However, if this position is from a different game than
     /// the last position sent to the engine, the GUI should have sent a "ucinewgame" inbetween.
-    Position(String /* fen */, Vec<String> /* moves */),
+    Position(
+        UciPosition, /* fen or startpos */
+        Vec<String>, /* moves */
+    ),
 
     /// `go`
     ///
@@ -244,14 +285,12 @@ pub enum UciCommand {
     Quit,
 }
 
-impl UciCommand {
-    pub fn new(input: &str) -> UciResult<Self> {
-        let mut split = input.split_whitespace().map(|word| word.to_lowercase());
-        let first = split.next().ok_or(format!("Cannot parse empty command"))?;
+impl<'a> UciCommand<'a> {
+    pub fn new(input: &'a str) -> UciResult<Self> {
+        let mut split = input.split_whitespace();
+        let first = split.next().ok_or(InvalidUciError::NoInputProvided)?;
 
-        println!("IN: {input}");
-
-        let cmd = match first.as_str() {
+        let cmd = match first {
             "uci" => Self::Uci,
             "debug" => Self::parse_debug(split)?,
             "isready" => Self::IsReady,
@@ -263,34 +302,47 @@ impl UciCommand {
             "stop" => Self::Stop,
             "ponderhit" => Self::PonderHit,
             "quit" => Self::Quit,
-            _ => return Err(format!("Unrecognized command `{first}`")),
+            _ => return Err(InvalidUciError::UnrecognizedCommand),
         };
 
         Ok(cmd)
     }
 
-    fn parse_debug(mut args: impl Iterator<Item = String>) -> UciResult<Self> {
-        let debug = args.next().ok_or(format!("No debug option found"))?;
-        match debug.as_str() {
+    fn parse_debug(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
+        let debug = args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
+        match debug {
             "on" => Ok(Self::Debug(true)),
             "off" => Ok(Self::Debug(false)),
-            _ => Err(format!("Debug must be either `on` or `off`")),
+            _ => Err(InvalidUciError::InvalidArgument),
         }
     }
 
-    fn parse_setoption(mut args: impl Iterator<Item = String>) -> UciResult<Self> {
+    fn parse_setoption(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
         todo!()
     }
 
-    fn parse_register(mut args: impl Iterator<Item = String>) -> UciResult<Self> {
+    fn parse_register(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
+        let next = args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
+
+        let registration = match next {
+            "later" => UciRegistration::Later,
+            "name" => {
+                let name = args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
+                args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
+                let code = args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
+                UciRegistration::Now(name, code)
+            }
+            _ => return Err(InvalidUciError::InvalidArgument),
+        };
+
+        Ok(UciCommand::Register(registration))
+    }
+
+    fn parse_position(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
         todo!()
     }
 
-    fn parse_position(mut args: impl Iterator<Item = String>) -> UciResult<Self> {
-        todo!()
-    }
-
-    fn parse_go(mut args: impl Iterator<Item = String>) -> UciResult<Self> {
+    fn parse_go(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
         todo!()
     }
 }
@@ -299,7 +351,7 @@ impl UciCommand {
 /// ---
 /// These are all the commands the interface gets from the engine.
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum UciResponse {
+pub enum UciResponse<'a> {
     /// `id`
     ///
     /// * `name <x>`
@@ -308,7 +360,7 @@ pub enum UciResponse {
     /// * `author <x>`
     /// 	this must be sent after receiving the "uci" command to identify the engine,
     /// 	e.g. "id author Stefan MK\n"
-    Id(String, String),
+    Id(&'a str /* name */, &'a str /* author */),
 
     /// `uciok`
     ///
@@ -333,7 +385,7 @@ pub enum UciResponse {
     /// "stop" command, so for every "go" command a "bestmove" command is needed!
     /// Directly before that the engine should send a final "info" command with the final search information,
     /// the the GUI has the complete statistics about the last search.
-    BestMove,
+    BestMove(String /* bestmove */, Option<String> /* ponder */),
 
     /// `copyprotection`
     ///
@@ -350,7 +402,7 @@ pub enum UciResponse {
     ///       TellGUI("copyprotection ok\n");
     ///      else
     ///         TellGUI("copyprotection error\n");
-    CopyProtection,
+    CopyProtection(&'static str),
 
     /// `registration`
     ///
@@ -370,7 +422,7 @@ pub enum UciResponse {
     /// and tell the user somehow that the engine is not registered.
     /// This way the engine knows that the GUI can deal with the registration procedure and the user
     /// will be informed that the engine is not properly registered.
-    Registration,
+    Registration(&'static str),
 
     /// `info`
     ///
@@ -439,7 +491,7 @@ pub enum UciResponse {
     ///    if the engine is just using one cpu, <cpunr> can be omitted.
     ///    If <cpunr> is greater than 1, always send all k lines in k strings together.
     /// 	The engine should only send this if the option "UCI_ShowCurrLine" is set to true.
-    Info,
+    Info(UciInfo),
 
     /// `option`
     ///
@@ -557,15 +609,20 @@ pub enum UciResponse {
     ///    "option name Style type combo default Normal var Solid var Normal var Risky\n"
     ///    "option name NalimovPath type string default c:\\n"
     ///    "option name Clear Hash type button\n"
-    Option,
+    Option(UciOption<'a>),
 }
 
-impl UciResponse {
-    //
+impl<'a> UciResponse<'a> {
+    pub fn send(&self) -> io::Result<()> {
+        // let resp = format!("{response}\n");
+        let resp = self.to_string();
+        let mut handle = io::stdout().lock();
+        handle.write_all(resp.as_ref())?;
+        handle.flush()
+    }
 }
 
-/*
-impl fmt::Display for UciResponse {
+impl<'a> fmt::Display for UciResponse<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let response = match self {
             Self::Id(name, author) => {
@@ -573,11 +630,103 @@ impl fmt::Display for UciResponse {
             }
             Self::UciOk => format!("uciok"),
             Self::ReadyOk => format!("readyok"),
+            Self::BestMove(bestmove, ponder) => {
+                if let Some(ponder) = ponder {
+                    format!("bestmove {bestmove} ponder {ponder}")
+                } else {
+                    format!("bestmove {bestmove}")
+                }
+            }
+            Self::CopyProtection(status) => {
+                // format!("copyprotection checking")
+                // format!("copyprotection ok")
+                // format!("copyprotection error")
+                format!("copyprotection {status}")
+            }
+            Self::Registration(status) => {
+                // format!("registration checking")
+                // format!("registration ok")
+                // format!("registration error")
+                format!("registration {status}")
+            }
+            Self::Info(info) => {
+                format!("info {info}")
+            }
+            Self::Option(opt) => {
+                format!("option {opt}")
+            }
         };
         write!(f, "{response}\n")
     }
 }
- */
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub struct UciInfo {
+    depth: Option<String>,
+    seldepth: Option<String>,
+    time: Option<String>,
+    nodes: Option<String>,
+    pv: Vec<String>,
+    multipv: Option<String>,
+    score: Option<String>,
+    currmove: Option<String>,
+    currmovenumber: Option<String>,
+    hashfull: Option<String>,
+    nps: Option<String>,
+    tbhits: Option<String>,
+    sbhits: Option<String>,
+    cpuload: Option<String>,
+    string: Option<String>,
+    refutation: Vec<String>,
+    currline: Vec<String>,
+}
+impl fmt::Display for UciInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(depth) = &self.depth {
+            f.write_str("depth ")?;
+            f.write_str(&depth)?;
+        }
+
+        f.write_str("\n")
+
+        // write!(f, "name {} type {}", self.name, self.opt_type)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub struct UciOption<'a> {
+    name: &'a str,
+    opt_type: UciOptionType,
+    default: Option<String>,
+    min: Option<String>,
+    max: Option<String>,
+    var: Option<String>,
+}
+
+impl<'a> fmt::Display for UciOption<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "name {} type {}", self.name, self.opt_type)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub enum UciOptionType {
+    Check,
+    Spin,
+    Combo,
+    Button,
+    String,
+}
+
+impl fmt::Display for UciOptionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            _ => todo!(),
+        }
+
+        // write!(f, "name {} type {}", self.name, self.opt_type)
+    }
+}
 
 /// Examples:
 /// ---

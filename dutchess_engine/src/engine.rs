@@ -1,8 +1,12 @@
-use std::{fmt, ops::Index};
+use std::{fmt, io, ops::Index};
 
 use crate::{
     moves_for,
-    uci::{UciCommand, UciResponse},
+    uci::{
+        SearchOptions, UciCommand, UciOption, UciOptionType, UciPosition, UciRegistration,
+        UciResponse,
+    },
+    utils::DEFAULT_FEN,
     BitBoard, ChessBoard, Color, File, Piece, PieceKind, Rank, Tile,
 };
 
@@ -53,7 +57,7 @@ impl fmt::Display for MoveLegality {
 type TranspositionTable = ();
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
-enum EngineProtocol {
+pub enum EngineProtocol {
     UCI,
 }
 
@@ -132,27 +136,6 @@ impl Engine {
         true
     }
 
-    pub fn debug(&mut self, status: bool) {
-        self.debug = status;
-    }
-
-    /// Returns whether the move is legal to make, given the current game state.
-    /*
-    pub fn legality(&mut self, from: Position, to: Position) -> MoveLegality {
-        // Can't make a move if `from` has no piece!
-        let Some(piece) = self.get(from) else { return MoveLegality::NoPieceAtTile(from) };
-
-        if let Some(target) = self.get(to) {
-            // Cannot capture your own team's piece
-            if piece.color() == target.color() {
-                return MoveLegality::CaptureSameColor(piece.color());
-            }
-        }
-
-        MoveLegality::Legal
-    }
-     */
-
     pub fn is_legal(&mut self, from: Tile, to: Tile) -> bool {
         // TODO: Check if exists in all legal moves.
         self.legal_moves().contains(&Move::new(from, to))
@@ -162,65 +145,188 @@ impl Engine {
         &self.legal_moves
     }
 
-    /*
-    fn generate_all_legal_moves(&mut self) {
-        // self.legal_moves.extend(self.generate_pawn_moves())
-
-        for tile in Position::iter() {
-            if let Some(piece) = self.get(tile) {
-                // let legal_tiles = match piece.kind() {
-                // PieceKind::Pawn => self.generate_pawn_positions(tile),
-                // PieceKind::Knight => self.generate_knight_moves(),
-                // PieceKind::Bishop => self.generate_bishop_moves(),
-                // PieceKind::Rook => self.generate_rook_moves(),
-                // PieceKind::Queen => self.generate_queen_moves(),
-                // PieceKind::King => self.generate_king_moves(),
-                //     _ => todo!(),
-                // };
-            }
-        }
-
-        /*
-        for piece in self.pieces() {
-        }
-         */
-    }
-     */
-
     pub fn attacked_by(&self, piece: &Piece) -> Vec<Tile> {
         vec![]
     }
 
-    pub fn legal_moves_of(&self, piece: &Piece, tile: Tile) -> BitBoard {
+    pub fn legal_moves_for(&self, piece: &Piece, tile: Tile) -> BitBoard {
         moves_for(piece, tile, &self.board)
     }
 
-    /*
-    fn parse_input(&mut self, input: &str) -> Result<String, String> {
-        let mut split = input.split_whitespace().map(|word| word.to_lowercase());
-        let first = split.next().ok_or(format!("Cannot parse empty command"))?;
+    pub fn legal_moves_of(&self, tile: Tile) -> Option<BitBoard> {
+        self.piece_at(tile)
+            .map(|piece| moves_for(&piece, tile, &self.board))
+    }
 
-        let cmd = match first.as_str() {
-            "uci" => self.protocol = EngineProtocol::UCI,
-            "debug" => {
-                let debug = split.next().ok_or(format!("No debug option found"))?;
-                match debug.as_str() {
-                    "on" => self.debug = true,
-                    "off" => self.debug = false,
-                    _ => return Err(format!("Debug must be either `on` or `off`")),
+    /// Main entrypoint of the engine
+    pub fn run(&mut self) -> std::io::Result<()> {
+        let mut buffer = String::new();
+        loop {
+            buffer.clear();
+            io::stdin().read_line(&mut buffer)?;
+
+            let mut split = buffer.split_whitespace();
+
+            if let Some(protocol) = split.next() {
+                match protocol {
+                    "uci" => self.uci_loop()?,
+                    _ => {
+                        eprintln!(
+                            "Unimplemented protocol: {protocol}.\nImplemented protocols: UCI, "
+                        );
+                        return Ok(());
+                    }
                 }
             }
-            "isready" => Self::IsReady,
-            "setoption" => Self::SetOption(String::from("TODO"), vec![]),
-            "ucinewgame" => Self::UciNewGame,
-            "stop" => Self::Stop,
-            "quit" => Self::Quit,
-            _ => return Err(format!("Unrecognized command `{first}`")),
-        };
-
-        Ok(cmd)
+        }
     }
-     */
+
+    fn uci_loop(&mut self) -> std::io::Result<()> {
+        // The engine received `uci`, so follow the appropriate protocol
+        self.uci()?;
+
+        // For convenience, import the enum variants.
+        use UciCommand::*;
+
+        let mut buffer = String::new();
+        loop {
+            buffer.clear();
+            io::stdin().read_line(&mut buffer)?;
+
+            // Attempt to parse the user input
+            let cmd = match UciCommand::new(&buffer) {
+                Ok(cmd) => cmd,
+                Err(e) => {
+                    eprintln!("InputError: {e:?}");
+                    println!("Unrecognized command: {buffer}");
+
+                    // UCI protocol states to continue running when invalid input is received.
+                    continue;
+                }
+            };
+
+            // Handle the command appropriately
+            match cmd {
+                Uci => self.uci()?,
+                Debug(status) => self.debug(status),
+                IsReady => self.isready()?,
+                SetOption(name, value) => self.setoption(&name, &value),
+                Register(registration) => self.register(registration),
+                UciNewGame => self.ucinewgame(),
+                Position(fen, moves) => self.position(fen, moves),
+                Go(search_opt) => self.go(search_opt),
+                Stop => self.stop(),
+                PonderHit => self.ponderhit(),
+                Quit => return Ok(self.quit()),
+            }
+        }
+    }
+
+    /* UCI-related functions */
+
+    // Engine receive a `uci` command
+    pub fn uci(&mut self) -> io::Result<()> {
+        // The engine must now identify itself
+        self.id()?;
+        // And send all available options
+        self.option()?;
+        // Engine has sent all parameters and is ready
+        self.uciok()?;
+
+        Ok(())
+    }
+    pub fn debug(&mut self, status: bool) {
+        self.debug = status;
+    }
+    pub fn isready(&self) -> io::Result<()> {
+        let resp = UciResponse::ReadyOk;
+        resp.send()
+    }
+    pub fn setoption(&mut self, name: &str, value: &str) {
+        // match name {
+        // }
+    }
+    pub fn register(&mut self, registration: UciRegistration) {
+        // No registration necessary :)
+        _ = registration;
+
+        // match registration {
+        //     UciRegistration::Later => {}
+        //     UciRegistration::Now(name, code) => {}
+        // }
+    }
+    pub fn ucinewgame(&mut self) {}
+    pub fn position(&mut self, pos: UciPosition, moves: Vec<String>) {
+        // Fetch the FEN for the requested position.
+        let fen = pos.fen();
+
+        // Apply the FEN to the game state
+
+        // Now, if there are any moves, apply them as well.
+        for mv in moves {
+            //
+        }
+    }
+    pub fn go(&mut self, search_opt: SearchOptions) {}
+    pub fn stop(&self) {}
+    pub fn ponderhit(&self) {}
+    pub fn quit(&mut self) {}
+
+    /* Engine to GUI communication */
+    fn id(&self) -> io::Result<()> {
+        let resp = UciResponse::Id("Dutchess", "BillCipher");
+        resp.send()
+    }
+    fn uciok(&self) -> io::Result<()> {
+        let resp = UciResponse::UciOk;
+        resp.send()
+    }
+    fn readyok(&self) -> io::Result<()> {
+        let resp = UciResponse::ReadyOk;
+        resp.send()
+    }
+    fn bestmove(&self) -> io::Result<()> {
+        let resp = UciResponse::BestMove("nullmove".to_string(), None);
+        resp.send()
+    }
+    fn copyprotection(&self) -> io::Result<()> {
+        let resp = UciResponse::CopyProtection("checking");
+        resp.send()?;
+
+        // This engine isn't copy protected, so do nothing here.
+
+        let resp = UciResponse::CopyProtection("ok");
+        resp.send()
+    }
+    fn registeration(&self) -> io::Result<()> {
+        let resp = UciResponse::Registration("checking");
+        resp.send()?;
+
+        // This engine requires no registration, so do nothing here.
+
+        let resp = UciResponse::Registration("ok");
+        resp.send()
+    }
+    fn info(&self) -> io::Result<()> {
+        // let resp = UciResponse::Info("checking");
+        // resp.send()?
+        println!("info TestInfo 0");
+        Ok(())
+    }
+    fn option(&self) -> io::Result<()> {
+        for opt in self.get_uci_options() {
+            let resp = UciResponse::Option(opt);
+            resp.send()?;
+        }
+        Ok(())
+    }
+
+    fn get_uci_options(&self) -> impl Iterator<Item = UciOption> {
+        [
+            // All available options will be defined here.
+        ]
+        .into_iter()
+    }
 }
 
 impl Default for Engine {
@@ -457,7 +563,7 @@ impl GameState {
 impl Default for GameState {
     fn default() -> Self {
         // Safe unwrap: Default FEN is always valid
-        Self::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
+        Self::from_fen(DEFAULT_FEN).unwrap()
         // Self::from_fen("8/8/8/2R5/2r5/8/8/8 w KQkq - 0 1").unwrap()
         // Self::from_fen("8/8/8/2B5/2B5/8/8/8 w KQkq - 0 1").unwrap()
         // Self::from_fen("2B5/2B5/2B5/2B5/2B5/2B5/2B5/2B5 w KQkq - 0 1").unwrap()

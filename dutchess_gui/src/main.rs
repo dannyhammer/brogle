@@ -62,7 +62,7 @@ async fn main() {
             if let Some(tile) = board.selected {
                 println!("Clicked {tile}");
                 if let Some(piece) = board.engine.piece_at(tile) {
-                    board.highlighted = board.engine.legal_moves_of(&piece, tile);
+                    board.highlighted = board.engine.legal_moves_for(&piece, tile);
                 }
             }
         }
