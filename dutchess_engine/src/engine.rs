@@ -2,10 +2,7 @@ use std::{fmt, io, ops::Index};
 
 use crate::{
     moves_for,
-    uci::{
-        SearchOptions, UciCommand, UciOption, UciOptionType, UciPosition, UciRegistration,
-        UciResponse,
-    },
+    uci::{SearchOptions, UciCommand, UciOption, UciOptionType, UciResponse},
     utils::DEFAULT_FEN,
     BitBoard, ChessBoard, Color, File, Piece, PieceKind, Rank, Tile,
 };
@@ -246,7 +243,7 @@ impl Engine {
         // match name {
         // }
     }
-    pub fn register(&mut self, registration: UciRegistration) {
+    pub fn register(&mut self, registration: Option<(&str, &str)>) {
         // No registration necessary :)
         _ = registration;
 
@@ -256,11 +253,9 @@ impl Engine {
         // }
     }
     pub fn ucinewgame(&mut self) {}
-    pub fn position(&mut self, pos: UciPosition, moves: Vec<String>) {
-        // Fetch the FEN for the requested position.
-        let fen = pos.fen();
-
+    pub fn position(&mut self, fen: &str, moves: Vec<&str>) {
         // Apply the FEN to the game state
+        // self.set_state(fen)
 
         // Now, if there are any moves, apply them as well.
         for mv in moves {

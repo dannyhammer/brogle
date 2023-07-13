@@ -1,6 +1,7 @@
 use std::{
     fmt,
     io::{self, Write},
+    str::{FromStr, SplitWhitespace},
 };
 
 use log::{Level, Metadata, Record};
@@ -29,40 +30,20 @@ impl log::Log for UciLogger {
 
 pub type UciResult<T> = Result<T, InvalidUciError>;
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub struct SearchOptions {
-    wtime: Option<i32>,
-    btime: Option<i32>,
-    winc: Option<u32>,
-    binc: Option<u32>,
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
+pub struct SearchOptions<'a> {
+    moves: Vec<&'a str>,
+    w_time: Option<i32>,
+    b_time: Option<i32>,
+    w_inc: Option<u32>,
+    b_inc: Option<u32>,
     moves_to_go: Option<u32>,
     depth: Option<u32>,
     nodes: Option<u64>,
     mate: Option<u32>,
     move_time: Option<u32>,
     infinite: bool,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum UciPosition {
-    FEN(String),
-    StartPos,
-}
-
-impl UciPosition {
-    pub fn fen(&self) -> &str {
-        if let Self::FEN(fen) = self {
-            fen.as_str()
-        } else {
-            DEFAULT_FEN
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum UciRegistration<'a> {
-    Later,
-    Now(&'a str /* name */, &'a str /* code */),
+    ponder: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
@@ -181,7 +162,7 @@ pub enum UciCommand<'a> {
     ///     "setoption name Style value Risky\n"
     ///     "setoption name Clear Hash\n"
     ///     "setoption name NalimovPath value c:\chess\tb\4;c:\chess\tb\5\n"
-    SetOption(String /* name */, String /* value */),
+    SetOption(&'a str /* name */, &'a str /* value */),
 
     /// `register`
     ///
@@ -198,7 +179,9 @@ pub enum UciCommand<'a> {
     /// Example:
     ///    "register later"
     ///    "register name Stefan MK code 4359874324"
-    Register(UciRegistration<'a>),
+    // `None` -> `later`
+    // `Some` -> `(name, code)`
+    Register(Option<(&'a str, &'a str)>),
 
     /// `ucinewgame`
     ///
@@ -220,8 +203,8 @@ pub enum UciCommand<'a> {
     /// Note: no "new" command is needed. However, if this position is from a different game than
     /// the last position sent to the engine, the GUI should have sent a "ucinewgame" inbetween.
     Position(
-        UciPosition, /* fen or startpos */
-        Vec<String>, /* moves */
+        &'a str,      /* will be a FEN string */
+        Vec<&'a str>, /* moves */
     ),
 
     /// `go`
@@ -265,7 +248,7 @@ pub enum UciCommand<'a> {
     /// 	search exactly x mseconds
     /// * infinite
     /// 	search until the "stop" command. Do not exit the search without being told so in this mode!
-    Go(SearchOptions),
+    Go(SearchOptions<'a>),
 
     /// `stop`
     ///
@@ -287,63 +270,135 @@ pub enum UciCommand<'a> {
 
 impl<'a> UciCommand<'a> {
     pub fn new(input: &'a str) -> UciResult<Self> {
-        let mut split = input.split_whitespace();
-        let first = split.next().ok_or(InvalidUciError::NoInputProvided)?;
+        // Leading and trailing whitespace is ignored
+        let input = input.trim();
 
-        let cmd = match first {
-            "uci" => Self::Uci,
-            "debug" => Self::parse_debug(split)?,
-            "isready" => Self::IsReady,
-            "setoption" => Self::parse_setoption(split)?,
-            "register" => Self::parse_register(split)?,
-            "ucinewgame" => Self::UciNewGame,
-            "position" => Self::parse_position(split)?,
-            "go" => Self::parse_go(split)?,
-            "stop" => Self::Stop,
-            "ponderhit" => Self::PonderHit,
-            "quit" => Self::Quit,
-            _ => return Err(InvalidUciError::UnrecognizedCommand),
-        };
-
-        Ok(cmd)
+        // Check if the provided input has multiple components to it
+        if let Some((first, rest)) = input.split_once(' ') {
+            let rest = rest.trim();
+            match first.trim() {
+                "debug" => Self::parse_debug(rest),
+                "setoption" => Self::parse_setoption(rest),
+                "register" => Self::parse_register(rest),
+                "position" => Self::parse_position(rest),
+                "go" => Self::parse_go(rest),
+                _ => Err(InvalidUciError::UnrecognizedCommand),
+            }
+        } else {
+            // If not, it may be a single-worded command, so check that
+            match input {
+                "uci" => Ok(Self::Uci),
+                "isready" => Ok(Self::IsReady),
+                "ucinewgame" => Ok(Self::UciNewGame),
+                "stop" => Ok(Self::Stop),
+                "ponderhit" => Ok(Self::PonderHit),
+                "quit" => Ok(Self::Quit),
+                _ => Err(InvalidUciError::UnrecognizedCommand),
+            }
+        }
     }
 
-    fn parse_debug(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
-        let debug = args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
-        match debug {
+    fn parse_debug(args: &'a str) -> UciResult<Self> {
+        // This one's simple
+        match args {
             "on" => Ok(Self::Debug(true)),
             "off" => Ok(Self::Debug(false)),
             _ => Err(InvalidUciError::InvalidArgument),
         }
     }
 
-    fn parse_setoption(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
-        todo!()
+    fn parse_setoption(args: &'a str) -> UciResult<Self> {
+        // First, we fetch the `value` field
+        let (name, value) = args
+            .split_once("value")
+            .ok_or(InvalidUciError::NotEnoughArguments)?;
+
+        // Then, we fetch the `name` of the option
+        let (_, name) = name
+            .split_once("name")
+            .ok_or(InvalidUciError::NotEnoughArguments)?;
+
+        Ok(UciCommand::SetOption(name.trim(), value.trim()))
     }
 
-    fn parse_register(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
-        let next = args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
-
-        let registration = match next {
-            "later" => UciRegistration::Later,
-            "name" => {
-                let name = args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
-                args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
-                let code = args.next().ok_or(InvalidUciError::NotEnoughArguments)?;
-                UciRegistration::Now(name, code)
-            }
-            _ => return Err(InvalidUciError::InvalidArgument),
+    fn parse_register(args: &'a str) -> UciResult<Self> {
+        // A `None` value represents "register later"
+        let registration = if args.starts_with("later") {
+            None
+        } else if args.starts_with("name") {
+            // Otherwise, we need to fetch the name and code.
+            let (_, args) = args
+                .split_once("name")
+                .ok_or(InvalidUciError::NotEnoughArguments)?;
+            let (name, code) = args
+                .split_once("code")
+                .ok_or(InvalidUciError::NotEnoughArguments)?;
+            Some((name.trim(), code.trim()))
+        } else {
+            return Err(InvalidUciError::InvalidArgument);
         };
 
         Ok(UciCommand::Register(registration))
     }
 
-    fn parse_position(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
-        todo!()
+    fn parse_position(args: &'a str) -> UciResult<Self> {
+        // First, we check if there are any moves provided
+        let (pos, moves) = if let Some((pos, moves)) = args.split_once("moves") {
+            (pos, moves.split_whitespace().collect())
+        } else {
+            (args, vec![])
+        };
+
+        // Now, we parse the position, which is either `startpos` or `fen <str>`
+        let pos = if pos.starts_with("fen") {
+            let (_, fen) = pos
+                .split_once("fen")
+                .ok_or(InvalidUciError::NotEnoughArguments)?;
+            fen.trim()
+        } else if pos.starts_with("startpos") {
+            DEFAULT_FEN
+        } else {
+            return Err(InvalidUciError::InvalidArgument);
+        };
+
+        Ok(UciCommand::Position(pos, moves))
     }
 
-    fn parse_go(mut args: impl Iterator<Item = &'a str>) -> UciResult<Self> {
-        todo!()
+    fn parse_go(args: &'a str) -> UciResult<Self> {
+        let mut opt = SearchOptions::default();
+
+        // reduces redundant code
+        fn parse<T: FromStr>(input: Option<&str>) -> UciResult<T> {
+            input
+                .ok_or(InvalidUciError::NotEnoughArguments)?
+                .parse()
+                .map_err(|_| InvalidUciError::InvalidArgument)
+        }
+
+        let mut args = args.split_whitespace();
+        while let Some(arg) = args.next() {
+            match arg {
+                "searchmoves" => {
+                    // TODO: Can `searchmoves` come before anything else?
+                    opt.moves = args.collect();
+                    break;
+                }
+                "ponder" => opt.ponder = true,
+                "wtime" => opt.w_time = Some(parse(args.next())?),
+                "btime" => opt.b_time = Some(parse(args.next())?),
+                "winc" => opt.w_inc = Some(parse(args.next())?),
+                "binc" => opt.b_inc = Some(parse(args.next())?),
+                "movestogo" => opt.moves_to_go = Some(parse(args.next())?),
+                "depth" => opt.depth = Some(parse(args.next())?),
+                "nodes" => opt.nodes = Some(parse(args.next())?),
+                "mate" => opt.mate = Some(parse(args.next())?),
+                "movetime" => opt.move_time = Some(parse(args.next())?),
+                "infinite" => opt.infinite = true,
+                _ => return Err(InvalidUciError::InvalidArgument),
+            }
+        }
+
+        Ok(UciCommand::Go(opt))
     }
 }
 
@@ -680,6 +735,7 @@ pub struct UciInfo {
     refutation: Vec<String>,
     currline: Vec<String>,
 }
+
 impl fmt::Display for UciInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(depth) = &self.depth {
@@ -728,88 +784,180 @@ impl fmt::Display for UciOptionType {
     }
 }
 
-/// Examples:
-/// ---
-///
-/// This is how the communication when the engine boots can look like:
-///
-/// GUI     engine
-///
-/// // tell the engine to switch to UCI mode
-/// uci
-///
-/// // engine identify
-///       id name Shredder
-/// 		id author Stefan MK
-///
-/// // engine sends the options it can change
-/// // the engine can change the hash size from 1 to 128 MB
-/// 		option name Hash type spin default 1 min 1 max 128
-///
-/// // the engine supports Nalimov endgame tablebases
-/// 		option name NalimovPath type string default <empty>
-/// 		option name NalimovCache type spin default 1 min 1 max 32
-///
-/// // the engine can switch off Nullmove and set the playing style
-/// 	   option name Nullmove type check default true
-///   		option name Style type combo default Normal var Solid var Normal var Risky
-///
-/// // the engine has sent all parameters and is ready
-/// 		uciok
-///
-/// // Note: here the GUI can already send a "quit" command if it just wants to find out
-/// //       details about the engine, so the engine should not initialize its internal
-/// //       parameters before here.
-/// // now the GUI sets some values in the engine
-/// // set hash to 32 MB
-/// setoption name Hash value 32
-///
-/// // init tbs
-/// setoption name NalimovCache value 1
-/// setoption name NalimovPath value d:\tb;c\tb
-///
-/// // waiting for the engine to finish initializing
-/// // this command and the answer is required here!
-/// isready
-///
-/// // engine has finished setting up the internal values
-/// 		readyok
-///
-/// // now we are ready to go
-///
-/// // if the GUI is supporting it, tell the engine that is is
-/// // searching on a game that it hasn't searched on before
-/// ucinewgame
-///
-/// // if the engine supports the "UCI_AnalyseMode" option and the next search is supposed to
-/// // be an analysis, the GUI should set "UCI_AnalyseMode" to true if it is currently
-/// // set to false with this engine
-/// setoption name UCI_AnalyseMode value true
-///
-/// // tell the engine to search infinite from the start position after 1.e4 e5
-/// position startpos moves e2e4 e7e5
-/// go infinite
-///
-/// // the engine starts sending infos about the search to the GUI
-/// // (only some examples are given)
-///
-/// 		info depth 1 seldepth 0
-/// 		info score cp 13  depth 1 nodes 13 time 15 pv f1b5
-/// 		info depth 2 seldepth 2
-/// 		info nps 15937
-/// 		info score cp 14  depth 2 nodes 255 time 15 pv f1c4 f8c5
-/// 		info depth 2 seldepth 7 nodes 255
-/// 		info depth 3 seldepth 7
-/// 		info nps 26437
-/// 		info score cp 20  depth 3 nodes 423 time 15 pv f1c4 g8f6 b1c3
-/// 		info nps 41562
-/// 		....
-///
-/// // here the user has seen enough and asks to stop the searching
-/// stop
-///
-/// // the engine has finished searching and is sending the bestmove command
-/// // which is needed for every "go" command sent to tell the GUI
-/// // that the engine is ready again
-/// 		bestmove g1f3 ponder d8f6
-struct _ExampleText;
+// Examples:
+// ---
+//
+// This is how the communication when the engine boots can look like:
+//
+// GUI     engine
+//
+// // tell the engine to switch to UCI mode
+// uci
+//
+// // engine identify
+//       id name Shredder
+// 		id author Stefan MK
+//
+// // engine sends the options it can change
+// // the engine can change the hash size from 1 to 128 MB
+// 		option name Hash type spin default 1 min 1 max 128
+//
+// // the engine supports Nalimov endgame tablebases
+// 		option name NalimovPath type string default <empty>
+// 		option name NalimovCache type spin default 1 min 1 max 32
+//
+// // the engine can switch off Nullmove and set the playing style
+// 	   option name Nullmove type check default true
+//   		option name Style type combo default Normal var Solid var Normal var Risky
+//
+// // the engine has sent all parameters and is ready
+// 		uciok
+//
+// // Note: here the GUI can already send a "quit" command if it just wants to find out
+// //       details about the engine, so the engine should not initialize its internal
+// //       parameters before here.
+// // now the GUI sets some values in the engine
+// // set hash to 32 MB
+// setoption name Hash value 32
+//
+// // init tbs
+// setoption name NalimovCache value 1
+// setoption name NalimovPath value d:\tb;c\tb
+//
+// // waiting for the engine to finish initializing
+// // this command and the answer is required here!
+// isready
+//
+// // engine has finished setting up the internal values
+// 		readyok
+//
+// // now we are ready to go
+//
+// // if the GUI is supporting it, tell the engine that is is
+// // searching on a game that it hasn't searched on before
+// ucinewgame
+//
+// // if the engine supports the "UCI_AnalyseMode" option and the next search is supposed to
+// // be an analysis, the GUI should set "UCI_AnalyseMode" to true if it is currently
+// // set to false with this engine
+// setoption name UCI_AnalyseMode value true
+//
+// // tell the engine to search infinite from the start position after 1.e4 e5
+// position startpos moves e2e4 e7e5
+// go infinite
+//
+// // the engine starts sending infos about the search to the GUI
+// // (only some examples are given)
+//
+// 		info depth 1 seldepth 0
+// 		info score cp 13  depth 1 nodes 13 time 15 pv f1b5
+// 		info depth 2 seldepth 2
+// 		info nps 15937
+// 		info score cp 14  depth 2 nodes 255 time 15 pv f1c4 f8c5
+// 		info depth 2 seldepth 7 nodes 255
+// 		info depth 3 seldepth 7
+// 		info nps 26437
+// 		info score cp 20  depth 3 nodes 423 time 15 pv f1c4 g8f6 b1c3
+// 		info nps 41562
+// 		....
+//
+// // here the user has seen enough and asks to stop the searching
+// stop
+//
+// // the engine has finished searching and is sending the bestmove command
+// // which is needed for every "go" command sent to tell the GUI
+// // that the engine is ready again
+// 		bestmove g1f3 ponder d8f6
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn parse_test(input: &str, expected: UciCommand) {
+        let parsed = UciCommand::new(input);
+        assert!(parsed.is_ok());
+        assert_eq!(parsed.unwrap(), expected);
+    }
+    #[test]
+    fn parse_lone_commands() {
+        parse_test("uci", UciCommand::Uci);
+        parse_test("isready", UciCommand::IsReady);
+        parse_test("ucinewgame", UciCommand::UciNewGame);
+        parse_test("stop", UciCommand::Stop);
+        parse_test("ponderhit", UciCommand::PonderHit);
+        parse_test("quit", UciCommand::Quit);
+    }
+
+    #[test]
+    fn parse_debug() {
+        parse_test("debug on", UciCommand::Debug(true));
+        parse_test("debug off", UciCommand::Debug(false));
+    }
+
+    #[test]
+    fn parse_position() {
+        parse_test(
+            "position startpos",
+            UciCommand::Position(DEFAULT_FEN, vec![]),
+        );
+
+        parse_test(
+            "position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            UciCommand::Position(DEFAULT_FEN, vec![]),
+        );
+
+        parse_test(
+            "position startpos moves e2e4 e7e5",
+            UciCommand::Position(DEFAULT_FEN, vec!["e2e4", "e7e5"]),
+        )
+    }
+
+    #[test]
+    fn parse_register() {
+        parse_test("register later", UciCommand::Register(None));
+
+        parse_test(
+            "register name Bill Cipher code 42",
+            UciCommand::Register(Some(("Bill Cipher", "42"))),
+        );
+    }
+
+    #[test]
+    fn parse_setoption() {
+        parse_test(
+            "setoption name Test Option value 0",
+            UciCommand::SetOption("Test Option", "0"),
+        );
+    }
+
+    #[test]
+    fn parse_go() {
+        parse_test(
+            "go infinite",
+            UciCommand::Go(SearchOptions {
+                infinite: true,
+                ..Default::default()
+            }),
+        );
+
+        parse_test(
+            "go btime 30000 wtime 30000 winc 10 binc 42",
+            UciCommand::Go(SearchOptions {
+                b_time: Some(30_000),
+                w_time: Some(30_000),
+                w_inc: Some(10),
+                b_inc: Some(42),
+                ..Default::default()
+            }),
+        );
+
+        parse_test(
+            "go infinite searchmoves e2e4 d2d4",
+            UciCommand::Go(SearchOptions {
+                infinite: true,
+                moves: vec!["e2e4", "d2d4"],
+                ..Default::default()
+            }),
+        );
+    }
+}
