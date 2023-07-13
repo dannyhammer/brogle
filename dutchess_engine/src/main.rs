@@ -1,29 +1,96 @@
-use dutchess_engine::*;
+use dutchess_engine::{uci::UciCommand, uci::UciLogger, *};
+use log::SetLoggerError;
 
-use std::io::{stdin, stdout, Write};
+use std::{
+    io::{stdin, stdout, Write},
+    sync::mpsc,
+    thread,
+};
+
+static LOGGER: UciLogger = UciLogger;
+
+pub fn init_logger() -> Result<(), SetLoggerError> {
+    log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info))
+}
 
 fn main() {
-    let mut engine = Engine::new();
+    let name = env!("CARGO_PKG_NAME");
+    let version = env!("CARGO_PKG_VERSION");
+    let authors = env!("CARGO_PKG_AUTHORS");
+    println!("{name} v{version} by {authors}");
 
-    let mut input = String::new();
+    // let (sender, receiver) = mpsc::channel();
+    // let cloned = sender.clone();
 
-    loop {
-        print!("CLIENT > ");
-        stdout().flush().expect("Failed to flush stdout");
+    /*
+    let input_handler = thread::spawn(move || loop {
+        let mut buffer = String::new();
 
         stdin()
-            .read_line(&mut input)
+            .read_line(&mut buffer)
             .expect("Failed to read user input");
 
-        match engine.parse_input(&input) {
-            Err(e) => {
-                eprintln!("InputError: {e}");
-                continue;
-            }
+        match UciCommand::new(&buffer) {
             Ok(cmd) => {
-                let response = engine.process_command(cmd);
+                if UciCommand::Quit == cmd || cloned.send(buffer).is_err() {
+                    return;
+                }
+            }
+            Err(e) => {
+                println!("{e}");
+            }
+        }
+    });
+     */
 
-                println!("DUTCHESS > {response}");
+    let mut engine = Engine::new();
+
+    run(engine).expect("Fatal IO error");
+}
+
+fn run(mut engine: Engine) -> std::io::Result<()> {
+    let mut buffer = String::new();
+    use UciCommand::*;
+    loop {
+        buffer.clear();
+        stdin().read_line(&mut buffer)?;
+
+        match UciCommand::new(&buffer) {
+            Ok(cmd) => match dbg!(cmd) {
+                Uci => {
+                    //
+                }
+                Debug(status) => engine.debug(status),
+                IsReady => {
+                    //
+                }
+                SetOption(name, value) => {
+                    //
+                }
+                Register(args) => {
+                    //
+                }
+                UciNewGame => {
+                    //
+                }
+                Position(fen, moves) => {
+                    //
+                }
+                Go(search_opt) => {
+                    //
+                }
+                Stop => {
+                    //
+                }
+                PonderHit => {
+                    //
+                }
+                Quit => {
+                    return Ok(());
+                }
+            },
+            Err(e) => {
+                println!("{e}");
             }
         }
     }

@@ -1,4 +1,7 @@
-use std::{fmt, ops::Not};
+use std::{
+    fmt,
+    ops::{Index, IndexMut, Not},
+};
 
 /// Represents the color of a player, piece, tile, etc. within a chess board.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -27,12 +30,29 @@ impl Color {
     pub const fn index(&self) -> usize {
         *self as usize
     }
+
+    pub const fn bits(&self) -> u8 {
+        *self as u8
+    }
 }
 
 impl Not for Color {
     type Output = Self;
     fn not(self) -> Self::Output {
         self.opponent()
+    }
+}
+
+impl<T> Index<Color> for [T; 2] {
+    type Output = T;
+    fn index(&self, index: Color) -> &Self::Output {
+        &self[index.index()]
+    }
+}
+
+impl<T> IndexMut<Color> for [T; 2] {
+    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
+        &mut self[index.index()]
     }
 }
 
@@ -136,6 +156,19 @@ impl Ord for PieceKind {
     }
 }
 
+impl<T> Index<PieceKind> for [T; 6] {
+    type Output = T;
+    fn index(&self, index: PieceKind) -> &Self::Output {
+        &self[index.index()]
+    }
+}
+
+impl<T> IndexMut<PieceKind> for [T; 6] {
+    fn index_mut(&mut self, index: PieceKind) -> &mut Self::Output {
+        &mut self[index.index()]
+    }
+}
+
 impl fmt::Display for PieceKind {
     /// By default, piece classes display as uppercase chars (white)
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -155,6 +188,11 @@ impl Piece {
         // 0000 1000 => black
         let color = if color.is_white() { 0 } else { 8 };
         Self(kind.bits() | color)
+        // if color.is_white() {
+        //     Self(kind.bits())
+        // } else {
+        //     Self(kind.bits() << 1)
+        // }
     }
 
     pub const fn color(&self) -> Color {
@@ -164,11 +202,18 @@ impl Piece {
         } else {
             Color::Black
         }
+        // if self.0 % 2 == 1 {
+        //     Color::White
+        // } else {
+        //     Color::Black
+        // }
     }
 
     pub const fn kind(&self) -> PieceKind {
         // Clear the color bit
         PieceKind::from_bits(self.0 & !8)
+        // let bits = if self.is_white() { self.0 } else { self.0 >> 1 };
+        // PieceKind::from_bits(bits)
     }
 
     pub const fn is_white(&self) -> bool {
@@ -190,6 +235,19 @@ impl Piece {
         } else {
             self.kind().char().to_ascii_lowercase()
         }
+    }
+}
+
+impl<T> Index<Piece> for [T; 12] {
+    type Output = T;
+    fn index(&self, index: Piece) -> &Self::Output {
+        &self[index.index()]
+    }
+}
+
+impl<T> IndexMut<Piece> for [T; 12] {
+    fn index_mut(&mut self, index: Piece) -> &mut Self::Output {
+        &mut self[index.index()]
     }
 }
 

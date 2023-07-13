@@ -52,6 +52,11 @@ impl fmt::Display for MoveLegality {
 
 type TranspositionTable = ();
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
+enum EngineProtocol {
+    UCI,
+}
+
 #[derive(PartialEq, Eq, Debug, Hash)]
 pub struct Engine {
     /// State of the game, including castling rights, piece placement, etc.
@@ -70,6 +75,11 @@ pub struct Engine {
 
     /// Transposition table for game states.
     ttable: TranspositionTable,
+
+    /// Communication protocol
+    protocol: EngineProtocol,
+
+    debug: bool,
 }
 
 impl Engine {
@@ -82,6 +92,8 @@ impl Engine {
             history: Vec::with_capacity(64),
             legal_moves: Vec::with_capacity(1024),
             ttable: (),
+            protocol: EngineProtocol::UCI,
+            debug: true,
         };
         // s.generate_all_legal_moves();
         s
@@ -120,18 +132,8 @@ impl Engine {
         true
     }
 
-    pub fn process_command(&mut self, cmd: UciCommand) -> UciResponse {
-        use UciCommand::*;
-        match cmd {
-            // Quit => {
-            //     format!("Goodbye!")
-            // }
-            _ => todo!(),
-        }
-    }
-
-    pub fn parse_input(&self, input: &str) -> Result<UciCommand, String> {
-        UciCommand::new(input)
+    pub fn debug(&mut self, status: bool) {
+        self.debug = status;
     }
 
     /// Returns whether the move is legal to make, given the current game state.
@@ -192,6 +194,33 @@ impl Engine {
     pub fn legal_moves_of(&self, piece: &Piece, tile: Tile) -> BitBoard {
         moves_for(piece, tile, &self.board)
     }
+
+    /*
+    fn parse_input(&mut self, input: &str) -> Result<String, String> {
+        let mut split = input.split_whitespace().map(|word| word.to_lowercase());
+        let first = split.next().ok_or(format!("Cannot parse empty command"))?;
+
+        let cmd = match first.as_str() {
+            "uci" => self.protocol = EngineProtocol::UCI,
+            "debug" => {
+                let debug = split.next().ok_or(format!("No debug option found"))?;
+                match debug.as_str() {
+                    "on" => self.debug = true,
+                    "off" => self.debug = false,
+                    _ => return Err(format!("Debug must be either `on` or `off`")),
+                }
+            }
+            "isready" => Self::IsReady,
+            "setoption" => Self::SetOption(String::from("TODO"), vec![]),
+            "ucinewgame" => Self::UciNewGame,
+            "stop" => Self::Stop,
+            "quit" => Self::Quit,
+            _ => return Err(format!("Unrecognized command `{first}`")),
+        };
+
+        Ok(cmd)
+    }
+     */
 }
 
 impl Default for Engine {
