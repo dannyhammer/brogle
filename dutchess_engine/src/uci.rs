@@ -1,7 +1,7 @@
 use std::{
     fmt,
     io::{self, Write},
-    str::{FromStr, SplitWhitespace},
+    str::FromStr,
 };
 
 use log::{Level, Metadata, Record};
@@ -57,214 +57,324 @@ pub enum InvalidUciError {
 //     //
 // }
 
-// pub trait UciEngine {
-//     type Error;
+/// Represents a type that has implemented the Universal Chess Interface (UCI) protocol.
+pub trait UciEngine {
+    /// The main I/O loop that handles communication between the engine and other program(s).
+    ///
+    /// Upon receiving `uci`, your engine should call this function, and will only leave this function
+    /// when a `quit` message is received.
+    fn uci_loop(&mut self) -> std::io::Result<()> {
+        // The engine received `uci`, so follow the appropriate protocol
+        self.uci()?;
 
-//     fn parse_input(&mut self, command: &str) -> Result<String, Self::Error>;
-//     // fn handle_debug(&mut self, args: &[String]) ->
-// }
+        // For convenience, import the enum variants.
+        use UciCommand::*;
 
-/// Description of the universal chess interface (UCI)    April  2006
-/// =================================================================
-///
-/// * The specification is independent of the operating system. For Windows,
-///   the engine is a normal exe file, either a console or "real" windows application.
-///
-/// * all communication is done via standard input and output with text commands,
-///
-/// * The engine should boot and wait for input from the GUI,
-///   the engine should wait for the "isready" or "setoption" command to set up its internal parameters
-///   as the boot process should be as quick as possible.
-///
-/// * the engine must always be able to process input from stdin, even while thinking.
-///
-/// * all command strings the engine receives will end with '\n',
-///   also all commands the GUI receives should end with '\n',
-///   Note: '\n' can be 0x0d or 0x0a0d or any combination depending on your OS.
-///   If you use Engine and GUI in the same OS this should be no problem if you communicate in text mode,
-///   but be aware of this when for example running a Linux engine in a Windows GUI.
-///
-/// * arbitrary white space between tokens is allowed
-///   Example: "debug on\n" and  "   debug     on  \n" and "\t  debug \t  \t\ton\t  \n"
-///
-/// * The engine will always be in forced mode which means it should never start calculating
-///   or pondering without receiving a "go" command first.
-///
-/// * Before the engine is asked to search on a position, there will always be a position command
-///   to tell the engine about the current position.
-///
-/// * by default all the opening book handling is done by the GUI,
-///   but there is an option for the engine to use its own book ("OwnBook" option, see below)
-///
-/// * if the engine or the GUI receives an unknown command or token it should just ignore it and try to
-///   parse the rest of the string in this line.
-///   Examples: "joho debug on\n" should switch the debug mode on given that joho is not defined,
-///             "debug joho on\n" will be undefined however.
-///
-/// * if the engine receives a command which is not supposed to come, for example "stop" when the engine is
-///   not calculating, it should also just ignore it.
-///
-/// Move format:
-/// The move format is in long algebraic notation.
-/// A nullmove from the Engine to the GUI should be sent as 0000.
-/// Examples:  `e2e4`, `e7e5`, `e1g1` (white short castling), `e7e8q` (for promotion)
+        let mut buffer = String::new();
+        loop {
+            buffer.clear();
+            io::stdin().read_line(&mut buffer)?;
 
-/// UCI Commands (GUI to Engine)
-/// ---
-///
-/// These are all the commands the engine gets from the interface.
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum UciCommand<'a> {
-    /// `uci`
+            // Attempt to parse the user input
+            let cmd = match UciCommand::new(&buffer) {
+                Ok(cmd) => cmd,
+                Err(e) => {
+                    eprintln!("InputError: {e:?}");
+                    println!("Unrecognized command: {buffer}");
+
+                    // UCI protocol states to continue running when invalid input is received.
+                    continue;
+                }
+            };
+
+            // Handle the command appropriately
+            match cmd {
+                Uci => self.uci()?,
+                Debug(status) => self.debug(status),
+                IsReady => self.isready()?,
+                SetOption(name, value) => self.setoption(&name, &value),
+                Register(registration) => self.register(registration),
+                UciNewGame => self.ucinewgame(),
+                Position(fen, moves) => self.position(fen, moves),
+                Go(search_opt) => self.go(search_opt),
+                Stop => self.stop(),
+                PonderHit => self.ponderhit(),
+                Quit => return Ok(self.quit()),
+            }
+        }
+    }
+
+    /* GUI to Engine communication */
+
+    /// Called when the engine receives the `uci` command.
     ///
     /// Tell engine to use the uci (universal chess interface),
     /// this will be sent once as a first command after program boot
     /// to tell the engine to switch to uci mode.
-    /// After receiving the uci command the engine must identify itself with the "id" command
-    /// and send the "option" commands to tell the GUI which engine settings the engine supports if any.
-    /// After that the engine should send "uciok" to acknowledge the uci mode.
+    ///
+    /// After receiving the uci command the engine must identify itself with the `id` command
+    /// and send the `option` commands to tell the GUI which engine settings the engine supports if any.
+    /// After that the engine should send `uciok` to acknowledge the uci mode.
     /// If no uciok is sent within a certain time period, the engine task will be killed by the GUI.
-    Uci,
+    fn uci(&mut self) -> io::Result<()>;
 
-    /// `debug [ on | off ]`
+    /// Called upon `debug [on | off]` where `on = true`.
     ///
     /// Switch the debug mode of the engine on and off.
-    /// In debug mode the engine should send additional infos to the GUI, e.g. with the "info string" command,
+    ///
+    /// In debug mode the engine should send additional infos to the GUI, e.g. with the `info string` command,
     /// to help debugging, e.g. the commands that the engine has received etc.
     /// This mode should be switched off by default and this command can be sent
     /// any time, also when the engine is thinking.
-    Debug(bool /* on/off */),
+    fn debug(&mut self, status: bool);
 
-    /// `isready`
+    /// Called when the engine receives `isready`.
     ///
     /// This is used to synchronize the engine with the GUI. When the GUI has sent a command or
     /// multiple commands that can take some time to complete,
     /// this command can be used to wait for the engine to be ready again or
     /// to ping the engine to find out if it is still alive.
+    ///
     /// E.g. this should be sent after setting the path to the tablebases as this can take some time.
     /// This command is also required once before the engine is asked to do any search
     /// to wait for the engine to finish initializing.
-    /// This command must always be answered with "readyok" and can be sent also when the engine is calculating
-    /// in which case the engine should also immediately answer with "readyok" without stopping the search.
-    IsReady,
+    /// This command must always be answered with `readyok` and can be sent also when the engine is calculating
+    /// in which case the engine should also immediately answer with `readyok` without stopping the search.
+    fn isready(&self) -> io::Result<()>;
 
+    /// Called when the engine receives `setoption name <name> [ value <value> ]`.
     /// `setoption name <id> [value <x>]`
     ///
     /// This is sent to the engine when the user wants to change the internal parameters
-    /// of the engine. For the "button" type no value is needed.
+    /// of the engine. For the `button` type no value is needed.
+    ///
     /// One string will be sent for each parameter and this will only be sent when the engine is waiting.
-    /// The name and value of the option in <id> should not be case sensitive and can inlude spaces.
-    /// The substrings "value" and "name" should be avoided in <id> and <x> to allow unambiguous parsing,
-    /// for example do not use <name> = "draw value".
+    /// The name and value of the option in <id> should not be case sensitive and can include spaces.
+    /// The substrings `value` and `name` should be avoided in `<id>` and `<x>` to allow unambiguous parsing,
+    /// for example do not use `<name> = draw value`.
+    ///
+    /// # Examples
     /// Here are some strings for the example below:
-    ///     "setoption name Nullmove value true\n"
-    ///     "setoption name Selectivity value 3\n"
-    ///     "setoption name Style value Risky\n"
-    ///     "setoption name Clear Hash\n"
-    ///     "setoption name NalimovPath value c:\chess\tb\4;c:\chess\tb\5\n"
-    SetOption(&'a str /* name */, &'a str /* value */),
+    /// * `setoption name Nullmove value true\n`
+    /// * `setoption name Selectivity value 3\n`
+    /// * `setoption name Style value Risky\n`
+    /// * `setoption name Clear Hash\n`
+    /// * `setoption name NalimovPath value c:\chess\tb\4;c:\chess\tb\5\n`
+    fn setoption(&mut self, name: &str, value: &str);
 
-    /// `register`
+    /// Called when the engine receives `registration [name <name> code <code> | later]`.
     ///
     /// This is the command to try to register an engine or to tell the engine that registration
-    /// will be done later. This command should always be sent if the engine has sent "registration error"
+    /// will be done later. This command should always be sent if the engine has sent `registration error`
     /// at program startup.
-    /// The following tokens are allowed:
-    /// * later
-    ///    the user doesn't want to register the engine now.
-    /// * name <x>
-    ///    the engine should be registered with the name <x>
-    /// * code <y>
-    ///    the engine should be registered with the code <y>
-    /// Example:
-    ///    "register later"
-    ///    "register name Stefan MK code 4359874324"
-    // `None` -> `later`
-    // `Some` -> `(name, code)`
-    Register(Option<(&'a str, &'a str)>),
-
-    /// `ucinewgame`
     ///
-    /// this is sent to the engine when the next search (started with "position" and "go") will be from
-    /// a different game. This can be a new game the engine should play or a new game it should analyse but
-    /// also the next position from a testsuite with positions only.
-    /// If the GUI hasn't sent a "ucinewgame" before the first "position" command, the engine shouldn't
+    /// The following tokens are allowed:
+    /// * `later`
+    ///    * The user doesn't want to register the engine now.
+    /// * `name <x>`
+    ///    * The engine should be registered with the name `<x>`
+    /// * `code <y>`
+    ///    * The engine should be registered with the code `<y>`
+    ///
+    /// If called with `later`, then the `registration` parameter will be `None`.
+    /// Otherwise, it will be `Some(name, code)`.
+    ///
+    /// # Example:
+    ///    `register later`
+    ///    `register name Stefan MK code 4359874324`
+    fn register(&mut self, registration: Option<(&str, &str)>);
+
+    /// Called when the engine receives `ucinewgame`.
+    ///
+    /// This is sent to the engine when the next search (started with `position` and `go`) will be from
+    /// a different game. This can be a new game the engine should play or a new game it should analyze but
+    /// also the next position from a test suite with positions only.
+    ///
+    /// If the GUI hasn't sent a `ucinewgame` before the first `position` command, the engine shouldn't
     /// expect any further ucinewgame commands as the GUI is probably not supporting the ucinewgame command.
     /// So the engine should not rely on this command even though all new GUIs should support it.
-    /// As the engine's reaction to "ucinewgame" can take some time the GUI should always send "isready"
-    /// after "ucinewgame" to wait for the engine to finish its operation.
-    UciNewGame,
-
-    /// `position [fen <fenstring> | startpos ]  moves <move1> .... <movei>`
     ///
-    /// Set up the position described in fenstring on the internal board and
+    /// As the engine's reaction to `ucinewgame` can take some time the GUI should always send `isready`
+    /// after `ucinewgame` to wait for the engine to finish its operation.
+    fn ucinewgame(&mut self);
+
+    /// Called when the engine receives `position [ startpos | fen <fen> ] move <move1> ... <movei>`
+    ///
+    /// Set up the position described in FEN string on the internal board and
     /// play the moves on the internal chess board.
-    /// if the game was played  from the start position the string "startpos" will be sent
-    /// Note: no "new" command is needed. However, if this position is from a different game than
-    /// the last position sent to the engine, the GUI should have sent a "ucinewgame" inbetween.
-    Position(
-        &'a str,      /* will be a FEN string */
-        Vec<&'a str>, /* moves */
-    ),
-
-    /// `go`
     ///
-    /// Start calculating on the current position set up with the "position" command.
+    /// If the game was played  from the start position the string `startpos` will be sent
+    /// Note: no `new` command is needed. However, if this position is from a different game than
+    /// the last position sent to the engine, the GUI should have sent a `ucinewgame` in between.
+    fn position(&mut self, fen: &str, moves: Vec<&str>);
+
+    /// Called when the engine receives `go <search options>`.
+    ///
+    /// Start calculating on the current position set up with the `position` command.
+    ///
     /// There are a number of commands that can follow this command, all will be sent in the same string.
+    ///
     /// If one command is not sent its value should be interpreted as it would not influence the search.
-    /// * searchmoves <move1> .... <movei>
-    /// 	restrict search to this moves only
-    /// 	Example: After "position startpos" and "go infinite searchmoves e2e4 d2d4"
-    /// 	the engine should only search the two moves e2e4 and d2d4 in the initial position.
-    /// * ponder
-    /// 	start searching in pondering mode.
-    /// 	Do not exit the search in ponder mode, even if it's mate!
+    /// * `searchmoves <move1> .... <movei>`
+    ///
+    /// Restrict search to this moves only
+    /// Example: After `position startpos` and `go infinite searchmoves e2e4 d2d4`
+    /// 	the engine should only search the two moves `e2e4` and `d2d4` in the initial position.
+    ///
+    /// * `ponder`
+    ///     
+    /// Start searching in pondering mode.
+    ///
+    /// Do not exit the search in ponder mode, even if it's mate!
     /// 	This means that the last move sent in in the position string is the ponder move.
-    /// 	The engine can do what it wants to do, but after a "ponderhit" command
+    /// 	The engine can do what it wants to do, but after a `ponderhit` command
     /// 	it should execute the suggested move to ponder on. This means that the ponder move sent by
     /// 	the GUI can be interpreted as a recommendation about which move to ponder. However, if the
     /// 	engine decides to ponder on a different move, it should not display any mainlines as they are
     /// 	likely to be misinterpreted by the GUI because the GUI expects the engine to ponder
     ///    on the suggested move.
-    /// * wtime <x>
-    /// 	white has x msec left on the clock
-    /// * btime <x>
-    /// 	black has x msec left on the clock
-    /// * winc <x>
-    /// 	white increment per move in mseconds if x > 0
-    /// * binc <x>
-    /// 	black increment per move in mseconds if x > 0
-    /// * movestogo <x>
-    ///   there are x moves to the next time control,
-    /// 	this will only be sent if x > 0,
-    /// 	if you don't get this and get the wtime and btime it's sudden death
-    /// * depth <x>
-    /// 	search x plies only.
-    /// * nodes <x>
-    ///    search x nodes only,
-    /// * mate <x>
-    /// 	search for a mate in x moves
-    /// * movetime <x>
-    /// 	search exactly x mseconds
-    /// * infinite
-    /// 	search until the "stop" command. Do not exit the search without being told so in this mode!
-    Go(SearchOptions<'a>),
+    ///
+    /// * `wtime <x>`
+    ///
+    /// White has `x` milliseconds left on the clock
+    ///
+    /// * `btime <x>`
+    ///
+    /// Black has `x` milliseconds left on the clock
+    ///
+    /// * `winc <x>`
+    ///
+    /// White increment per move in milliseconds if `x > 0`
+    ///
+    /// * `binc <x>`
+    ///
+    /// Black increment per move in milliseconds if `x > 0`
+    ///
+    /// * `movestogo <x>`
+    ///  
+    /// There are `x` moves to the next time control,
+    /// 	this will only be sent if `x > 0`,
+    /// 	if you don't get this and get the `wtime` and `btime` it's sudden death
+    ///
+    /// * `depth <x>`
+    ///
+    /// search `x` plies only.
+    ///
+    /// * `nodes <x>`
+    ///   
+    /// Search `x` nodes only,
+    ///
+    /// * `mate <x>`
+    ///
+    /// Search for a mate in `x` moves
+    ///
+    /// * `movetime <x>`
+    ///
+    /// Search exactly `x` mseconds
+    ///
+    /// * `infinite`
+    ///
+    /// Search until the `stop` command. Do not exit the search without being told so in this mode!
+    fn go(&mut self, search_opt: SearchOptions);
 
-    /// `stop`
+    /// Called when the engine receives `stop`.
     ///
     /// Stop calculating as soon as possible,
     /// don't forget the "bestmove" and possibly the "ponder" token when finishing the search
-    Stop,
+    fn stop(&mut self);
 
-    /// `ponderhit`
+    /// Called when the engine receives `ponderhit`.
     ///
     /// The user has played the expected move. This will be sent if the engine was told to ponder on the same move
     /// the user has played. The engine should continue searching but switch from pondering to normal search.
-    PonderHit,
+    fn ponderhit(&self);
 
-    /// `quit`
+    /// Called when the engine receives `quit`.
     ///
     /// Quit the program as soon as possible
+    fn quit(&mut self);
+
+    /* Engine to GUI communication */
+
+    /// Send the `id` message to `stdout.`
+    ///
+    /// Will send two messages- one for `name` and one for `author`.
+    ///
+    /// # Example
+    ///
+    /// `id name Shredder\n`
+    ///
+    /// `id name Stefan MK\n`
+    fn id(&self) -> io::Result<()>;
+
+    /// Send the `uciok` message to `stdout.`
+    ///
+    /// Must be sent after the `id` and optional `option`s to tell the GUI that the engine
+    /// has sent all infos and is ready in uci mode.
+    fn uciok(&self) -> io::Result<()>;
+
+    /// Send the `readyok` message to `stdout.`
+    ///
+    /// This must be sent when the engine has received an `isready` command and has
+    /// processed all input and is ready to accept new commands now.
+    /// It is usually sent after a command that can take some time to be able to wait for the engine,
+    /// but it can be used anytime, even when the engine is searching,
+    /// and must always be answered with `isready`.
+    fn readyok(&self) -> io::Result<()>;
+
+    /// Send the `bestmove <move1> [ ponder <move2> ]` message to `stdout.`
+    ///
+    /// The engine has stopped searching and found the move <move> best in this position.
+    /// the engine can send the move it likes to ponder on. The engine must not start pondering automatically.
+    /// this command must always be sent if the engine stops searching, also in pondering mode if there is a
+    /// `stop` command, so for every `go` command a `bestmove` command is needed!
+    /// Directly before that the engine should send a final "info" command with the final search information,
+    /// the the GUI has the complete statistics about the last search.
+    fn bestmove(&self) -> io::Result<()>;
+
+    /// Send the `copyprotection [ checking | ok | error ]` message to `stdout.`
+    fn copyprotection(&self) -> io::Result<()>;
+
+    /// Send the `registration[ checking | ok | error ]` message to `stdout.`
+    fn registeration(&self) -> io::Result<()>;
+
+    /// Send the `info [ STUFF ]` message to `stdout.`
+    fn info(&self) -> io::Result<()>;
+
+    /// Send the `option [ STUFF ]` message to `stdout.`
+    fn option(&self) -> io::Result<()>;
+}
+
+/// # UCI Commands (GUI to Engine)
+///
+/// These are all the commands the engine gets from the interface.
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub enum UciCommand<'a> {
+    Uci,
+
+    // on/off
+    Debug(bool),
+
+    IsReady,
+
+    // <name> <value>
+    SetOption(&'a str, &'a str),
+
+    // `None` -> `later`
+    // `Some` -> `(name, code)`
+    Register(Option<(&'a str, &'a str)>),
+
+    UciNewGame,
+
+    // <fen> <moves>
+    Position(&'a str, Vec<&'a str>),
+
+    Go(SearchOptions<'a>),
+
+    Stop,
+
+    PonderHit,
+
     Quit,
 }
 
@@ -402,19 +512,24 @@ impl<'a> UciCommand<'a> {
     }
 }
 
-/// Engine to GUI:
-/// ---
+/// # Responses sent from the Engine to the GUI via `stdout`.
+///
 /// These are all the commands the interface gets from the engine.
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum UciResponse<'a> {
     /// `id`
     ///
     /// * `name <x>`
-    /// 	this must be sent after receiving the "uci" command to identify the engine,
-    /// 	e.g. "id name Shredder X.Y\n"
+    ///
+    /// This must be sent after receiving the `uci` command to identify the engine,
+    ///
+    /// e.g. `id name Shredder X.Y\n`
+    ///
     /// * `author <x>`
-    /// 	this must be sent after receiving the "uci" command to identify the engine,
-    /// 	e.g. "id author Stefan MK\n"
+    ///
+    /// This must be sent after receiving the `uci` command to identify the engine,
+    ///
+    /// e.g. `id author Stefan MK\n`
     Id(&'a str /* name */, &'a str /* author */),
 
     /// `uciok`
@@ -425,55 +540,58 @@ pub enum UciResponse<'a> {
 
     /// `readyok`
     ///
-    /// This must be sent when the engine has received an "isready" command and has
+    /// This must be sent when the engine has received an `isready` command and has
     /// processed all input and is ready to accept new commands now.
     /// It is usually sent after a command that can take some time to be able to wait for the engine,
     /// but it can be used anytime, even when the engine is searching,
-    /// and must always be answered with "isready".
+    /// and must always be answered with `isready`.
     ReadyOk,
 
     /// `bestmove <move1> [ ponder <move2> ]`
     ///
-    /// the engine has stopped searching and found the move <move> best in this position.
+    /// The engine has stopped searching and found the move <move> best in this position.
     /// the engine can send the move it likes to ponder on. The engine must not start pondering automatically.
     /// this command must always be sent if the engine stops searching, also in pondering mode if there is a
-    /// "stop" command, so for every "go" command a "bestmove" command is needed!
+    /// `stop` command, so for every `go` command a `bestmove` command is needed!
     /// Directly before that the engine should send a final "info" command with the final search information,
     /// the the GUI has the complete statistics about the last search.
     BestMove(String /* bestmove */, Option<String> /* ponder */),
 
     /// `copyprotection`
     ///
-    /// this is needed for copyprotected engines. After the uciok command the engine can tell the GUI,
-    /// that it will check the copy protection now. This is done by "copyprotection checking".
-    /// If the check is ok the engine should send "copyprotection ok", otherwise "copyprotection error".
+    /// this is needed for copy-protected engines. After the uciok command the engine can tell the GUI,
+    /// that it will check the copy protection now. This is done by `copyprotection checking`.
+    /// If the check is ok the engine should send `copyprotection ok`, otherwise `copyprotection error`.
     /// If there is an error the engine should not function properly but should not quit alone.
-    /// If the engine reports "copyprotection error" the GUI should not use this engine
+    /// If the engine reports `copyprotection error` the GUI should not use this engine
     /// and display an error message instead!
-    /// The code in the engine can look like this
-    ///      TellGUI("copyprotection checking\n");
-    ///    /// ... check the copy protection here ...
-    ///    if(ok)
-    ///       TellGUI("copyprotection ok\n");
-    ///      else
-    ///         TellGUI("copyprotection error\n");
+    ///
+    /// The code in the engine can look like this:
+    /// ```
+    /// // TellGUI("copyprotection checking\n");
+    /// // ... check the copy protection here ...
+    /// // if(ok)
+    /// //     TellGUI("copyprotection ok\n");
+    /// // else
+    /// //     TellGUI("copyprotection error\n");
+    /// ```
     CopyProtection(&'static str),
 
     /// `registration`
     ///
-    /// this is needed for engines that need a username and/or a code to function with all features.
-    /// Analog to the "copyprotection" command the engine can send "registration checking"
-    /// after the uciok command followed by either "registration ok" or "registration error".
-    /// Also after every attempt to register the engine it should answer with "registration checking"
-    /// and then either "registration ok" or "registration error".
-    /// In contrast to the "copyprotection" command, the GUI can use the engine after the engine has
+    /// This is needed for engines that need a username and/or a code to function with all features.
+    /// Analog to the `copyprotection` command the engine can send `registration checking`
+    /// after the uciok command followed by either `registration ok` or `registration error`.
+    /// Also after every attempt to register the engine it should answer with `registration checking`
+    /// and then either `registration ok` or `registration error`.
+    /// In contrast to the `copyprotection` command, the GUI can use the engine after the engine has
     /// reported an error, but should inform the user that the engine is not properly registered
     /// and might not use all its features.
     /// In addition the GUI should offer to open a dialog to
     /// enable registration of the engine. To try to register an engine the GUI can send
-    /// the "register" command.
-    /// The GUI has to always answer with the "register" command	if the engine sends "registration error"
-    /// at engine startup (this can also be done with "register later")
+    /// the `register` command.
+    /// The GUI has to always answer with the `register` command if the engine sends `registration error`
+    /// at engine startup (this can also be done with `register later`)
     /// and tell the user somehow that the engine is not registered.
     /// This way the engine knows that the GUI can deal with the registration procedure and the user
     /// will be informed that the engine is not properly registered.
@@ -481,31 +599,46 @@ pub enum UciResponse<'a> {
 
     /// `info`
     ///
-    /// the engine wants to send information to the GUI. This should be done whenever one of the info has changed.
+    /// The engine wants to send information to the GUI. This should be done whenever one of the info has changed.
     /// The engine can send only selected infos or multiple infos with one info command,
-    /// e.g. "info currmove e2e4 currmovenumber 1" or
-    ///      "info depth 12 nodes 123456 nps 100000".
+    ///
+    /// e.g. `info currmove e2e4 currmovenumber 1` or `info depth 12 nodes 123456 nps 100000`.
+    ///
     /// Also all infos belonging to the pv should be sent together
-    /// e.g. "info depth 2 score cp 214 time 1242 nodes 2124 nps 34928 pv e2e4 e7e5 g1f3"
-    /// I suggest to start sending "currmove", "currmovenumber", "currline" and "refutation" only after one second
+    ///
+    /// e.g. `info depth 2 score cp 214 time 1242 nodes 2124 nps 34928 pv e2e4 e7e5 g1f3`
+    ///
+    /// I suggest to start sending `currmove`, `currmovenumber`, `currline` and `refutation` only after one second
     /// to avoid too much traffic.
+    ///
     /// Additional info:
-    /// * depth <x>
-    /// 	search depth in plies
-    /// * seldepth <x>
-    /// 	selective search depth in plies,
-    /// 	if the engine sends seldepth there must also be a "depth" present in the same string.
-    /// * time <x>
-    /// 	the time searched in ms, this should be sent together with the pv.
+    /// * `depth <x>`
+    ///
+    /// Search depth in plies.
+    ///
+    /// * `seldepth <x>`
+    ///
+    /// Selective search depth in plies.
+    /// If the engine sends `seldepth` there must also be a `depth` present in the same string.
+    ///
+    /// * `time <x>`
+    ///
+    /// The time searched in ms, this should be sent together with the `pv`.
+    ///
     /// * nodes <x>
-    /// 	x nodes searched, the engine should send this info regularly
-    /// * pv <move1> ... <movei>
-    /// 	the best line found
-    /// * multipv <num>
-    /// 	this for the multi pv mode.
-    /// 	for the best move/pv add "multipv 1" in the string when you send the pv.
-    /// 	in k-best mode always send all k variants in k strings together.
-    /// * score
+    ///
+    /// `x` nodes searched, the engine should send this info regularly.
+    ///
+    /// * `pv <move1> ... <movei>`
+    ///
+    /// The best line found.
+    ///
+    /// * `multipv <num>`
+    /// This for the multi pv mode.
+    /// 	for the best move/pv add `multipv 1` in the string when you send the `pv`.
+    /// 	in `k`-best mode always send all `k` variants in `k` strings together.
+    ///
+    /// * `score`
     /// 	* cp <x>
     /// 		the score from the engine's point of view in centipawns.
     /// 	* mate <y>
@@ -693,15 +826,9 @@ impl<'a> fmt::Display for UciResponse<'a> {
                 }
             }
             Self::CopyProtection(status) => {
-                // format!("copyprotection checking")
-                // format!("copyprotection ok")
-                // format!("copyprotection error")
                 format!("copyprotection {status}")
             }
             Self::Registration(status) => {
-                // format!("registration checking")
-                // format!("registration ok")
-                // format!("registration error")
                 format!("registration {status}")
             }
             Self::Info(info) => {

@@ -2,7 +2,7 @@ use std::{fmt, io, ops::Index};
 
 use crate::{
     moves_for,
-    uci::{SearchOptions, UciCommand, UciOption, UciOptionType, UciResponse},
+    uci::{SearchOptions, UciCommand, UciEngine, UciOption, UciOptionType, UciResponse},
     utils::DEFAULT_FEN,
     BitBoard, ChessBoard, Color, File, Piece, PieceKind, Rank, Tile,
 };
@@ -178,51 +178,17 @@ impl Engine {
         }
     }
 
-    fn uci_loop(&mut self) -> std::io::Result<()> {
-        // The engine received `uci`, so follow the appropriate protocol
-        self.uci()?;
-
-        // For convenience, import the enum variants.
-        use UciCommand::*;
-
-        let mut buffer = String::new();
-        loop {
-            buffer.clear();
-            io::stdin().read_line(&mut buffer)?;
-
-            // Attempt to parse the user input
-            let cmd = match UciCommand::new(&buffer) {
-                Ok(cmd) => cmd,
-                Err(e) => {
-                    eprintln!("InputError: {e:?}");
-                    println!("Unrecognized command: {buffer}");
-
-                    // UCI protocol states to continue running when invalid input is received.
-                    continue;
-                }
-            };
-
-            // Handle the command appropriately
-            match cmd {
-                Uci => self.uci()?,
-                Debug(status) => self.debug(status),
-                IsReady => self.isready()?,
-                SetOption(name, value) => self.setoption(&name, &value),
-                Register(registration) => self.register(registration),
-                UciNewGame => self.ucinewgame(),
-                Position(fen, moves) => self.position(fen, moves),
-                Go(search_opt) => self.go(search_opt),
-                Stop => self.stop(),
-                PonderHit => self.ponderhit(),
-                Quit => return Ok(self.quit()),
-            }
-        }
+    fn get_uci_options(&self) -> impl Iterator<Item = UciOption> {
+        [
+            // All available options will be defined here.
+        ]
+        .into_iter()
     }
+}
 
-    /* UCI-related functions */
-
+impl UciEngine for Engine {
     // Engine receive a `uci` command
-    pub fn uci(&mut self) -> io::Result<()> {
+    fn uci(&mut self) -> io::Result<()> {
         // The engine must now identify itself
         self.id()?;
         // And send all available options
@@ -232,18 +198,18 @@ impl Engine {
 
         Ok(())
     }
-    pub fn debug(&mut self, status: bool) {
+    fn debug(&mut self, status: bool) {
         self.debug = status;
     }
-    pub fn isready(&self) -> io::Result<()> {
+    fn isready(&self) -> io::Result<()> {
         let resp = UciResponse::ReadyOk;
         resp.send()
     }
-    pub fn setoption(&mut self, name: &str, value: &str) {
+    fn setoption(&mut self, name: &str, value: &str) {
         // match name {
         // }
     }
-    pub fn register(&mut self, registration: Option<(&str, &str)>) {
+    fn register(&mut self, registration: Option<(&str, &str)>) {
         // No registration necessary :)
         _ = registration;
 
@@ -252,8 +218,8 @@ impl Engine {
         //     UciRegistration::Now(name, code) => {}
         // }
     }
-    pub fn ucinewgame(&mut self) {}
-    pub fn position(&mut self, fen: &str, moves: Vec<&str>) {
+    fn ucinewgame(&mut self) {}
+    fn position(&mut self, fen: &str, moves: Vec<&str>) {
         // Apply the FEN to the game state
         // self.set_state(fen)
 
@@ -262,10 +228,10 @@ impl Engine {
             //
         }
     }
-    pub fn go(&mut self, search_opt: SearchOptions) {}
-    pub fn stop(&self) {}
-    pub fn ponderhit(&self) {}
-    pub fn quit(&mut self) {}
+    fn go(&mut self, search_opt: SearchOptions) {}
+    fn stop(&mut self) {}
+    fn ponderhit(&self) {}
+    fn quit(&mut self) {}
 
     /* Engine to GUI communication */
     fn id(&self) -> io::Result<()> {
@@ -314,13 +280,6 @@ impl Engine {
             resp.send()?;
         }
         Ok(())
-    }
-
-    fn get_uci_options(&self) -> impl Iterator<Item = UciOption> {
-        [
-            // All available options will be defined here.
-        ]
-        .into_iter()
     }
 }
 
