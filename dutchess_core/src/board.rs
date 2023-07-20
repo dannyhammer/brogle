@@ -12,7 +12,7 @@ use crate::utils::*;
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct ChessBoard {
     /// All tiles occupied by a piece
-    occupied: BitBoard,
+    pub occupied: BitBoard,
     /// All unoccupied tiles
     empty: BitBoard,
 
@@ -133,6 +133,15 @@ impl ChessBoard {
         let kind = self[piece.kind()];
         color & kind
     }
+
+    pub fn blockers(&self, blocker_mask: BitBoard) -> BitBoard {
+        // All occupied squares within the blocker mask
+        self.occupied & blocker_mask
+    }
+
+    // pub fn generate_moves(&self) {
+    //     //
+    // }
 
     // fn color(&self, color: Color) -> BitBoard {
     //     self[color]
@@ -302,7 +311,7 @@ fn check_bit(bits: u8, n: u8) -> u8 {
     ShrAssign,
 )]
 #[repr(transparent)]
-pub struct BitBoard(u64);
+pub struct BitBoard(pub(crate) u64);
 
 impl BitBoard {
     pub const FILE_A: Self = Self(0x0101010101010101);
@@ -333,19 +342,17 @@ impl BitBoard {
         Self::from_index(tile.index())
     }
 
-    /*
-    const fn from_file(file: File) -> Self {
+    pub const fn from_file(file: File) -> Self {
         // Self(FILE_A << file.0)
         // Self::FILE_A << file.0
         Self(Self::FILE_A.0 << file.0)
     }
 
-    const fn from_rank(rank: Rank) -> Self {
+    pub const fn from_rank(rank: Rank) -> Self {
         // Self(RANK_1 << rank.0 * 8)
         // Self::RANK_1 << rank.0 * 8
         Self(Self::RANK_1.0 << rank.0 * 8)
     }
-     */
 
     // fn diagonal(tile: Tile) -> Self {
     //     let diag_index = tile.rank().index();
@@ -427,16 +434,16 @@ impl BitBoard {
         }
     }
 
-    fn toggle(&mut self, mask: Self) {
+    pub fn toggle(&mut self, mask: Self) {
         *self ^= mask
     }
 
-    fn set_index(&mut self, index: usize) {
+    pub fn set_index(&mut self, index: usize) {
         debug_assert!(index < 64, "Index must be between [0,64)");
         self.0 |= 1 << index;
     }
 
-    const fn get_index(&self, index: usize) -> bool {
+    pub const fn get_index(&self, index: usize) -> bool {
         debug_assert!(index < 64, "Index must be between [0,64)");
         (self.0 & 1 << index) != 0
     }
@@ -538,13 +545,9 @@ impl BitBoard {
         self.into_iter()
     }
 
-    const fn population(&self) -> u32 {
+    pub const fn population(&self) -> u32 {
         self.0.count_ones()
     }
-
-    // fn flip_vertical(&self) -> Self {
-
-    // }
 
     const fn north_fill(&self) -> Self {
         let mut bits = self.0;

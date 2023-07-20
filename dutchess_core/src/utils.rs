@@ -1,4 +1,4 @@
-use crate::PieceKind;
+// use crate::PieceKind;
 
 pub const DEFAULT_FEN: &'static str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -7,14 +7,14 @@ enum CastleSide {
     Kingside,
 }
 
-enum MoveType {
-    Quiet,
-    Capture(PieceKind),
-    EnPassantCapture,
-    Castle(CastleSide),
-    Promote(PieceKind),
-    PawnPushTwo,
-}
+// enum MoveType {
+//     Quiet,
+//     Capture(PieceKind),
+//     EnPassantCapture,
+//     Castle(CastleSide),
+//     Promote(PieceKind),
+//     PawnPushTwo,
+// }
 
 /// Fetched from ShallowBlue
 /// https://github.com/GunshipPenguin/shallow-blue/blob/c6d7e9615514a86533a9e0ffddfc96e058fc9cfd/src/attacks.h#L120
@@ -156,7 +156,7 @@ pub(crate) const BISHOP_MAGICS: [u64; 64] = [
 /// Number of bits in the magic bitboard table index
 /// Indexed by [square] with each value being the number of bits required for that square.
 #[rustfmt::skip]
-pub(crate) const ROOK_INDEX_BITS: [usize; 64] = [
+pub(crate) const ROOK_INDEX_BITS: [u8; 64] = [
     12, 11, 11, 11, 11, 11, 11, 12,
     11, 10, 10, 10, 10, 10, 10, 11,
     11, 10, 10, 10, 10, 10, 10, 11,
@@ -168,7 +168,7 @@ pub(crate) const ROOK_INDEX_BITS: [usize; 64] = [
 ];
 
 #[rustfmt::skip]
-pub(crate) const BISHOP_INDEX_BITS: [usize; 64] = [
+pub(crate) const BISHOP_INDEX_BITS: [u8; 64] = [
     6, 5, 5, 5, 5, 5, 5, 6,
     5, 5, 5, 5, 5, 5, 5, 5,
     5, 5, 7, 7, 7, 7, 5, 5,

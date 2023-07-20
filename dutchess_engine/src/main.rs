@@ -1,5 +1,6 @@
-use dutchess_engine::{uci::UciLogger, *};
 use log::SetLoggerError;
+
+use dutchess_engine::{uci::UciLogger, *};
 
 static LOGGER: UciLogger = UciLogger;
 
@@ -12,6 +13,8 @@ fn main() {
     let version = env!("CARGO_PKG_VERSION");
     let authors = env!("CARGO_PKG_AUTHORS");
     println!("{name} v{version} by {authors}");
+
+    init_logger().expect("Failed to initialize logger");
 
     let mut engine = Engine::default();
     engine.run().expect("Fatal IO error");

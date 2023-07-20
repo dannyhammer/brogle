@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 macroquad = "0.3.26"
 dutchess_engine = { path = "../dutchess_engine" }
+dutchess_core = { path = "../dutchess_core" }
 egui-macroquad = "0.15.0"
 
 [build-dependencies]

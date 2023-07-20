@@ -1,9 +1,4 @@
-pub mod bitboard;
 pub mod engine;
-mod maskgen;
-pub mod movegen;
-pub mod piece;
-pub mod tile;
 
 /// # Universal Chess Interface (UCI)
 ///
@@ -55,14 +50,9 @@ pub mod tile;
 /// A nullmove from the Engine to the GUI should be sent as `0000`.
 /// Examples:  `e2e4`, `e7e5`, `e1g1` (white short castling), `e7e8q` (for promotion)
 pub mod uci;
-pub mod utils;
 
 pub mod prelude {
-    pub use crate::bitboard::*;
     pub use crate::engine::*;
-    pub use crate::movegen::*;
-    pub use crate::piece::*;
-    pub use crate::tile::*;
 }
 
 pub use prelude::*;

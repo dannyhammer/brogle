@@ -84,9 +84,10 @@ impl Tile {
     pub const H8: Tile = Self::new(File::H, Rank::EIGHT);
 
     pub fn iter() -> impl Iterator<Item = Self> {
-        File::iter()
-            .map(|file| Rank::iter().map(move |rank| Self::new(file, rank)))
-            .flatten()
+        // File::iter()
+        //     .map(|file| Rank::iter().map(move |rank| Self::new(file, rank)))
+        //     .flatten()
+        (0..64).into_iter().map(|bits| Self(bits))
     }
 
     pub const fn new(file: File, rank: Rank) -> Self {
@@ -100,6 +101,10 @@ impl Tile {
             return Err(format!("Valid positions are indices [0,63)"));
         }
         Ok(Self(index as u8))
+    }
+
+    pub fn from_index_unchecked(index: usize) -> Self {
+        Self(index as u8)
     }
 
     pub const fn inner(&self) -> u8 {
@@ -118,6 +123,10 @@ impl Tile {
 
     pub const fn index(&self) -> usize {
         self.0 as usize
+    }
+
+    pub const fn parts(&self) -> (File, Rank) {
+        (self.file(), self.rank())
     }
 
     // pub fn diag_index(&self) -> usize {
@@ -329,7 +338,7 @@ impl Rank {
     pub const SEVEN: Self = Self(6);
     pub const EIGHT: Self = Self(7);
 
-    pub fn iter() -> impl Iterator<Item = Self> {
+    pub fn iter() -> impl DoubleEndedIterator<Item = Self> {
         // (Self::min().0..=Self::max().0).map(|i| Self(i))
         (0..8).map(|i| Self(i))
     }
@@ -513,7 +522,7 @@ impl File {
     pub const G: Self = Self(6);
     pub const H: Self = Self(7);
 
-    pub fn iter() -> impl Iterator<Item = Self> {
+    pub fn iter() -> impl DoubleEndedIterator<Item = Self> {
         (0..8).map(|i| Self(i))
     }
 

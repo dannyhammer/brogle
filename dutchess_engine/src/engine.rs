@@ -1,12 +1,13 @@
-use std::{fmt, io, ops::Index};
+use std::{fmt, io, ops::Index, str::FromStr};
 
-use crate::{
-    moves_for,
-    uci::{SearchOptions, UciCommand, UciEngine, UciOption, UciOptionType, UciResponse},
-    utils::DEFAULT_FEN,
-    BitBoard, ChessBoard, Color, File, Piece, PieceKind, Rank, Tile,
+use crate::uci::{SearchOptions, UciEngine, UciOption, UciResponse};
+use dutchess_core::{
+    utils::DEFAULT_FEN, BitBoard, ChessBoard, Color, File, Piece, PieceKind, Rank, Tile,
 };
 
+use chess::{Board, MoveGen};
+
+/*
 #[derive(PartialEq, Eq, Debug, Hash)]
 pub enum MoveLegality {
     /// Move is completely legal
@@ -46,6 +47,7 @@ impl fmt::Display for MoveLegality {
         write!(f, "{reason}")
     }
 }
+ */
 
 /*********************************************************************************
  * Game board
@@ -87,7 +89,7 @@ impl Engine {
     pub fn new() -> Self {
         let state = GameState::default();
         let board = ChessBoard::from(state.pieces);
-        let s = Self {
+        let mut s = Self {
             state,
             board,
             history: Vec::with_capacity(64),
@@ -96,7 +98,7 @@ impl Engine {
             protocol: EngineProtocol::UCI,
             debug: true,
         };
-        // s.generate_all_legal_moves();
+        s.update();
         s
     }
 
@@ -130,11 +132,11 @@ impl Engine {
     pub fn make_move(&mut self, from: Tile, to: Tile) -> bool {
         let Some(piece) = self.clear(from) else { return false };
         self.set(to, piece);
+        self.update();
         true
     }
 
     pub fn is_legal(&mut self, from: Tile, to: Tile) -> bool {
-        // TODO: Check if exists in all legal moves.
         self.legal_moves().contains(&Move::new(from, to))
     }
 
@@ -142,17 +144,28 @@ impl Engine {
         &self.legal_moves
     }
 
-    pub fn attacked_by(&self, piece: &Piece) -> Vec<Tile> {
-        vec![]
+    pub fn legal_moves_of(&self, tile: Tile) -> BitBoard {
+        let mut moves = BitBoard::default();
+
+        for legal in &self.legal_moves {
+            if legal.from == tile {
+                moves.set_index(legal.to.index());
+            }
+        }
+
+        moves
     }
 
-    pub fn legal_moves_for(&self, piece: &Piece, tile: Tile) -> BitBoard {
-        moves_for(piece, tile, &self.board)
-    }
+    fn update(&mut self) {
+        self.legal_moves.clear();
 
-    pub fn legal_moves_of(&self, tile: Tile) -> Option<BitBoard> {
-        self.piece_at(tile)
-            .map(|piece| moves_for(&piece, tile, &self.board))
+        let board = Board::from_str(&self.fen()).unwrap();
+
+        self.legal_moves
+            .extend(MoveGen::new_legal(&board).map(|legal| {
+                Move::from_indices(legal.get_source().to_index(), legal.get_dest().to_index())
+                    .unwrap()
+            }))
     }
 
     /// Main entrypoint of the engine
@@ -454,19 +467,20 @@ impl GameState {
             for file in File::iter() {
                 if let Some(piece) = self.piece(file + rank) {
                     if empty_spaces != 0 {
-                        placements[rank.0 as usize] += &empty_spaces.to_string();
+                        placements[rank.index()] += &empty_spaces.to_string();
                         empty_spaces = 0;
                     }
-                    placements[rank.0 as usize] += &piece.to_string();
+                    placements[rank.index()] += &piece.to_string();
                 } else {
                     empty_spaces += 1;
                 }
             }
 
             if empty_spaces != 0 {
-                placements[rank.0 as usize] += &empty_spaces.to_string();
+                placements[rank.index()] += &empty_spaces.to_string();
             }
         }
+        placements.reverse();
         let placements = placements.join("/");
 
         let active_color = self.current_player;
@@ -548,6 +562,12 @@ impl Move {
     pub fn new(from: Tile, to: Tile) -> Self {
         // Self(from | to << 4)
         Self { from, to }
+    }
+
+    pub fn from_indices(from: usize, to: usize) -> Result<Self, String> {
+        let from = Tile::from_index(from)?;
+        let to = Tile::from_index(to)?;
+        Ok(Self::new(from, to))
     }
 
     pub fn from(&self) -> Tile {
