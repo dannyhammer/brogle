@@ -357,8 +357,11 @@ impl Rank {
     }
 
     fn from_char(rank: char) -> Result<Self, String> {
-        debug_assert!(rank.is_ascii(), "Rank chars must be ASCII!");
-        Self::new(rank.to_digit(10).ok_or("Ranks must be a valid number")? as u8)
+        debug_assert!(
+            rank.is_ascii() && rank.is_numeric(),
+            "Rank chars must be ASCII!"
+        );
+        Self::new(rank.to_digit(10).ok_or("Ranks must be a valid number")? as u8 - 1)
     }
 
     pub fn from_index(index: usize) -> Result<Self, String> {

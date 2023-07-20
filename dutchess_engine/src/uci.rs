@@ -64,22 +64,22 @@ pub trait UciEngine {
     /// Upon receiving `uci`, your engine should call this function, and will only leave this function
     /// when a `quit` message is received.
     fn uci_loop(&mut self) -> std::io::Result<()> {
-        // The engine received `uci`, so follow the appropriate protocol
-        self.uci()?;
-
         // For convenience, import the enum variants.
         use UciCommand::*;
 
         let mut buffer = String::new();
         loop {
             buffer.clear();
-            io::stdin().read_line(&mut buffer)?;
+            let bytes = io::stdin().read_line(&mut buffer)?;
+
+            if 0 == bytes {
+                self.quit();
+            }
 
             // Attempt to parse the user input
             let cmd = match UciCommand::new(&buffer) {
                 Ok(cmd) => cmd,
                 Err(e) => {
-                    eprintln!("InputError: {e:?}");
                     println!("Unrecognized command: {buffer}");
 
                     // UCI protocol states to continue running when invalid input is received.
@@ -97,7 +97,7 @@ pub trait UciEngine {
                 UciNewGame => self.ucinewgame(),
                 Position(fen, moves) => self.position(fen, moves),
                 Go(search_opt) => self.go(search_opt),
-                Stop => self.stop(),
+                Stop => self.stop()?,
                 PonderHit => self.ponderhit(),
                 Quit => return Ok(self.quit()),
             }
@@ -281,7 +281,7 @@ pub trait UciEngine {
     ///
     /// Stop calculating as soon as possible,
     /// don't forget the "bestmove" and possibly the "ponder" token when finishing the search
-    fn stop(&mut self);
+    fn stop(&mut self) -> io::Result<()>;
 
     /// Called when the engine receives `ponderhit`.
     ///
@@ -403,6 +403,7 @@ impl<'a> UciCommand<'a> {
                 "stop" => Ok(Self::Stop),
                 "ponderhit" => Ok(Self::PonderHit),
                 "quit" => Ok(Self::Quit),
+                "go" => Self::parse_go(""),
                 _ => Err(InvalidUciError::UnrecognizedCommand),
             }
         }
@@ -792,11 +793,11 @@ pub enum UciResponse<'a> {
     ///
     /// Examples:
     ///    Here are 5 strings for each of the 5 possible types of options
-    ///    "option name Nullmove type check default true\n"
-    ///      "option name Selectivity type spin default 2 min 0 max 4\n"
-    ///    "option name Style type combo default Normal var Solid var Normal var Risky\n"
-    ///    "option name NalimovPath type string default c:\\n"
-    ///    "option name Clear Hash type button\n"
+    ///    * `"option name Nullmove type check default true\n"`
+    ///    * `"option name Selectivity type spin default 2 min 0 max 4\n"`
+    ///    * `"option name Style type combo default Normal var Solid var Normal var Risky\n"`
+    ///    * `"option name NalimovPath type string default c:\\n"`
+    ///    * `"option name Clear Hash type button\n"`
     Option(UciOption<'a>),
 }
 
@@ -878,12 +879,45 @@ impl fmt::Display for UciInfo {
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct UciOption<'a> {
-    name: &'a str,
-    opt_type: UciOptionType,
-    default: Option<String>,
-    min: Option<String>,
-    max: Option<String>,
-    var: Option<String>,
+    pub name: &'a str,
+    pub opt_type: UciOptionType<'a>,
+}
+
+impl<'a> UciOption<'a> {
+    pub fn check(name: &'a str, default: bool) -> Self {
+        Self {
+            name,
+            opt_type: UciOptionType::Check(default),
+        }
+    }
+
+    pub fn spin(name: &'a str, default: i32, min: i32, max: i32) -> Self {
+        Self {
+            name,
+            opt_type: UciOptionType::Spin(default, min, max),
+        }
+    }
+
+    pub fn combo(name: &'a str, default: &'a str, vars: impl IntoIterator<Item = &'a str>) -> Self {
+        Self {
+            name,
+            opt_type: UciOptionType::Combo(default, vars.into_iter().collect()),
+        }
+    }
+
+    pub fn button(name: &'a str) -> Self {
+        Self {
+            name,
+            opt_type: UciOptionType::Button,
+        }
+    }
+
+    pub fn string(name: &'a str, default: &'a str) -> Self {
+        Self {
+            name,
+            opt_type: UciOptionType::String(default),
+        }
+    }
 }
 
 impl<'a> fmt::Display for UciOption<'a> {
@@ -893,21 +927,36 @@ impl<'a> fmt::Display for UciOption<'a> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum UciOptionType {
-    Check,
-    Spin,
-    Combo,
+pub enum UciOptionType<'a> {
+    /// Checkbox that can either be true or false
+    Check(bool),
+
+    /// Spin wheel that can be an integer within a range.
+    Spin(i32, i32, i32),
+
+    /// Combo box that can have pre-defined string values
+    Combo(&'a str, Vec<&'a str>),
+
+    /// A button that can be pressed to send commands to the engine
     Button,
-    String,
+
+    /// Text field with a string value or empty string `""`.
+    String(&'a str),
 }
 
-impl fmt::Display for UciOptionType {
+impl fmt::Display for UciOptionType<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            _ => todo!(),
+            UciOptionType::Check(check) => write!(f, "check default {check}"),
+            UciOptionType::Spin(default, min, max) => {
+                write!(f, "spin default {default} min {min} max {max}",)
+            }
+            UciOptionType::Combo(default, vars) => {
+                write!(f, "combo default {default} var {}", vars.join(" var "))
+            }
+            UciOptionType::Button => write!(f, "button",),
+            UciOptionType::String(default) => write!(f, "string default {default}"),
         }
-
-        // write!(f, "name {} type {}", self.name, self.opt_type)
     }
 }
 
@@ -1086,5 +1135,39 @@ mod test {
                 ..Default::default()
             }),
         );
+    }
+
+    #[test]
+    fn test_option_types() {
+        let check = UciResponse::Option(UciOption::check("Nullmove", true));
+        assert_eq!(
+            format!("{check}"),
+            "option name Nullmove type check default true\n"
+        );
+
+        let spin = UciResponse::Option(UciOption::spin("Selectivity", 2, 0, 4));
+        assert_eq!(
+            format!("{spin}"),
+            "option name Selectivity type spin default 2 min 0 max 4\n"
+        );
+
+        let combo = UciResponse::Option(UciOption::combo(
+            "Style",
+            "Normal",
+            ["Solid", "Normal", "Risky"],
+        ));
+        assert_eq!(
+            format!("{combo}"),
+            "option name Style type combo default Normal var Solid var Normal var Risky\n"
+        );
+
+        let string = UciResponse::Option(UciOption::string("NalimovPath", "c:\\"));
+        assert_eq!(
+            format!("{string}"),
+            "option name NalimovPath type string default c:\\\n"
+        );
+
+        let button = UciResponse::Option(UciOption::button("Clear Hash"));
+        assert_eq!(format!("{button}"), "option name Clear Hash type button\n");
     }
 }

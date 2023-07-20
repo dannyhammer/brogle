@@ -115,6 +115,14 @@ impl PieceKind {
         }
     }
 
+    pub fn from_str(kind: &str) -> Result<Self, String> {
+        if kind.is_empty() || kind.len() > 1 {
+            return Err(String::from("String must be a single char"));
+        }
+
+        Self::from_char(kind.chars().next().unwrap())
+    }
+
     pub const fn name(&self) -> &'static str {
         match self {
             Self::Pawn => "Pawn",

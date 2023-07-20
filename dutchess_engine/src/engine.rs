@@ -1,8 +1,13 @@
-use std::{fmt, io, ops::Index, str::FromStr};
+use std::{
+    fmt, io,
+    str::FromStr,
+    sync::atomic::{self, AtomicBool, Ordering},
+    thread::{self, JoinHandle},
+};
 
-use crate::uci::{SearchOptions, UciEngine, UciOption, UciResponse};
+use crate::uci::{SearchOptions, UciEngine, UciOption, UciOptionType, UciResponse, UciResult};
 use dutchess_core::{
-    utils::DEFAULT_FEN, BitBoard, ChessBoard, Color, File, Piece, PieceKind, Rank, Tile,
+    utils::DEFAULT_FEN, BitBoard, ChessBoard, Color, File, Move, Piece, PieceKind, Rank, Tile,
 };
 
 use chess::{Board, MoveGen};
@@ -60,7 +65,7 @@ pub enum EngineProtocol {
     UCI,
 }
 
-#[derive(PartialEq, Eq, Debug, Hash)]
+#[derive(Debug)]
 pub struct Engine {
     /// State of the game, including castling rights, piece placement, etc.
     ///
@@ -83,32 +88,31 @@ pub struct Engine {
     protocol: EngineProtocol,
 
     debug: bool,
+
+    search: Option<JoinHandle<()>>,
+    searching: AtomicBool,
 }
 
 impl Engine {
     pub fn new() -> Self {
-        let state = GameState::default();
-        let board = ChessBoard::from(state.pieces);
-        let mut s = Self {
-            state,
-            board,
-            history: Vec::with_capacity(64),
-            legal_moves: Vec::with_capacity(1024),
-            ttable: (),
-            protocol: EngineProtocol::UCI,
-            debug: true,
-        };
-        s.update();
-        s
+        Self::default()
+    }
+
+    pub fn from_fen(fen: &str) -> Result<Self, String> {
+        let mut s = Self::new();
+        s.setup(fen)?;
+        Ok(s)
     }
 
     pub fn fen(&self) -> String {
         self.state.to_fen()
     }
 
-    pub fn piece_at(&self, tile: Tile) -> Option<Piece> {
-        *self.state.piece(tile)
-        // self.board.get(tile)
+    pub fn setup(&mut self, fen: &str) -> Result<(), String> {
+        self.state = GameState::from_fen(fen)?;
+        self.board = ChessBoard::from(self.state.pieces);
+        self.update();
+        Ok(())
     }
 
     /// Fetch the piece at the requested position, if it exists.
@@ -129,16 +133,22 @@ impl Engine {
     }
 
     /// Returns `true` if the move was made successful, and `false` if it cannot be made.
-    pub fn make_move(&mut self, from: Tile, to: Tile) -> bool {
-        let Some(piece) = self.clear(from) else { return false };
-        self.set(to, piece);
+    fn apply_move(&mut self, chessmove: Move) -> bool {
+        let Some(piece) = self.clear(chessmove.from()) else { return false };
+        self.set(chessmove.to(), piece);
         self.update();
         true
     }
 
-    pub fn is_legal(&mut self, from: Tile, to: Tile) -> bool {
-        self.legal_moves().contains(&Move::new(from, to))
+    fn apply_moves(&mut self, moves: impl IntoIterator<Item = Move>) -> bool {
+        moves
+            .into_iter()
+            .all(|chessmove| self.apply_move(chessmove))
     }
+
+    // pub fn is_legal(&mut self, from: Tile, to: Tile) -> bool {
+    //     self.legal_moves().contains(&Move::new(from, to))
+    // }
 
     pub fn legal_moves(&self) -> &[Move] {
         &self.legal_moves
@@ -147,9 +157,9 @@ impl Engine {
     pub fn legal_moves_of(&self, tile: Tile) -> BitBoard {
         let mut moves = BitBoard::default();
 
-        for legal in &self.legal_moves {
-            if legal.from == tile {
-                moves.set_index(legal.to.index());
+        for legal in self.legal_moves() {
+            if legal.from() == tile {
+                moves.set_index(legal.to().index());
             }
         }
 
@@ -170,40 +180,96 @@ impl Engine {
 
     /// Main entrypoint of the engine
     pub fn run(&mut self) -> std::io::Result<()> {
-        let mut buffer = String::new();
-        loop {
-            buffer.clear();
-            io::stdin().read_line(&mut buffer)?;
+        let name = env!("CARGO_PKG_NAME");
+        let version = env!("CARGO_PKG_VERSION");
+        let authors = env!("CARGO_PKG_AUTHORS");
+        println!("{name} v{version} by {authors}");
 
-            let mut split = buffer.split_whitespace();
+        // let mut buffer = String::new();
+        // loop {
+        //     buffer.clear();
+        //     let bytes = io::stdin().read_line(&mut buffer)?;
 
-            if let Some(protocol) = split.next() {
-                match protocol {
-                    "uci" => self.uci_loop()?,
-                    _ => {
-                        eprintln!(
-                            "Unimplemented protocol: {protocol}.\nImplemented protocols: UCI, "
-                        );
-                        return Ok(());
-                    }
-                }
-            }
-        }
+        //     if 0 == bytes {
+        //         self.shutdown();
+        //     }
+
+        //     let mut split = buffer.split_whitespace();
+
+        //     if let Some(protocol) = split.next() {
+        //         match protocol {
+        //             "uci" => {
+        //                 // The engine received `uci`, so follow the appropriate protocol
+        //                 self.uci()?;
+        //                 self.uci_loop()?;
+        //             }
+        //             _ => {
+        //                 eprintln!("Unknown command: {protocol}. Try `uci`");
+        //             }
+        //         }
+        //     }
+        // }
+        self.uci_loop()
     }
 
     fn get_uci_options(&self) -> impl Iterator<Item = UciOption> {
         [
             // All available options will be defined here.
+            // UciOption::check("TestOpt Check", false),
+            // UciOption::spin("TestOpt Spin", -8, i32::MIN, i32::MAX),
+            // UciOption::combo("TestOpt Combo", "Apple", ["Apple", "Banana", "Strawberry"]),
+            // UciOption::button("TestOpt Button"),
+            // UciOption::string("TestOpt String", "defaultVal"),
+            UciOption::check("Nullmove", true),
+            UciOption::spin("Selectivity", 2, 0, 4),
+            UciOption::combo("Style", "Normal", ["Solid", "Normal", "Risky"]),
+            UciOption::string("NalimovPath", "c:\\"),
+            UciOption::button("Clear Hash"),
         ]
         .into_iter()
+    }
+
+    fn start_search(&mut self, search_opt: SearchOptions) {
+        let searching = AtomicBool::new(true);
+        self.searching = searching;
+        let search = thread::spawn(move || {
+            //
+            loop {
+                println!("info depth 1");
+                thread::sleep(std::time::Duration::from_secs(1));
+
+                // if searching.load(Ordering::Relaxed) {
+                //     //
+                // }
+            }
+        });
+
+        self.search = Some(search);
+    }
+
+    fn stop_search(&mut self) {
+        self.searching = AtomicBool::new(false);
+        if let Some(search) = self.search.take() {
+            _ = search.join();
+        }
+    }
+
+    fn shutdown(&mut self) {
+        std::process::exit(0);
     }
 }
 
 impl UciEngine for Engine {
+    /* GUI to Engine communication */
+
     // Engine receive a `uci` command
     fn uci(&mut self) -> io::Result<()> {
         // The engine must now identify itself
         self.id()?;
+
+        // Stockfish sends a newline here, so I will too
+        println!("");
+
         // And send all available options
         self.option()?;
         // Engine has sent all parameters and is ready
@@ -211,17 +277,22 @@ impl UciEngine for Engine {
 
         Ok(())
     }
+
     fn debug(&mut self, status: bool) {
         self.debug = status;
     }
+
     fn isready(&self) -> io::Result<()> {
         let resp = UciResponse::ReadyOk;
         resp.send()
     }
+
     fn setoption(&mut self, name: &str, value: &str) {
-        // match name {
-        // }
+        match name {
+            _ => eprintln!("Unrecognized option `{name}`"),
+        }
     }
+
     fn register(&mut self, registration: Option<(&str, &str)>) {
         // No registration necessary :)
         _ = registration;
@@ -231,24 +302,43 @@ impl UciEngine for Engine {
         //     UciRegistration::Now(name, code) => {}
         // }
     }
-    fn ucinewgame(&mut self) {}
+
+    fn ucinewgame(&mut self) {
+        *self = Self::new();
+    }
+
     fn position(&mut self, fen: &str, moves: Vec<&str>) {
         // Apply the FEN to the game state
-        // self.set_state(fen)
+        self.setup(fen).expect("Invalid FEN");
 
         // Now, if there are any moves, apply them as well.
-        for mv in moves {
-            //
-        }
+        self.apply_moves(moves.into_iter().map(|san| Move::from_uci(san).unwrap()));
     }
-    fn go(&mut self, search_opt: SearchOptions) {}
-    fn stop(&mut self) {}
-    fn ponderhit(&self) {}
-    fn quit(&mut self) {}
+
+    fn go(&mut self, search_opt: SearchOptions) {
+        self.start_search(search_opt);
+    }
+
+    fn stop(&mut self) -> io::Result<()> {
+        self.bestmove()?;
+        self.stop_search();
+        Ok(())
+    }
+
+    fn ponderhit(&self) {
+        todo!("Handle ponderhit")
+    }
+
+    fn quit(&mut self) {
+        self.shutdown();
+    }
 
     /* Engine to GUI communication */
     fn id(&self) -> io::Result<()> {
-        let resp = UciResponse::Id("Dutchess", "BillCipher");
+        let name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        let author = env!("CARGO_PKG_AUTHORS");
+
+        let resp = UciResponse::Id(&name, author);
         resp.send()
     }
     fn uciok(&self) -> io::Result<()> {
@@ -260,7 +350,7 @@ impl UciEngine for Engine {
         resp.send()
     }
     fn bestmove(&self) -> io::Result<()> {
-        let resp = UciResponse::BestMove("nullmove".to_string(), None);
+        let resp = UciResponse::BestMove("e2e4".to_string(), Some("f2f4".to_string()));
         resp.send()
     }
     fn copyprotection(&self) -> io::Result<()> {
@@ -298,48 +388,32 @@ impl UciEngine for Engine {
 
 impl Default for Engine {
     fn default() -> Self {
-        Self::new()
+        let state = GameState::default();
+        let board = ChessBoard::from(state.pieces);
+        let mut s = Self {
+            state,
+            board,
+            history: Vec::with_capacity(128),
+            // Don't need more than 218
+            // https://www.chess.com/forum/view/general/whats-the-maximum-number-of-moves-possible
+            legal_moves: Vec::with_capacity(256),
+            ttable: TranspositionTable::default(),
+            protocol: EngineProtocol::UCI,
+            debug: false,
+            search: None,
+            searching: AtomicBool::new(false),
+        };
+        s.update();
+        s
     }
 }
 
-impl fmt::Display for Engine {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut board = String::with_capacity(577);
-
-        for rank in Rank::iter() {
-            for _ in File::iter() {
-                board += "+---";
-            }
-
-            board += "+\n";
-
-            for file in File::iter() {
-                let occupant = if let Some(piece) = self.get(file + rank) {
-                    piece.to_string()
-                } else {
-                    String::from(" ")
-                };
-
-                board += &format!("| {occupant} ");
-            }
-
-            board += "|\n";
-        }
-        for _ in File::iter() {
-            board += "+---";
-        }
-        board += "+";
-
-        write!(f, "{board}")
-    }
-}
-
-impl Index<Tile> for Engine {
-    type Output = Option<Piece>;
-    fn index(&self, index: Tile) -> &Self::Output {
-        &self.state.pieces[index]
-    }
-}
+// impl Index<Tile> for Engine {
+//     type Output = Option<Piece>;
+//     fn index(&self, index: Tile) -> &Self::Output {
+//         &self.state.pieces[index]
+//     }
+// }
 
 /// Represents the current state of the game, including move counters
 ///
@@ -519,8 +593,7 @@ impl GameState {
     }
 
     fn piece(&self, tile: Tile) -> &Option<Piece> {
-        // &self.pieces[tile]
-        &self.pieces[tile.index()]
+        &self.pieces[tile]
     }
 
     fn piece_mut(&mut self, tile: Tile) -> &mut Option<Piece> {
@@ -532,19 +605,38 @@ impl Default for GameState {
     fn default() -> Self {
         // Safe unwrap: Default FEN is always valid
         Self::from_fen(DEFAULT_FEN).unwrap()
-        // Self::from_fen("8/8/8/2R5/2r5/8/8/8 w KQkq - 0 1").unwrap()
-        // Self::from_fen("8/8/8/2B5/2B5/8/8/8 w KQkq - 0 1").unwrap()
-        // Self::from_fen("2B5/2B5/2B5/2B5/2B5/2B5/2B5/2B5 w KQkq - 0 1").unwrap()
-        // Self::from_fen("R7/1R6/2R5/8/8/8/6R1/8 w KQkq - 0 1").unwrap()
-        // Self::from_fen("8/n7/8/2n5/8/5n2/8/8 w KQkq - 0 1").unwrap()
-        // Self::from_fen("8/k7/8/2k5/8/5k2/8/8 w KQkq - 0 1").unwrap()
-        // Self::from_fen("8/8/8/2b5/8/8/8/8 w KQkq - 0 1").unwrap()
     }
 }
 
 impl fmt::Display for GameState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_fen())
+        let mut board = String::with_capacity(577);
+
+        for rank in Rank::iter() {
+            for _ in File::iter() {
+                board += "+---";
+            }
+
+            board += "+\n";
+
+            for file in File::iter() {
+                let occupant = if let Some(piece) = self.piece(file + rank) {
+                    piece.to_string()
+                } else {
+                    String::from(" ")
+                };
+
+                board += &format!("| {occupant} ");
+            }
+
+            board += "|\n";
+        }
+        for _ in File::iter() {
+            board += "+---";
+        }
+        board += "+";
+
+        write!(f, "{board}")
     }
 }
 
@@ -552,49 +644,6 @@ impl fmt::Display for GameState {
  * Game logic
 *********************************************************************************/
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub struct Move {
-    from: Tile,
-    to: Tile,
-}
-
-impl Move {
-    pub fn new(from: Tile, to: Tile) -> Self {
-        // Self(from | to << 4)
-        Self { from, to }
-    }
-
-    pub fn from_indices(from: usize, to: usize) -> Result<Self, String> {
-        let from = Tile::from_index(from)?;
-        let to = Tile::from_index(to)?;
-        Ok(Self::new(from, to))
-    }
-
-    pub fn from(&self) -> Tile {
-        self.from
-    }
-
-    pub fn to(&self) -> Tile {
-        self.to
-    }
-}
-
-impl fmt::Display for Move {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.from(), self.to())
-    }
-}
-
 /*********************************************************************************
  * Utility functions
 *********************************************************************************/
-
-pub struct MoveGenerator {}
-
-impl MoveGenerator {
-    //
-}
-
-// fn index(file: File, rank: Rank) -> usize {
-//     8 * rank.index() + file.index()
-// }

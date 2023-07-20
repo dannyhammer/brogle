@@ -1,3 +1,4 @@
+/*
 use dutchess_core::*;
 use dutchess_engine::*;
 use macroquad::prelude::*;
@@ -260,3 +261,6 @@ fn draw_ui(board: &GUI, start_x: f32, start_y: f32, tile_size: f32, font_size: f
         draw_text(&tile_id, x, y, font_size, color);
     }
 }
+
+ */
+fn main() {}
