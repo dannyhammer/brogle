@@ -1,11 +1,17 @@
 use std::{
     fmt, io,
     str::FromStr,
-    sync::atomic::{self, AtomicBool, Ordering},
+    sync::{
+        atomic::{self, AtomicBool, Ordering},
+        Arc,
+    },
     thread::{self, JoinHandle},
+    time::{Duration, Instant},
 };
 
-use crate::uci::{SearchOptions, UciEngine, UciOption, UciOptionType, UciResponse, UciResult};
+use crate::uci::{
+    SearchOptions, UciEngine, UciInfo, UciOption, UciOptionType, UciResponse, UciResult,
+};
 use dutchess_core::{
     utils::DEFAULT_FEN, BitBoard, ChessBoard, Color, File, Move, Piece, PieceKind, Rank, Tile,
 };
@@ -60,8 +66,9 @@ impl fmt::Display for MoveLegality {
 
 type TranspositionTable = ();
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
 pub enum EngineProtocol {
+    #[default]
     UCI,
 }
 
@@ -89,8 +96,8 @@ pub struct Engine {
 
     debug: bool,
 
-    search: Option<JoinHandle<()>>,
-    searching: AtomicBool,
+    searching: Arc<AtomicBool>,
+    // search_handle: Option<JoinHandle<()>>,
 }
 
 impl Engine {
@@ -111,7 +118,7 @@ impl Engine {
     pub fn setup(&mut self, fen: &str) -> Result<(), String> {
         self.state = GameState::from_fen(fen)?;
         self.board = ChessBoard::from(self.state.pieces);
-        self.update();
+        self.generate_legal_moves();
         Ok(())
     }
 
@@ -135,8 +142,15 @@ impl Engine {
     /// Returns `true` if the move was made successful, and `false` if it cannot be made.
     fn apply_move(&mut self, chessmove: Move) -> bool {
         let Some(piece) = self.clear(chessmove.from()) else { return false };
-        self.set(chessmove.to(), piece);
-        self.update();
+
+        if let Some(promotion) = chessmove.promote() {
+            self.set(chessmove.to(), piece.promoted(promotion));
+        } else {
+            self.set(chessmove.to(), piece);
+        }
+
+        self.history.push(chessmove);
+        self.generate_legal_moves();
         true
     }
 
@@ -166,7 +180,7 @@ impl Engine {
         moves
     }
 
-    fn update(&mut self) {
+    fn generate_legal_moves(&mut self) {
         self.legal_moves.clear();
 
         let board = Board::from_str(&self.fen()).unwrap();
@@ -185,30 +199,6 @@ impl Engine {
         let authors = env!("CARGO_PKG_AUTHORS");
         println!("{name} v{version} by {authors}");
 
-        // let mut buffer = String::new();
-        // loop {
-        //     buffer.clear();
-        //     let bytes = io::stdin().read_line(&mut buffer)?;
-
-        //     if 0 == bytes {
-        //         self.shutdown();
-        //     }
-
-        //     let mut split = buffer.split_whitespace();
-
-        //     if let Some(protocol) = split.next() {
-        //         match protocol {
-        //             "uci" => {
-        //                 // The engine received `uci`, so follow the appropriate protocol
-        //                 self.uci()?;
-        //                 self.uci_loop()?;
-        //             }
-        //             _ => {
-        //                 eprintln!("Unknown command: {protocol}. Try `uci`");
-        //             }
-        //         }
-        //     }
-        // }
         self.uci_loop()
     }
 
@@ -229,33 +219,61 @@ impl Engine {
         .into_iter()
     }
 
-    fn start_search(&mut self, search_opt: SearchOptions) {
-        let searching = AtomicBool::new(true);
-        self.searching = searching;
-        let search = thread::spawn(move || {
-            //
-            loop {
-                println!("info depth 1");
-                thread::sleep(std::time::Duration::from_secs(1));
-
-                // if searching.load(Ordering::Relaxed) {
-                //     //
-                // }
-            }
-        });
-
-        self.search = Some(search);
-    }
-
-    fn stop_search(&mut self) {
-        self.searching = AtomicBool::new(false);
-        if let Some(search) = self.search.take() {
-            _ = search.join();
+    /// Non-blocking search
+    fn search(&mut self, search_opt: SearchOptions) {
+        if self.searching.load(Ordering::Relaxed) {
+            // eprintln!("Engine is already searching")
+            self.stop_search();
         }
+        // "Unstop" the search
+        self.start_search();
+
+        let searching = Arc::clone(&self.searching);
+
+        // if search_opt.infinite {
+        //     //
+        // }
+
+        let movetime = search_opt
+            .move_time
+            // .map(|micros| Duration::from_micros(micros))
+            .unwrap_or(Duration::MAX);
+
+        let starttime = Instant::now();
+
+        thread::spawn(move || {
+            while searching.load(Ordering::Relaxed) && starttime.elapsed() < movetime {
+                // info depth 1 seldepth 1 multipv 1 score cp 38 nodes 20 nps 10000 tbhits 0 time 2 pv d2d4
+                let info = UciInfo::new().depth(1);
+                let resp = UciResponse::Info(info);
+                _ = resp.send();
+
+                // thread::sleep(Duration::from_secs(1));
+            }
+
+            // Ensure that the search has stopped, even if we broke out of the loop for other reasons.
+            searching.store(false, Ordering::Relaxed);
+        });
     }
 
-    fn shutdown(&mut self) {
-        std::process::exit(0);
+    /// Sets the flag that the search should stop.
+    fn stop_search(&mut self) {
+        self.searching.store(false, Ordering::Relaxed);
+    }
+
+    /// Sets the flag that the search should be started.
+    fn start_search(&mut self) {
+        self.searching.store(true, Ordering::Relaxed);
+    }
+
+    // fn block_until_done(&mut self) -> Option<()> {
+    //     self.search_handle
+    //         .take()
+    //         .map(|handle| handle.join().unwrap())
+    // }
+
+    fn new_game(&mut self) {
+        // *self = Self::new();
     }
 }
 
@@ -267,11 +285,9 @@ impl UciEngine for Engine {
         // The engine must now identify itself
         self.id()?;
 
-        // Stockfish sends a newline here, so I will too
-        println!("");
-
         // And send all available options
         self.option()?;
+
         // Engine has sent all parameters and is ready
         self.uciok()?;
 
@@ -304,24 +320,30 @@ impl UciEngine for Engine {
     }
 
     fn ucinewgame(&mut self) {
-        *self = Self::new();
+        // *self = Self::new();
+        self.new_game();
     }
 
     fn position(&mut self, fen: &str, moves: Vec<&str>) {
         // Apply the FEN to the game state
-        self.setup(fen).expect("Invalid FEN");
+        _ = self.setup(fen); // ignore any errors if they occur.
 
         // Now, if there are any moves, apply them as well.
         self.apply_moves(moves.into_iter().map(|san| Move::from_uci(san).unwrap()));
     }
 
     fn go(&mut self, search_opt: SearchOptions) {
-        self.start_search(search_opt);
+        self.search(search_opt);
     }
 
     fn stop(&mut self) -> io::Result<()> {
-        self.bestmove()?;
         self.stop_search();
+
+        let bestmove = self.legal_moves().first().unwrap().to_string();
+        let ponder = self.legal_moves().last().unwrap().to_string();
+
+        self.bestmove(bestmove, Some(ponder))?;
+
         Ok(())
     }
 
@@ -330,7 +352,7 @@ impl UciEngine for Engine {
     }
 
     fn quit(&mut self) {
-        self.shutdown();
+        // std::process::exit(0);
     }
 
     /* Engine to GUI communication */
@@ -349,8 +371,8 @@ impl UciEngine for Engine {
         let resp = UciResponse::ReadyOk;
         resp.send()
     }
-    fn bestmove(&self) -> io::Result<()> {
-        let resp = UciResponse::BestMove("e2e4".to_string(), Some("f2f4".to_string()));
+    fn bestmove(&self, bestmove: String, ponder: Option<String>) -> io::Result<()> {
+        let resp = UciResponse::BestMove(bestmove, ponder);
         resp.send()
     }
     fn copyprotection(&self) -> io::Result<()> {
@@ -371,11 +393,11 @@ impl UciEngine for Engine {
         let resp = UciResponse::Registration("ok");
         resp.send()
     }
-    fn info(&self) -> io::Result<()> {
-        // let resp = UciResponse::Info("checking");
-        // resp.send()?
-        println!("info TestInfo 0");
-        Ok(())
+    fn info(&self, info: UciInfo) -> io::Result<()> {
+        // let resp = UciResponse::Info(info);
+        // resp.send()
+
+        todo!()
     }
     fn option(&self) -> io::Result<()> {
         for opt in self.get_uci_options() {
@@ -400,10 +422,11 @@ impl Default for Engine {
             ttable: TranspositionTable::default(),
             protocol: EngineProtocol::UCI,
             debug: false,
-            search: None,
-            searching: AtomicBool::new(false),
+            // search_handle: None,
+            // searching: Arc::new(AtomicBool::new(false)),
+            searching: Arc::default(),
         };
-        s.update();
+        s.generate_legal_moves();
         s
     }
 }

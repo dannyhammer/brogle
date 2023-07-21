@@ -237,12 +237,20 @@ impl Piece {
         (self.kind().bits() + offset) as usize
     }
 
-    pub fn char(&self) -> char {
+    pub const fn char(&self) -> char {
         if self.is_white() {
             self.kind().char().to_ascii_uppercase()
         } else {
             self.kind().char().to_ascii_lowercase()
         }
+    }
+
+    pub fn promote(&mut self, promotion: PieceKind) {
+        *self = Self::new(self.color(), promotion)
+    }
+
+    pub const fn promoted(self, promotion: PieceKind) -> Self {
+        Self::new(self.color(), promotion)
     }
 }
 

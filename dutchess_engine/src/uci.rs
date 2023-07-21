@@ -2,6 +2,7 @@ use std::{
     fmt,
     io::{self, Write},
     str::FromStr,
+    time::Duration,
 };
 
 use log::{Level, Metadata, Record};
@@ -32,18 +33,18 @@ pub type UciResult<T> = Result<T, InvalidUciError>;
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct SearchOptions<'a> {
-    moves: Vec<&'a str>,
-    w_time: Option<i32>,
-    b_time: Option<i32>,
-    w_inc: Option<u32>,
-    b_inc: Option<u32>,
-    moves_to_go: Option<u32>,
-    depth: Option<u32>,
-    nodes: Option<u64>,
-    mate: Option<u32>,
-    move_time: Option<u32>,
-    infinite: bool,
-    ponder: bool,
+    pub moves: Vec<&'a str>,
+    pub w_time: Option<i32>,
+    pub b_time: Option<i32>,
+    pub w_inc: Option<u32>,
+    pub b_inc: Option<u32>,
+    pub moves_to_go: Option<u32>,
+    pub depth: Option<u32>,
+    pub nodes: Option<u64>,
+    pub mate: Option<u32>,
+    pub move_time: Option<Duration>,
+    pub infinite: bool,
+    pub ponder: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
@@ -74,16 +75,27 @@ pub trait UciEngine {
 
             if 0 == bytes {
                 self.quit();
+                break Ok(());
             }
+
+            // if let Ok(cmd) = UciCommand::new(&buffer) {
+            //     //
+            // }
 
             // Attempt to parse the user input
             let cmd = match UciCommand::new(&buffer) {
                 Ok(cmd) => cmd,
                 Err(e) => {
-                    println!("Unrecognized command: {buffer}");
-
+                    // if matches!(e, InvalidUciError::UnrecognizedCommand) {
+                    // if self.custom_command(&buffer).is_err() {
+                    //     //
+                    // }
+                    // continue;
+                    // } else {
                     // UCI protocol states to continue running when invalid input is received.
+                    println!("Unrecognized command: {buffer}");
                     continue;
+                    // }
                 }
             };
 
@@ -103,6 +115,8 @@ pub trait UciEngine {
             }
         }
     }
+
+    // fn custom_command(&mut self, cmd: &str) -> io::Result<()>;
 
     /* GUI to Engine communication */
 
@@ -330,7 +344,7 @@ pub trait UciEngine {
     /// `stop` command, so for every `go` command a `bestmove` command is needed!
     /// Directly before that the engine should send a final "info" command with the final search information,
     /// the the GUI has the complete statistics about the last search.
-    fn bestmove(&self) -> io::Result<()>;
+    fn bestmove(&self, bestmove: String, ponder: Option<String>) -> io::Result<()>;
 
     /// Send the `copyprotection [ checking | ok | error ]` message to `stdout.`
     fn copyprotection(&self) -> io::Result<()>;
@@ -339,7 +353,7 @@ pub trait UciEngine {
     fn registeration(&self) -> io::Result<()>;
 
     /// Send the `info [ STUFF ]` message to `stdout.`
-    fn info(&self) -> io::Result<()>;
+    fn info(&self, info: UciInfo) -> io::Result<()>;
 
     /// Send the `option [ STUFF ]` message to `stdout.`
     fn option(&self) -> io::Result<()>;
@@ -503,7 +517,14 @@ impl<'a> UciCommand<'a> {
                 "depth" => opt.depth = Some(parse(args.next())?),
                 "nodes" => opt.nodes = Some(parse(args.next())?),
                 "mate" => opt.mate = Some(parse(args.next())?),
-                "movetime" => opt.move_time = Some(parse(args.next())?),
+                // "movetime" => opt.move_time = Some(parse(args.next())?),
+                "movetime" => {
+                    if let Some(arg) = args.next() {
+                        opt.move_time = Some(Duration::from_millis(
+                            arg.parse().map_err(|_| InvalidUciError::InvalidArgument)?,
+                        ));
+                    }
+                }
                 "infinite" => opt.infinite = true,
                 _ => return Err(InvalidUciError::InvalidArgument),
             }
@@ -843,7 +864,7 @@ impl<'a> fmt::Display for UciResponse<'a> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct UciInfo {
     depth: Option<String>,
     seldepth: Option<String>,
@@ -864,16 +885,155 @@ pub struct UciInfo {
     currline: Vec<String>,
 }
 
+impl UciInfo {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn depth(mut self, depth: impl ToString) -> Self {
+        self.depth = Some(depth.to_string());
+        self
+    }
+
+    pub fn seldepth(mut self, seldepth: impl ToString) -> Self {
+        self.seldepth = Some(seldepth.to_string());
+        self
+    }
+
+    pub fn time(mut self, time: impl ToString) -> Self {
+        self.time = Some(time.to_string());
+        self
+    }
+
+    pub fn nodes(mut self, nodes: impl ToString) -> Self {
+        self.nodes = Some(nodes.to_string());
+        self
+    }
+
+    pub fn multipv(mut self, multipv: impl ToString) -> Self {
+        self.multipv = Some(multipv.to_string());
+        self
+    }
+
+    pub fn score(mut self, score: impl ToString) -> Self {
+        self.score = Some(score.to_string());
+        self
+    }
+
+    pub fn currmove(mut self, currmove: impl ToString) -> Self {
+        self.currmove = Some(currmove.to_string());
+        self
+    }
+
+    pub fn currmovenumber(mut self, currmovenumber: impl ToString) -> Self {
+        self.currmovenumber = Some(currmovenumber.to_string());
+        self
+    }
+
+    pub fn hashfull(mut self, hashfull: impl ToString) -> Self {
+        self.hashfull = Some(hashfull.to_string());
+        self
+    }
+
+    pub fn nps(mut self, nps: impl ToString) -> Self {
+        self.nps = Some(nps.to_string());
+        self
+    }
+
+    pub fn tbhits(mut self, tbhits: impl ToString) -> Self {
+        self.tbhits = Some(tbhits.to_string());
+        self
+    }
+
+    pub fn sbhits(mut self, sbhits: impl ToString) -> Self {
+        self.sbhits = Some(sbhits.to_string());
+        self
+    }
+
+    pub fn cpuload(mut self, cpuload: impl ToString) -> Self {
+        self.cpuload = Some(cpuload.to_string());
+        self
+    }
+
+    pub fn string(mut self, string: impl ToString) -> Self {
+        self.string = Some(string.to_string());
+        self
+    }
+
+    pub fn pv(mut self, pv: impl Into<Vec<String>>) -> Self {
+        self.pv = pv.into();
+        self
+    }
+
+    pub fn refutation(mut self, refutation: impl Into<Vec<String>>) -> Self {
+        self.refutation = refutation.into();
+        self
+    }
+
+    pub fn currline(mut self, currline: impl Into<Vec<String>>) -> Self {
+        self.currline = currline.into();
+        self
+    }
+}
+
 impl fmt::Display for UciInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(depth) = &self.depth {
-            f.write_str("depth ")?;
-            f.write_str(&depth)?;
+        if let Some(x) = &self.depth {
+            write!(f, "depth {x} ")?;
+        }
+        if let Some(x) = &self.seldepth {
+            write!(f, "seldepth {x} ")?;
+        }
+        if let Some(x) = &self.time {
+            write!(f, "time {x} ")?;
+        }
+        if let Some(x) = &self.nodes {
+            write!(f, "nodes {x} ")?;
+        }
+        if let Some(x) = &self.multipv {
+            write!(f, "multipv {x} ")?;
+        }
+        if let Some(x) = &self.score {
+            write!(f, "score {x} ")?;
+        }
+        if let Some(x) = &self.currmove {
+            write!(f, "currmove {x} ")?;
+        }
+        if let Some(x) = &self.currmovenumber {
+            write!(f, "currmovenumber {x} ")?;
+        }
+        if let Some(x) = &self.hashfull {
+            write!(f, "hashfull {x} ")?;
+        }
+        if let Some(x) = &self.nps {
+            write!(f, "nps {x} ")?;
+        }
+        if let Some(x) = &self.tbhits {
+            write!(f, "tbhits {x} ")?;
+        }
+        if let Some(x) = &self.sbhits {
+            write!(f, "sbhits {x} ")?;
+        }
+        if let Some(x) = &self.cpuload {
+            write!(f, "cpuload {x} ")?;
+        }
+        if let Some(x) = &self.string {
+            write!(f, "string {x} ")?;
         }
 
-        f.write_str("\n")
+        if !self.refutation.is_empty() {
+            write!(f, "refutation {}", self.refutation.join(" "))?;
+        }
 
-        // write!(f, "name {} type {}", self.name, self.opt_type)
+        if !self.currline.is_empty() {
+            write!(f, "currline {}", self.currline.join(" "))?;
+        }
+
+        if !self.pv.is_empty() {
+            write!(f, "pv {}", self.pv.join(" "))?;
+        }
+
+        write!(f, "")
     }
 }
 
