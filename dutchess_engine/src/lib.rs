@@ -1,5 +1,7 @@
 pub mod engine;
 
+pub mod search;
+
 /// # Universal Chess Interface (UCI)
 ///
 ///

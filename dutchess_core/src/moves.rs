@@ -20,11 +20,15 @@ impl Move {
         Ok(Self::new(from, to, None))
     }
 
-    pub fn from(&self) -> Tile {
+    pub fn illegal() -> Self {
+        Self::new(Tile::A1, Tile::A1, None)
+    }
+
+    pub fn src(&self) -> Tile {
         self.from
     }
 
-    pub fn to(&self) -> Tile {
+    pub fn dst(&self) -> Tile {
         self.to
     }
 
@@ -61,9 +65,9 @@ impl Move {
 impl fmt::Display for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(promote) = self.promote() {
-            write!(f, "{}{}{}", self.from(), self.to(), promote)
+            write!(f, "{}{}{}", self.src(), self.dst(), promote)
         } else {
-            write!(f, "{}{}", self.from(), self.to())
+            write!(f, "{}{}", self.src(), self.dst())
         }
     }
 }

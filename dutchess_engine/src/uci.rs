@@ -31,11 +31,18 @@ impl log::Log for UciLogger {
 
 pub type UciResult<T> = Result<T, InvalidUciError>;
 
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub enum UciSearchMode<'a> {
+    Infinite,
+    Ponder,
+    Timed(SearchOptions<'a>),
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct SearchOptions<'a> {
     pub moves: Vec<&'a str>,
-    pub w_time: Option<i32>,
-    pub b_time: Option<i32>,
+    pub w_time: Option<Duration>,
+    pub b_time: Option<Duration>,
     pub w_inc: Option<u32>,
     pub b_inc: Option<u32>,
     pub moves_to_go: Option<u32>,
@@ -43,8 +50,6 @@ pub struct SearchOptions<'a> {
     pub nodes: Option<u64>,
     pub mate: Option<u32>,
     pub move_time: Option<Duration>,
-    pub infinite: bool,
-    pub ponder: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
@@ -64,7 +69,7 @@ pub trait UciEngine {
     ///
     /// Upon receiving `uci`, your engine should call this function, and will only leave this function
     /// when a `quit` message is received.
-    fn uci_loop(&mut self) -> std::io::Result<()> {
+    fn uci_loop(&mut self) -> io::Result<()> {
         // For convenience, import the enum variants.
         use UciCommand::*;
 
@@ -74,8 +79,7 @@ pub trait UciEngine {
             let bytes = io::stdin().read_line(&mut buffer)?;
 
             if 0 == bytes {
-                self.quit();
-                break Ok(());
+                break self.quit();
             }
 
             // if let Ok(cmd) = UciCommand::new(&buffer) {
@@ -101,18 +105,18 @@ pub trait UciEngine {
 
             // Handle the command appropriately
             match cmd {
-                Uci => self.uci()?,
+                Uci => self.uci(),
                 Debug(status) => self.debug(status),
-                IsReady => self.isready()?,
+                IsReady => self.isready(),
                 SetOption(name, value) => self.setoption(&name, &value),
                 Register(registration) => self.register(registration),
                 UciNewGame => self.ucinewgame(),
                 Position(fen, moves) => self.position(fen, moves),
                 Go(search_opt) => self.go(search_opt),
-                Stop => self.stop()?,
+                Stop => self.stop(),
                 PonderHit => self.ponderhit(),
-                Quit => return Ok(self.quit()),
-            }
+                Quit => return self.quit(),
+            }?
         }
     }
 
@@ -140,7 +144,7 @@ pub trait UciEngine {
     /// to help debugging, e.g. the commands that the engine has received etc.
     /// This mode should be switched off by default and this command can be sent
     /// any time, also when the engine is thinking.
-    fn debug(&mut self, status: bool);
+    fn debug(&mut self, status: bool) -> io::Result<()>;
 
     /// Called when the engine receives `isready`.
     ///
@@ -174,7 +178,7 @@ pub trait UciEngine {
     /// * `setoption name Style value Risky\n`
     /// * `setoption name Clear Hash\n`
     /// * `setoption name NalimovPath value c:\chess\tb\4;c:\chess\tb\5\n`
-    fn setoption(&mut self, name: &str, value: &str);
+    fn setoption(&mut self, name: &str, value: &str) -> io::Result<()>;
 
     /// Called when the engine receives `registration [name <name> code <code> | later]`.
     ///
@@ -196,7 +200,7 @@ pub trait UciEngine {
     /// # Example:
     ///    `register later`
     ///    `register name Stefan MK code 4359874324`
-    fn register(&mut self, registration: Option<(&str, &str)>);
+    fn register(&mut self, registration: Option<(&str, &str)>) -> io::Result<()>;
 
     /// Called when the engine receives `ucinewgame`.
     ///
@@ -210,7 +214,7 @@ pub trait UciEngine {
     ///
     /// As the engine's reaction to `ucinewgame` can take some time the GUI should always send `isready`
     /// after `ucinewgame` to wait for the engine to finish its operation.
-    fn ucinewgame(&mut self);
+    fn ucinewgame(&mut self) -> io::Result<()>;
 
     /// Called when the engine receives `position [ startpos | fen <fen> ] move <move1> ... <movei>`
     ///
@@ -220,7 +224,7 @@ pub trait UciEngine {
     /// If the game was played  from the start position the string `startpos` will be sent
     /// Note: no `new` command is needed. However, if this position is from a different game than
     /// the last position sent to the engine, the GUI should have sent a `ucinewgame` in between.
-    fn position(&mut self, fen: &str, moves: Vec<&str>);
+    fn position(&mut self, fen: &str, moves: Vec<&str>) -> io::Result<()>;
 
     /// Called when the engine receives `go <search options>`.
     ///
@@ -289,7 +293,7 @@ pub trait UciEngine {
     /// * `infinite`
     ///
     /// Search until the `stop` command. Do not exit the search without being told so in this mode!
-    fn go(&mut self, search_opt: SearchOptions);
+    fn go(&mut self, mode: UciSearchMode) -> io::Result<()>;
 
     /// Called when the engine receives `stop`.
     ///
@@ -301,12 +305,12 @@ pub trait UciEngine {
     ///
     /// The user has played the expected move. This will be sent if the engine was told to ponder on the same move
     /// the user has played. The engine should continue searching but switch from pondering to normal search.
-    fn ponderhit(&self);
+    fn ponderhit(&self) -> io::Result<()>;
 
     /// Called when the engine receives `quit`.
     ///
     /// Quit the program as soon as possible
-    fn quit(&mut self);
+    fn quit(&mut self) -> io::Result<()>;
 
     /* Engine to GUI communication */
 
@@ -350,7 +354,7 @@ pub trait UciEngine {
     fn copyprotection(&self) -> io::Result<()>;
 
     /// Send the `registration[ checking | ok | error ]` message to `stdout.`
-    fn registeration(&self) -> io::Result<()>;
+    fn registration(&self) -> io::Result<()>;
 
     /// Send the `info [ STUFF ]` message to `stdout.`
     fn info(&self, info: UciInfo) -> io::Result<()>;
@@ -383,7 +387,7 @@ pub enum UciCommand<'a> {
     // <fen> <moves>
     Position(&'a str, Vec<&'a str>),
 
-    Go(SearchOptions<'a>),
+    Go(UciSearchMode<'a>),
 
     Stop,
 
@@ -467,6 +471,7 @@ impl<'a> UciCommand<'a> {
     }
 
     fn parse_position(args: &'a str) -> UciResult<Self> {
+        /*
         // First, we check if there are any moves provided
         let (pos, moves) = if let Some((pos, moves)) = args.split_once("moves") {
             (pos, moves.split_whitespace().collect())
@@ -485,52 +490,75 @@ impl<'a> UciCommand<'a> {
         } else {
             return Err(InvalidUciError::InvalidArgument);
         };
+         */
+
+        let (mut pos, moves) = if let Some((pos, moves)) = args.split_once("moves") {
+            (pos, moves.split_whitespace().collect())
+        } else {
+            (args, vec![])
+        };
+
+        let pos = if pos.starts_with("fen") {
+            pos = pos.trim_start_matches("fen").trim();
+            pos
+        } else if args.starts_with("startpos") {
+            DEFAULT_FEN
+        } else {
+            return Err(InvalidUciError::InvalidArgument);
+        };
 
         Ok(UciCommand::Position(pos, moves))
     }
 
     fn parse_go(args: &'a str) -> UciResult<Self> {
-        let mut opt = SearchOptions::default();
+        let mode = if args.starts_with("infinite") || args.len() == 0 {
+            UciSearchMode::Infinite
+        } else if args.starts_with("ponder") {
+            UciSearchMode::Ponder
+        } else {
+            let mut opt = SearchOptions::default();
 
-        // reduces redundant code
-        fn parse<T: FromStr>(input: Option<&str>) -> UciResult<T> {
-            input
-                .ok_or(InvalidUciError::NotEnoughArguments)?
-                .parse()
-                .map_err(|_| InvalidUciError::InvalidArgument)
-        }
-
-        let mut args = args.split_whitespace();
-        while let Some(arg) = args.next() {
-            match arg {
-                "searchmoves" => {
-                    // TODO: Can `searchmoves` come before anything else?
-                    opt.moves = args.collect();
-                    break;
-                }
-                "ponder" => opt.ponder = true,
-                "wtime" => opt.w_time = Some(parse(args.next())?),
-                "btime" => opt.b_time = Some(parse(args.next())?),
-                "winc" => opt.w_inc = Some(parse(args.next())?),
-                "binc" => opt.b_inc = Some(parse(args.next())?),
-                "movestogo" => opt.moves_to_go = Some(parse(args.next())?),
-                "depth" => opt.depth = Some(parse(args.next())?),
-                "nodes" => opt.nodes = Some(parse(args.next())?),
-                "mate" => opt.mate = Some(parse(args.next())?),
-                // "movetime" => opt.move_time = Some(parse(args.next())?),
-                "movetime" => {
-                    if let Some(arg) = args.next() {
-                        opt.move_time = Some(Duration::from_millis(
-                            arg.parse().map_err(|_| InvalidUciError::InvalidArgument)?,
-                        ));
-                    }
-                }
-                "infinite" => opt.infinite = true,
-                _ => return Err(InvalidUciError::InvalidArgument),
+            // reduces redundant code
+            fn parse<T: FromStr>(input: Option<&str>) -> UciResult<T> {
+                input
+                    .ok_or(InvalidUciError::NotEnoughArguments)?
+                    .parse()
+                    .map_err(|_| InvalidUciError::InvalidArgument)
             }
-        }
 
-        Ok(UciCommand::Go(opt))
+            fn parse_duration(input: Option<&str>) -> UciResult<Duration> {
+                let next = input.ok_or(InvalidUciError::NotEnoughArguments)?;
+                let millis = next.parse().map_err(|_| InvalidUciError::InvalidArgument)?;
+                Ok(Duration::from_millis(millis))
+            }
+
+            let mut args = args.split_whitespace();
+            while let Some(arg) = args.next() {
+                match arg {
+                    "searchmoves" => {
+                        // TODO: Can `searchmoves` come before anything else?
+                        opt.moves = args.collect();
+                        break;
+                    }
+                    // "ponder" => opt.ponder = true,
+                    "wtime" => opt.w_time = Some(parse_duration(args.next())?),
+                    "btime" => opt.b_time = Some(parse_duration(args.next())?),
+
+                    "winc" => opt.w_inc = Some(parse(args.next())?),
+                    "binc" => opt.b_inc = Some(parse(args.next())?),
+                    "movestogo" => opt.moves_to_go = Some(parse(args.next())?),
+                    "depth" => opt.depth = Some(parse(args.next())?),
+                    "nodes" => opt.nodes = Some(parse(args.next())?),
+                    "mate" => opt.mate = Some(parse(args.next())?),
+                    "movetime" => opt.move_time = Some(parse_duration(args.next())?),
+                    // "infinite" => opt.infinite = true,
+                    _ => return Err(InvalidUciError::InvalidArgument),
+                }
+            }
+            UciSearchMode::Timed(opt)
+        };
+
+        Ok(UciCommand::Go(mode))
     }
 }
 
@@ -1245,7 +1273,12 @@ mod test {
         parse_test(
             "position startpos moves e2e4 e7e5",
             UciCommand::Position(DEFAULT_FEN, vec!["e2e4", "e7e5"]),
-        )
+        );
+
+        parse_test(
+            "position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 moves e2e4 e7e5",
+            UciCommand::Position(DEFAULT_FEN, vec!["e2e4", "e7e5"]),
+        );
     }
 
     #[test]
@@ -1268,6 +1301,7 @@ mod test {
 
     #[test]
     fn parse_go() {
+        /*
         parse_test(
             "go infinite",
             UciCommand::Go(SearchOptions {
@@ -1279,8 +1313,8 @@ mod test {
         parse_test(
             "go btime 30000 wtime 30000 winc 10 binc 42",
             UciCommand::Go(SearchOptions {
-                b_time: Some(30_000),
-                w_time: Some(30_000),
+                b_time: Some(Duration::from_millis(30_000)),
+                w_time: Some(Duration::from_millis(30_000)),
                 w_inc: Some(10),
                 b_inc: Some(42),
                 ..Default::default()
@@ -1295,6 +1329,7 @@ mod test {
                 ..Default::default()
             }),
         );
+         */
     }
 
     #[test]

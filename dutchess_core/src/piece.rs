@@ -22,8 +22,8 @@ impl Color {
 
     pub const fn opponent(&self) -> Self {
         match self {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
+            Self::White => Self::Black,
+            Self::Black => Self::White,
         }
     }
 

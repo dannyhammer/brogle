@@ -7,12 +7,10 @@ use derive_more::{
 
 use crate::{Color, File, Piece, PieceKind, Rank, Tile};
 
-use crate::utils::*;
-
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub struct ChessBoard {
     /// All tiles occupied by a piece
-    pub occupied: BitBoard,
+    occupied: BitBoard,
     /// All unoccupied tiles
     empty: BitBoard,
 
