@@ -7,42 +7,31 @@ use std::{
     time::{Duration, Instant},
 };
 
-use dutchess_core::{GameState, Move};
+use chess::{Board, ChessMove, MoveGen};
+// use dutchess_core::{GameState, Move, PieceKind, Tile};
 use rand::prelude::*;
 
 use crate::uci::{SearchOptions, UciInfo, UciResponse, UciSearchMode};
 
-// #[derive(Debug, Clone, Copy)]
-// pub struct SearchParams {
-//     pub max_depth: u32,
-//     pub curr_depth: u32,
-// }
-
-// impl Default for SearchParams {
-//     fn default() -> Self {
-//         SearchParams {
-//             max_depth: 10,
-//             curr_depth: 0,
-//         }
-//     }
-// }
-
 #[derive(Debug, Clone)]
 pub struct SearchResult {
-    pub bestmove: Move,
-    pub ponder: Option<Move>,
+    // pub bestmove: Move,
+    // pub ponder: Option<Move>,
+    pub bestmove: ChessMove,
 }
 
 impl Default for SearchResult {
     fn default() -> Self {
         Self {
-            bestmove: Move::illegal(),
-            ponder: None,
+            bestmove: ChessMove::default(),
+            // bestmove: Move::illegal(),
+            // ponder: None,
         }
     }
 }
 
-pub fn search(state: GameState, depth: u32) -> SearchResult {
+pub fn search(state: Board, depth: u32) -> SearchResult {
+    // pub fn search(state: GameState, depth: u32) -> SearchResult {
     let mut res = SearchResult::default();
 
     // Simulate an increasingly-costly search time
@@ -50,7 +39,30 @@ pub fn search(state: GameState, depth: u32) -> SearchResult {
     thread::sleep(Duration::from_millis(depth as u64 * 10));
 
     // res.bestmove = state.legal_moves().next().unwrap();
-    res.bestmove = state.legal_moves().choose(&mut thread_rng()).unwrap();
+    // res.bestmove = state.legal_moves().choose(&mut thread_rng()).unwrap();
+    let moves = MoveGen::new_legal(&state);
+    res.bestmove = moves.choose(&mut thread_rng()).unwrap();
+    /*
+    {
+        let legal = moves.choose(&mut thread_rng()).unwrap();
+
+        let src = Tile::from_index_unchecked(legal.get_source().to_index());
+        let dst = Tile::from_index_unchecked(legal.get_dest().to_index());
+        let promotion = legal.get_promotion().map(|piece| {
+            use chess::Piece::*;
+            match piece {
+                Pawn => PieceKind::Pawn,
+                Knight => PieceKind::Knight,
+                Bishop => PieceKind::Bishop,
+                Rook => PieceKind::Rook,
+                Queen => PieceKind::Queen,
+                King => PieceKind::King,
+            }
+        });
+
+        Move::new(src, dst, promotion)
+    };
+     */
 
     res
 }

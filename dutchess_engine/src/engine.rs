@@ -1,5 +1,6 @@
 use std::{
     io,
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -15,7 +16,8 @@ use crate::{
         UciSearchMode,
     },
 };
-use dutchess_core::{BitBoard, Game, GameState, Move, Tile};
+use chess::{Board, ChessMove, MoveGen};
+// use dutchess_core::{Game, Move};
 
 type TranspositionTable = ();
 
@@ -30,7 +32,8 @@ pub struct Engine {
     /// State of the game, including castling rights, piece placement, etc.
     ///
     /// This is analogous to a FEN string.
-    game: Game,
+    // game: Game,
+    game: Board,
 
     /// Transposition table for game states.
     ttable: TranspositionTable,
@@ -47,7 +50,15 @@ pub struct Engine {
 }
 
 impl Engine {
+    /*
     pub fn new(game: Game) -> Self {
+        Self {
+            game,
+            ..Default::default()
+        }
+    }
+     */
+    pub fn new(game: Board) -> Self {
         Self {
             game,
             ..Default::default()
@@ -55,7 +66,7 @@ impl Engine {
     }
 
     pub fn from_fen(fen: &str) -> Result<Self, String> {
-        let game = Game::from_fen(fen)?;
+        let game = Board::from_str(fen).map_err(|e| e.to_string())?;
         Ok(Self::new(game))
     }
 
@@ -181,11 +192,17 @@ impl UciEngine for Engine {
     fn position(&mut self, fen: &str, moves: Vec<&str>) -> io::Result<()> {
         // Apply the FEN to the game state
         // _ = self.setup(fen); // ignore any errors if they occur.
-        self.game = Game::from_fen(fen).unwrap();
+        // self.game = Game::from_fen(fen).unwrap();
+        self.game = Board::from_str(fen).unwrap();
 
         // Now, if there are any moves, apply them as well.
-        self.game
-            .apply_moves(moves.into_iter().map(|m| Move::from_uci(m).unwrap()));
+        // self.game
+        //     .apply_moves(moves.into_iter().map(|m| Move::from_uci(m).unwrap()));
+
+        for mv in moves {
+            let mv = ChessMove::from_str(mv).unwrap();
+            self.game = self.game.make_move_new(mv);
+        }
 
         Ok(())
     }
@@ -217,7 +234,8 @@ impl UciEngine for Engine {
             }
             UciSearchMode::Timed(search_opt) => {
                 if let (Some(wtime), Some(btime)) = (search_opt.w_time, search_opt.b_time) {
-                    if self.game.state().current_player().is_white() {
+                    // if self.game.state().current_player().is_white() {
+                    if self.game.side_to_move() == chess::Color::White {
                         wtime
                     } else {
                         btime
@@ -231,7 +249,8 @@ impl UciEngine for Engine {
             }
         };
 
-        let state = self.game.state().clone();
+        // let state = self.game.state().clone();
+        let state = self.game.clone();
 
         let starttime = Instant::now();
 
@@ -274,7 +293,8 @@ impl UciEngine for Engine {
 
             let res = result.lock().unwrap();
             let bestmove = res.bestmove.to_string();
-            let ponder = res.ponder.map(|p| p.to_string());
+            // let ponder = res.ponder.map(|p| p.to_string());
+            let ponder = None;
             let resp = UciResponse::BestMove(bestmove, ponder);
             resp.send()
         });
@@ -291,7 +311,8 @@ impl UciEngine for Engine {
         // let ponder = self.ponder.lock().unwrap().clone();
         let res = self.search_result.lock().unwrap();
         let bestmove = res.bestmove.to_string();
-        let ponder = res.ponder.map(|p| p.to_string());
+        // let ponder = res.ponder.map(|p| p.to_string());
+        let ponder = None;
 
         self.bestmove(bestmove, ponder)
     }

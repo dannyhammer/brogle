@@ -8,5 +8,6 @@ authors = ["Bill Cipher"]
 
 [dependencies]
 log = "0.4.19"
-dutchess_core = { path = "../dutchess_core" }
+# dutchess_core = { path = "../dutchess_core" }
 rand = "0.8.5"
+chess = "3.2.0"
