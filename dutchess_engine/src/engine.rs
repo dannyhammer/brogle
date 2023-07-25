@@ -254,42 +254,42 @@ impl UciEngine for Engine {
 
         let starttime = Instant::now();
 
-        let mut depth = 0;
+        let mut depth = 4;
         let max_depth = 10;
 
         thread::spawn(move || {
-            loop {
-                // Search ends if we've timed out, been told to stop, or reached out depth limit
-                if depth == max_depth
-                    || starttime.elapsed() >= timeout
-                    || !stopper.load(Ordering::Relaxed)
-                {
-                    break;
-                }
+            // loop {
+            // Search ends if we've timed out, been told to stop, or reached out depth limit
+            // if depth == max_depth
+            //     || starttime.elapsed() >= timeout
+            //     || !stopper.load(Ordering::Relaxed)
+            // {
+            //     break;
+            // }
 
-                // Obtain a result from the search
-                let res = search(state, depth);
+            // Obtain a result from the search
+            let res = search(state, depth);
 
-                // Construct a new message to be sent
-                let info = UciInfo::new().depth(depth);
-                // .seldepth(seldepth)
-                // .multipv(multipv)
-                // .score(score)
-                // .nodes(nodes)
-                // .nps(nps)
-                // .tbhits(tbhits)
-                // .time(time)
-                // .pv(pv);
-                let resp = UciResponse::Info(info);
+            // Construct a new message to be sent
+            let info = UciInfo::new().depth(depth);
+            // .seldepth(seldepth)
+            // .multipv(multipv)
+            // .score(score)
+            // .nodes(nodes)
+            // .nps(nps)
+            // .tbhits(tbhits)
+            // .time(time)
+            // .pv(pv);
+            let resp = UciResponse::Info(info);
 
-                // Now send the info to the GUI
-                _ = resp.send();
+            // Now send the info to the GUI
+            _ = resp.send();
 
-                // Finally, store the info from the search
-                *result.lock().unwrap() = res;
+            // Finally, store the info from the search
+            *result.lock().unwrap() = res;
 
-                depth += 1;
-            }
+            depth += 1;
+            // }
 
             let res = result.lock().unwrap();
             let bestmove = res.bestmove.to_string();

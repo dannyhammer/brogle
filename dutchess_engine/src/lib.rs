@@ -2,6 +2,7 @@ pub mod engine;
 
 pub mod search;
 
+pub mod eval;
 /// # Universal Chess Interface (UCI)
 ///
 ///
@@ -55,6 +56,7 @@ pub mod uci;
 
 pub mod prelude {
     pub use crate::engine::*;
+    pub use crate::eval::*;
 }
 
 pub use prelude::*;
