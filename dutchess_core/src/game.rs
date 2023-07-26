@@ -19,7 +19,7 @@ impl Game {
         let mut s = Self::default();
         s.init = init;
         s.state = init;
-        s.apply_moves(moves);
+        s.make_moves(moves);
         s
     }
 
@@ -41,7 +41,7 @@ impl Game {
     }
 
     /// Returns `true` if the move was made successful, and `false` if it cannot be made.
-    pub fn apply_move(&mut self, chessmove: Move) {
+    pub fn make_move(&mut self, chessmove: Move) {
         // Remove the piece from it's previous location
         let Some(mut piece) = self.state.clear(chessmove.src()) else { return; };
 
@@ -60,10 +60,20 @@ impl Game {
         self.state.toggle_current_player();
     }
 
-    pub fn apply_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
+    pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
         moves
             .into_iter()
-            .for_each(|chessmove| self.apply_move(chessmove))
+            .for_each(|chessmove| self.make_move(chessmove))
+    }
+
+    pub fn unmake_move(&mut self) {
+        let Some(chessmove) = self.history.pop() else { return };
+    }
+
+    pub fn unmake_moves(&mut self, count: usize) {
+        for _ in 0..count {
+            self.unmake_move();
+        }
     }
 }
 
@@ -207,7 +217,7 @@ impl GameState {
         for rank in Rank::iter() {
             let mut empty_spaces = 0;
             for file in File::iter() {
-                if let Some(piece) = self.piece(file + rank) {
+                if let Some(piece) = self.piece(file * rank) {
                     if empty_spaces != 0 {
                         placements[rank.index()] += &empty_spaces.to_string();
                         empty_spaces = 0;
@@ -354,7 +364,7 @@ impl fmt::Display for GameState {
             board += "+\n";
 
             for file in File::iter() {
-                let occupant = if let Some(piece) = self.piece(file + rank) {
+                let occupant = if let Some(piece) = self.piece(file * rank) {
                     piece.to_string()
                 } else {
                     String::from(" ")

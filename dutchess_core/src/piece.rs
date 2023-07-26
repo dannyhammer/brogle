@@ -3,6 +3,8 @@ use std::{
     ops::{Index, IndexMut, Not},
 };
 
+use crate::ChessError;
+
 /// Represents the color of a player, piece, tile, etc. within a chess board.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Color {
@@ -103,7 +105,7 @@ impl PieceKind {
         }
     }
 
-    pub fn from_char(kind: char) -> Result<Self, String> {
+    pub fn from_char(kind: char) -> Result<Self, ChessError> {
         match kind {
             'P' | 'p' => Ok(Self::Pawn),
             'N' | 'n' => Ok(Self::Knight),
@@ -111,13 +113,13 @@ impl PieceKind {
             'R' | 'r' => Ok(Self::Rook),
             'Q' | 'q' => Ok(Self::Queen),
             'K' | 'k' => Ok(Self::King),
-            _ => Err(format!("Invalid piece char '{kind}'")),
+            _ => Err(ChessError::InvalidPieceChar { val: kind }),
         }
     }
 
-    pub fn from_str(kind: &str) -> Result<Self, String> {
+    pub fn from_str(kind: &str) -> Result<Self, ChessError> {
         if kind.is_empty() || kind.len() > 1 {
-            return Err(String::from("String must be a single char"));
+            return Err(ChessError::InvalidPieceNotation);
         }
 
         Self::from_char(kind.chars().next().unwrap())

@@ -1,6 +1,20 @@
 use std::fmt;
 
-use crate::{PieceKind, Tile};
+use crate::{ChessError, PieceKind, Tile};
+
+pub enum CastleSide {
+    Queenside,
+    Kingside,
+}
+
+pub enum MoveType {
+    Quiet,
+    Capture(PieceKind),
+    EnPassantCapture,
+    Castle(CastleSide),
+    Promote(PieceKind),
+    PawnPushTwo,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Move {
@@ -14,7 +28,7 @@ impl Move {
         Self { from, to, promote }
     }
 
-    pub fn from_indices(from: usize, to: usize) -> Result<Self, String> {
+    pub fn from_indices(from: usize, to: usize) -> Result<Self, ChessError> {
         let from = Tile::from_index(from)?;
         let to = Tile::from_index(to)?;
         Ok(Self::new(from, to, None))
@@ -36,18 +50,18 @@ impl Move {
         self.promote
     }
 
-    pub fn from_san(san: &str) -> Result<Self, String> {
+    pub fn from_san(san: &str) -> Result<Self, ChessError> {
         todo!()
     }
 
     /// Pure coordinate notation
-    pub fn from_pcn(pcn: &str) -> Result<Self, String> {
+    pub fn from_pcn(pcn: &str) -> Result<Self, ChessError> {
         todo!()
     }
 
-    pub fn from_uci(uci: &str) -> Result<Self, String> {
-        let from = uci.get(0..2).ok_or(String::from("Invalid string length"))?;
-        let to = uci.get(2..4).ok_or(String::from("Invalid string length"))?;
+    pub fn from_uci(uci: &str) -> Result<Self, ChessError> {
+        let from = uci.get(0..2).ok_or(ChessError::InvalidTileNotation)?;
+        let to = uci.get(2..4).ok_or(ChessError::InvalidTileNotation)?;
 
         let from = Tile::from_uci(from)?;
         let to = Tile::from_uci(to)?;

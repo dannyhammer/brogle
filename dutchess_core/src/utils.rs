@@ -2,20 +2,7 @@
 
 pub const DEFAULT_FEN: &'static str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-enum CastleSide {
-    Queenside,
-    Kingside,
-}
-
-// enum MoveType {
-//     Quiet,
-//     Capture(PieceKind),
-//     EnPassantCapture,
-//     Castle(CastleSide),
-//     Promote(PieceKind),
-//     PawnPushTwo,
-// }
-
+/*
 /// Fetched from ShallowBlue
 /// https://github.com/GunshipPenguin/shallow-blue/blob/c6d7e9615514a86533a9e0ffddfc96e058fc9cfd/src/attacks.h#L120
 
@@ -178,3 +165,4 @@ pub(crate) const BISHOP_INDEX_BITS: [u8; 64] = [
     5, 5, 5, 5, 5, 5, 5, 5,
     6, 5, 5, 5, 5, 5, 5, 6
 ];
+ */

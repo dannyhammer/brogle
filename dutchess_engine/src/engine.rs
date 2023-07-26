@@ -27,6 +27,19 @@ pub enum EngineProtocol {
     UCI,
 }
 
+/// A chess engine responds to inputs (such as from a GUI or terminal) and
+/// responds with computed outputs. The most common modern protocol is UCI.
+///
+/// The engine does not keep track of game state in the way you might think.
+/// It does not have a "game loop" that iterates until the game ends.
+/// Rather, it holds the current state of the board, and contains search-related
+/// information.
+///
+/// The use case of the engine is analogous to a function. You provide the engine
+/// with an initial board state (and possibly a list of moves to apply to that
+/// state), then tell it to analyze the board and find the most optimal move that
+/// can be made, given some search parameters. It will then yield what it thinks
+/// is the best move to make.
 #[derive(Debug, Default)]
 pub struct Engine {
     /// State of the game, including castling rights, piece placement, etc.

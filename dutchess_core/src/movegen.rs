@@ -1,8 +1,11 @@
-use core::num;
-
 use crate::{
-    utils::{BISHOP_INDEX_BITS, BISHOP_MAGICS, ROOK_INDEX_BITS, ROOK_MAGICS},
-    BitBoard, ChessBoard, Color, Piece, PieceKind, Tile,
+    // utils::{BISHOP_INDEX_BITS, BISHOP_MAGICS, ROOK_INDEX_BITS, ROOK_MAGICS},
+    BitBoard,
+    ChessBoard,
+    Color,
+    Piece,
+    PieceKind,
+    Tile,
 };
 
 const BISHOP_MASKS: [BitBoard; 64] =

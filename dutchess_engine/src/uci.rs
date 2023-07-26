@@ -89,7 +89,7 @@ pub trait UciEngine {
             // Attempt to parse the user input
             let cmd = match UciCommand::new(&buffer) {
                 Ok(cmd) => cmd,
-                Err(e) => {
+                Err(_err) => {
                     // if matches!(e, InvalidUciError::UnrecognizedCommand) {
                     // if self.custom_command(&buffer).is_err() {
                     //     //

@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use chess::{BitBoard, Board, Color, Piece};
 
 fn main() {

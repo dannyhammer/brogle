@@ -1,4 +1,4 @@
-use crate::{utils::ROOK_MAGICS, BitBoard, Tile};
+use crate::BitBoard;
 
 pub fn generate_blobs() {
     let bishop: [u8; 512] = unsafe { std::mem::transmute(bishop_moves()) };
