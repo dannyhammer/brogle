@@ -300,7 +300,7 @@ impl GameState {
     }
 
     pub fn toggle_current_player(&mut self) {
-        println!("Current player is now {}", self.current_player.opponent());
+        // println!("Current player is now {}", self.current_player.opponent());
         self.current_player = self.current_player.opponent();
     }
 

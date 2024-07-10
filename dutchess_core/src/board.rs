@@ -1,11 +1,14 @@
-use std::{fmt, ops::Index};
+use std::{
+    fmt,
+    ops::{Index, Shl},
+};
 
 use derive_more::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
     ShrAssign,
 };
 
-use crate::{Color, File, Piece, PieceKind, Rank, Tile};
+use crate::{ChessError, Color, File, Piece, PieceKind, Rank, Tile};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub struct ChessBoard {
@@ -313,10 +316,22 @@ pub struct BitBoard(pub(crate) u64);
 
 impl BitBoard {
     pub const FILE_A: Self = Self(0x0101010101010101);
+    pub const FILE_B: Self = Self(0x0202020202020202);
+    pub const FILE_C: Self = Self(0x0303030303030303);
+    pub const FILE_D: Self = Self(0x0404040404040404);
+    pub const FILE_E: Self = Self(0x0505050505050505);
+    pub const FILE_F: Self = Self(0x0606060606060606);
+    pub const FILE_G: Self = Self(0x0707070707070707);
     pub const FILE_H: Self = Self(0x8080808080808080);
     pub const NOT_FILE_A: Self = Self(0xfefefefefefefefe);
     pub const NOT_FILE_H: Self = Self(0x7f7f7f7f7f7f7f7f);
     pub const RANK_1: Self = Self(0x00000000000000FF);
+    pub const RANK_2: Self = Self(0x000000000000FF00);
+    pub const RANK_3: Self = Self(0x0000000000FF0000);
+    pub const RANK_4: Self = Self(0x00000000FF000000);
+    pub const RANK_5: Self = Self(0x000000FF00000000);
+    pub const RANK_6: Self = Self(0x0000FF0000000000);
+    pub const RANK_7: Self = Self(0x00FF000000000000);
     pub const RANK_8: Self = Self(0xFF00000000000000);
     pub const A1_H8_DIAG: Self = Self(0x8040201008040201);
     pub const H1_A8_DIAG: Self = Self(0x0102040810204080);
@@ -325,6 +340,8 @@ impl BitBoard {
     pub const EMPTY_BOARD: Self = Self(0x0000000000000000);
     pub const FULL_BOARD: Self = Self(0xFFFFFFFFFFFFFFFF);
     pub const EDGES: Self = Self(0xFF818181818181FF);
+    pub const NOT_EDGES: Self = Self(0x007E7E7E7E7E7E00);
+    pub const CORNERS: Self = Self(0x8100000000000081);
 
     pub const fn new(bits: u64) -> Self {
         Self(bits)
@@ -351,6 +368,26 @@ impl BitBoard {
         // Self::RANK_1 << rank.0 * 8
         Self(Self::RANK_1.0 << rank.0 * 8)
     }
+
+    /*
+    pub fn from_str(bits: &str) -> Result<Self, ChessError> {
+        let bits = bits.to_lowercase();
+        if bits.len() == 64 || bits.len() == 66 {
+            let bits = bits.trim_start_matches("0b");
+            let bits =
+                u64::from_str_radix(bits, 2).map_err(|_| ChessError::InvalidBitBoardString)?;
+            Ok(Self::new(bits))
+        } else if bits.len() == 16 || bits.len() == 18 {
+            let bits = bits.trim_start_matches("0x");
+            let bits =
+                u64::from_str_radix(bits, 16).map_err(|_| ChessError::InvalidBitBoardString)?;
+            Ok(Self::new(bits))
+        } else {
+            Err(ChessError::InvalidBitBoardString)
+        }
+                let bits =
+                u64::from_str_radix(bits, 2).map_err(|_| ChessError::InvalidBitBoardString)?;}
+     */
 
     // fn diagonal(tile: Tile) -> Self {
     //     let diag_index = tile.rank().index();
@@ -436,9 +473,18 @@ impl BitBoard {
         *self ^= mask
     }
 
+    pub fn toggle_tile(&mut self, tile: Tile) {
+        self.toggle(Self::from_tile(tile))
+    }
+
+    pub fn toggle_index(&mut self, index: usize) {
+        self.toggle(Self::from_index(index))
+    }
+
     pub fn set_index(&mut self, index: usize) {
         debug_assert!(index < 64, "Index must be between [0,64)");
-        self.0 |= 1 << index;
+        // self.0 |= 1 << index;
+        *self = *self | Self::from_index(index);
     }
 
     pub const fn get_index(&self, index: usize) -> bool {
@@ -448,7 +494,8 @@ impl BitBoard {
 
     fn clear_index(&mut self, index: usize) {
         debug_assert!(index < 64, "Index must be between [0,64)");
-        self.0 ^= !(1 << index);
+        // self.0 ^= 1 << index;
+        *self = *self ^ Self::from_index(index)
     }
 
     /// Returns `true` if `other` is a subset of `self`.
@@ -534,11 +581,6 @@ impl BitBoard {
         // (self >> 9) & Self::NOT_FILE_H
     }
 
-    /// Get the value of the bit at `index`
-    const fn get_bit_at(&self, index: usize) -> bool {
-        index <= 64 && self.0 & (1 << index) != 0
-    }
-
     pub fn iter(&self) -> BitBoardIter {
         self.into_iter()
     }
@@ -583,9 +625,38 @@ impl<T> Index<Piece> for [T; 12] {
 }
  */
 
+impl Index<Tile> for BitBoard {
+    type Output = bool;
+    fn index(&self, index: Tile) -> &Self::Output {
+        if self.get_index(index.index()) {
+            &true
+        } else {
+            &false
+        }
+    }
+}
+
 impl From<Tile> for BitBoard {
     fn from(value: Tile) -> Self {
         Self::from_tile(value)
+    }
+}
+
+impl fmt::UpperHex for BitBoard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:016X}", self.0)
+    }
+}
+
+impl fmt::LowerHex for BitBoard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:016x}", self.0)
+    }
+}
+
+impl fmt::Binary for BitBoard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:064b}", self.0)
     }
 }
 

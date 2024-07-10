@@ -84,7 +84,7 @@ impl PieceKind {
             3 => Self::Rook,
             4 => Self::Queen,
             5 => Self::King,
-            _ => panic!("Invalid bit pattern, must be [0,6)"), //panic!("Invalid bit pattern {bits:#b} ({bits})"),
+            _ => panic!("Invalid bit pattern, must be [0,6)"),
         }
     }
 
@@ -105,7 +105,7 @@ impl PieceKind {
         }
     }
 
-    pub fn from_char(kind: char) -> Result<Self, ChessError> {
+    pub const fn from_char(kind: char) -> Result<Self, ChessError> {
         match kind {
             'P' | 'p' => Ok(Self::Pawn),
             'N' | 'n' => Ok(Self::Knight),

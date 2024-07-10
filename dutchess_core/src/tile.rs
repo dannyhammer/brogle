@@ -15,6 +15,7 @@ pub enum ChessError {
     InvalidTileNotation,
     InvalidPieceNotation,
     InvalidPieceChar { val: char },
+    InvalidBitBoardString,
 }
 
 impl fmt::Display for ChessError {
@@ -37,6 +38,7 @@ impl fmt::Display for ChessError {
                 f,
                 "pieces must be [p | n | b | r | q | k] or uppercase equivalent. found {val}"
             ),
+            Self::InvalidBitBoardString => write!(f, "BitBoards must be constructed by either hexadecimal strings of length 16 or binary strings of length 64")
         }
     }
 }
@@ -186,6 +188,10 @@ impl Tile {
 
     pub const fn index(&self) -> usize {
         self.0 as usize
+    }
+
+    pub const fn to_u64_mask(&self) -> u64 {
+        1 << self.0
     }
 
     pub const fn parts(&self) -> (File, Rank) {
