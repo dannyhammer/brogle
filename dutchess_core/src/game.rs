@@ -43,7 +43,9 @@ impl Game {
     /// Returns `true` if the move was made successful, and `false` if it cannot be made.
     pub fn make_move(&mut self, chessmove: Move) {
         // Remove the piece from it's previous location
-        let Some(mut piece) = self.state.clear(chessmove.src()) else { return; };
+        let Some(mut piece) = self.state.clear(chessmove.src()) else {
+            return;
+        };
 
         // Perform promotion, if possible.
         if let Some(promotion) = chessmove.promote() {
@@ -67,7 +69,9 @@ impl Game {
     }
 
     pub fn unmake_move(&mut self) {
-        let Some(chessmove) = self.history.pop() else { return };
+        let Some(_chessmove) = self.history.pop() else {
+            return;
+        };
     }
 
     pub fn unmake_moves(&mut self, count: usize) {
@@ -92,7 +96,7 @@ impl Default for Game {
 /// Analogous to a FEN string.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct GameState {
-    /// Can be indexed by [`Position`]
+    /// Can be indexed by [`Tile`]
     pieces: [Option<Piece>; 64],
 
     /// BitBoard representation of the game board.
@@ -141,7 +145,9 @@ impl GameState {
                     pieces[rank * 8 + file] = Some(piece);
                     file += 1;
                 } else {
-                    let Some(empty) = piece_char.to_digit(10) else { return Err("Invalid non-char digit when parsing FEN string") };
+                    let Some(empty) = piece_char.to_digit(10) else {
+                        return Err("Invalid non-char digit when parsing FEN string");
+                    };
                     file += empty as usize
                 }
             }
@@ -178,7 +184,9 @@ impl GameState {
         let en_passant_tile = match en_passant_target {
             "-" => None,
             tile => {
-                let Ok(pos) = Tile::from_uci(tile) else { return Err("Invalid En Passant target when parsing FEN string") };
+                let Ok(pos) = Tile::from_uci(tile) else {
+                    return Err("Invalid En Passant target when parsing FEN string");
+                };
                 Some(pos)
             }
         };
@@ -188,14 +196,18 @@ impl GameState {
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        let Ok(halfmove) = halfmove.parse() else { return Err("Invalid halfmove; must be numeric") };
+        let Ok(halfmove) = halfmove.parse() else {
+            return Err("Invalid halfmove; must be numeric");
+        };
 
         let fullmove = split.next().unwrap_or_else(|| {
             let x = "1";
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        let Ok(fullmove) = fullmove.parse() else { return Err("Invalid fullmove; must be numeric") };
+        let Ok(fullmove) = fullmove.parse() else {
+            return Err("Invalid fullmove; must be numeric");
+        };
 
         Ok(Self {
             pieces,

@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    ops::{Index, Shl},
+    ops::{Index, Shl, Shr},
 };
 
 use derive_more::{
@@ -10,6 +10,9 @@ use derive_more::{
 
 use crate::{ChessError, Color, File, Piece, PieceKind, Rank, Tile};
 
+/// Represents a full chess board at any given state.
+///
+/// Internally uses a collection of [`BitBoards`] to keep track of piece locations, occupied/empty squares, and attack squares.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub struct ChessBoard {
     /// All tiles occupied by a piece
@@ -37,6 +40,62 @@ pub struct ChessBoard {
 }
 
 impl ChessBoard {
+    pub fn from_fen_placements(placements: &str) -> Result<Self, ChessError> {
+        // Check if the placements string is the correct length
+        if placements.matches('/').count() != 7 {
+            return Err(ChessError::InvalidFenString);
+        }
+
+        let mut board = Self::default();
+
+        // Have to reverse this so that white appears on the bottom
+        for (rank, placements) in placements.split('/').rev().enumerate() {
+            let mut file = 0;
+            let rank = rank as u8;
+            for piece_char in placements.chars() {
+                // If the next char is a piece, we need to update the relevant BitBoards
+                if let Ok(kind) = PieceKind::from_char(piece_char) {
+                    // Firstly, create a tile and set the "Occupied" board at this location.
+                    let tile = Tile::new(File::new_unchecked(file), Rank::new_unchecked(rank));
+                    board.occupied.set(tile);
+
+                    // Based on the color, we either set the "White" or "Black" BitBoards
+                    if piece_char.is_ascii_uppercase() {
+                        board.white.set(tile);
+                    } else {
+                        board.black.set(tile);
+                    };
+
+                    // Set the appropriate BitBoard based on the piece's kind
+                    match kind {
+                        PieceKind::Pawn => board.pawn.set(tile),
+                        PieceKind::Knight => board.knight.set(tile),
+                        PieceKind::Bishop => board.bishop.set(tile),
+                        PieceKind::Rook => board.rook.set(tile),
+                        PieceKind::Queen => board.queen.set(tile),
+                        PieceKind::King => board.king.set(tile),
+                    }
+
+                    file += 1;
+                } else {
+                    // If the next char was not a piece, increment our File counter, checking for errors along the way
+                    let Some(empty) = piece_char.to_digit(10) else {
+                        return Err(ChessError::InvalidFenString);
+                    };
+                    file += empty as u8
+                }
+            }
+        }
+
+        // After all pieces have been set, we can compute the "Attacks" boards
+
+        Ok(board)
+    }
+
+    /// Gets the [`Piece`] at a given [`Tile`], if there is one present.
+    ///
+    /// # Example
+    ///
     pub fn get(&self, tile: Tile) -> Option<Piece> {
         let color = self.color_at(tile)?;
         let kind = self.kind_at(tile)?;
@@ -289,8 +348,18 @@ fn check_bit(bits: u8, n: u8) -> u8 {
 /// The internal representation is a 64-bit binary number, so the values will represent the entire board.
 /// They are color-agnostic, with the low order bits representing the "lower" half of the board.
 ///
-/// LERF - Little-Endian Rank-File Mapping
-/// https://www.chessprogramming.org/Square_Mapping_Considerations#Little-Endian_Rank-File_Mapping
+/// The internal encoding uses [Little-Endian Rank-File Mapping (LERF)](https://www.chessprogramming.org/Square_Mapping_Considerations#Little-Endian_Rank-File_Mapping),
+/// so a bitboard of first Rank would look like this in binary:
+/// ```text
+/// 00000000
+/// 00000000
+/// 00000000
+/// 00000000
+/// 00000000
+/// 00000000
+/// 00000000
+/// 11111111
+/// ```
 #[derive(
     Clone,
     Copy,
@@ -317,11 +386,11 @@ pub struct BitBoard(pub(crate) u64);
 impl BitBoard {
     pub const FILE_A: Self = Self(0x0101010101010101);
     pub const FILE_B: Self = Self(0x0202020202020202);
-    pub const FILE_C: Self = Self(0x0303030303030303);
-    pub const FILE_D: Self = Self(0x0404040404040404);
-    pub const FILE_E: Self = Self(0x0505050505050505);
-    pub const FILE_F: Self = Self(0x0606060606060606);
-    pub const FILE_G: Self = Self(0x0707070707070707);
+    pub const FILE_C: Self = Self(0x0404040404040404);
+    pub const FILE_D: Self = Self(0x0808080808080808);
+    pub const FILE_E: Self = Self(0x1010101010101010);
+    pub const FILE_F: Self = Self(0x2020202020202020);
+    pub const FILE_G: Self = Self(0x4040404040404040);
     pub const FILE_H: Self = Self(0x8080808080808080);
     pub const NOT_FILE_A: Self = Self(0xfefefefefefefefe);
     pub const NOT_FILE_H: Self = Self(0x7f7f7f7f7f7f7f7f);
@@ -343,35 +412,94 @@ impl BitBoard {
     pub const NOT_EDGES: Self = Self(0x007E7E7E7E7E7E00);
     pub const CORNERS: Self = Self(0x8100000000000081);
 
+    /// Constructs a new [`BitBoard`] from the provided bit pattern.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::BitBoard;
+    /// let board = BitBoard::new(255);
+    /// assert_eq!(board.to_hex_string(), "0x00000000000000FF");
+    /// ```
     pub const fn new(bits: u64) -> Self {
         Self(bits)
     }
 
+    /// Constructs a new [`BitBoard`] from the provided index.
+    ///
+    /// The resulting [`BitBoard`] will have only a single bit toggled on.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::BitBoard;
+    /// let board = BitBoard::from_index(63);
+    /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
+    /// ```
     pub const fn from_index(index: usize) -> Self {
         debug_assert!(index < 64, "Index must be between [0,64)");
         Self(1 << index)
     }
 
+    /// Constructs a new [`BitBoard`] from the provided [`Tile`].
+    ///
+    /// The resulting [`BitBoard`] will have only a single bit toggled on.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Tile};
+    /// let board = BitBoard::from_tile(Tile::H8);
+    /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
+    /// ```
     pub const fn from_tile(tile: Tile) -> Self {
-        // Self(1 << tile.index())
         Self::from_index(tile.index())
     }
 
+    /// Constructs a new [`BitBoard`] from the provided [`File`].
+    ///
+    /// The resulting [`BitBoard`] will have an entire column of bits toggled on.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, File};
+    /// let board = BitBoard::from_file(File::F);
+    /// assert_eq!(board.to_hex_string(), "0x2020202020202020");
+    /// ```
     pub const fn from_file(file: File) -> Self {
-        // Self(FILE_A << file.0)
-        // Self::FILE_A << file.0
-        Self(Self::FILE_A.0 << file.0)
+        Self::new(Self::FILE_A.0 << file.0)
     }
 
+    /// Constructs a new [`BitBoard`] from the provided [`Rank`].
+    ///
+    /// The resulting [`BitBoard`] will have an entire row of bits toggled on.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Rank};
+    /// let board = BitBoard::from_rank(Rank::SEVEN);
+    /// assert_eq!(board.to_hex_string(), "0x00FF000000000000");
+    /// ```
     pub const fn from_rank(rank: Rank) -> Self {
-        // Self(RANK_1 << rank.0 * 8)
-        // Self::RANK_1 << rank.0 * 8
-        Self(Self::RANK_1.0 << rank.0 * 8)
+        Self::new(Self::RANK_1.0 << rank.0 * 8)
     }
 
-    /*
+    /// Constructs a new [`BitBoard`] from the provided string.
+    ///
+    /// The string may be a binary or hexadecimal number, and may be proceeded with `0b` or `0x`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::BitBoard;
+    /// let board1 = BitBoard::from_str("0x00FF000000000000");
+    /// let board2 = BitBoard::from_str("00FF000000000000");
+    /// let board3 = BitBoard::from_str("0000000011111111000000000000000000000000000000000000000000000000");
+    /// let board4 = BitBoard::from_str("0b0000000011111111000000000000000000000000000000000000000000000000");
+    /// assert_eq!(board1, board2);
+    /// assert_eq!(board1, board3);
+    /// assert_eq!(board1, board4);
+    /// assert_eq!(board1.unwrap().to_hex_string(), "0x00FF000000000000");
+    /// ```
     pub fn from_str(bits: &str) -> Result<Self, ChessError> {
         let bits = bits.to_lowercase();
+
         if bits.len() == 64 || bits.len() == 66 {
             let bits = bits.trim_start_matches("0b");
             let bits =
@@ -385,51 +513,87 @@ impl BitBoard {
         } else {
             Err(ChessError::InvalidBitBoardString)
         }
-                let bits =
-                u64::from_str_radix(bits, 2).map_err(|_| ChessError::InvalidBitBoardString)?;}
-     */
+    }
 
-    // fn diagonal(tile: Tile) -> Self {
-    //     let diag_index = tile.rank().index();
-    //     // let diag = A1_H8_DIAG >> diag_index;
-    //     // let diag = A1_H8_DIAG >> diag_index;
-
-    //     BitBoard::from(tile) | BitBoard(diag)
-    // }
-
-    // fn anti_diagonal(tile: Tile) -> Self {
-    //     Self(0)
-    // }
-
+    /// Creates a [`Tile`] from this [`BitBoard`] based on the lowest-index bit that is flipped.
+    ///
+    /// If this [`BitBoard`] contains more than a single flipped bit, it is converted into a [`Tile`]
+    /// based on the index of the lowest bit that is flipped.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Tile};
+    /// let board = BitBoard::from_index(14);
+    /// assert_eq!(board.to_tile(), Tile::G2);
+    /// ```
     pub const fn to_tile(&self) -> Tile {
         Tile(self.0.trailing_zeros() as u8)
     }
 
     /// Reverse this [`BitBoard`], viewing it from the opponent's perspective.
-    pub const fn flip(&self) -> Self {
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Rank};
+    /// let board = BitBoard::from_rank(Rank::SEVEN);
+    /// assert_eq!(board.to_hex_string(), "0x00FF000000000000");
+    ///
+    /// let flipped = board.flipped();
+    /// assert_eq!(flipped.to_hex_string(), "0x000000000000FF00");
+    /// ```
+    pub const fn flipped(&self) -> Self {
         Self(self.0.swap_bytes())
     }
 
-    pub const fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+    /// Checks if this [`BitBoard`] is empty, or all zeros.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::BitBoard;
+    /// let board = BitBoard::new(0x0);
+    /// assert!(board.is_empty());
+    /// ```
+    pub const fn is_empty(&self) -> bool {
+        self.0 == 0
     }
 
-    const fn is_empty(&self) -> bool {
-        self.0 == Self::EMPTY_BOARD.0
-        // *self == Self::EMPTY_BOARD
-        // self.eq(&Self::EMPTY_BOARD)
-    }
-
+    /// Toggles the bit corresponding to the location of the provided [`Tile`] to `1` (on).
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Tile};
+    /// let mut board = BitBoard::default();
+    /// board.set(Tile::G2);
+    /// assert_eq!(board.to_hex_string(), "0x0000000000004000");
+    /// ```
     pub fn set(&mut self, tile: Tile) {
         // self.0 |= 1 << tile.index();
-        self.set_index(tile.index())
+        self.set_index(tile.index());
+        // *self = *self | Self::from_tile(tile);
     }
 
+    /// Gets the value of the bit corresponding to the location of the provided [`Tile`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Tile};
+    /// let board = BitBoard::FILE_A;
+    /// assert!(board.get(Tile::A3));
+    /// ```
     pub const fn get(&self, tile: Tile) -> bool {
         // (self.0 & 1 << tile.index()) != 0
         self.get_index(tile.index())
     }
 
+    /// Toggles the bit corresponding to the location of the provided [`Tile`] to `0` (off).
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Tile};
+    /// let mut board = BitBoard::RANK_1;
+    /// board.clear(Tile::C1);
+    /// assert_eq!(board.to_hex_string(), "0x00000000000000FB");
+    /// ```
     pub fn clear(&mut self, tile: Tile) {
         // self.0 ^= !(1 << tile.index());
         self.clear_index(tile.index())
@@ -441,7 +605,6 @@ impl BitBoard {
     }
 
     pub const fn lsb(&self) -> Option<u8> {
-        // (!self.is_empty()).then_some(self.0.trailing_zeros() as u8)
         if self.is_empty() {
             None
         } else {
@@ -481,13 +644,14 @@ impl BitBoard {
         self.toggle(Self::from_index(index))
     }
 
-    pub fn set_index(&mut self, index: usize) {
+    fn set_index(&mut self, index: usize) {
         debug_assert!(index < 64, "Index must be between [0,64)");
         // self.0 |= 1 << index;
         *self = *self | Self::from_index(index);
+        // self.set(Tile::from_index_unchecked(index));
     }
 
-    pub const fn get_index(&self, index: usize) -> bool {
+    const fn get_index(&self, index: usize) -> bool {
         debug_assert!(index < 64, "Index must be between [0,64)");
         (self.0 & 1 << index) != 0
     }
@@ -499,38 +663,14 @@ impl BitBoard {
     }
 
     /// Returns `true` if `other` is a subset of `self`.
-    const fn contains_all(&self, other: &Self) -> bool {
+    pub const fn contains_all(&self, other: &Self) -> bool {
         self.0 & other.0 == other.0
     }
 
     /// Returns `true` if `self` contains any bits of `other`.
-    const fn contains_any(&self, other: &Self) -> bool {
+    pub const fn contains_any(&self, other: &Self) -> bool {
         self.0 & other.0 != Self::EMPTY_BOARD.0
         // *self & *other != Self::EMPTY_BOARD
-    }
-
-    pub const fn not(self) -> Self {
-        Self(!self.0)
-    }
-
-    pub const fn and(self, other: Self) -> Self {
-        Self(self.0 & other.0)
-    }
-
-    pub const fn or(self, other: Self) -> Self {
-        Self(self.0 | other.0)
-    }
-
-    pub const fn xor(self, other: Self) -> Self {
-        Self(self.0 ^ other.0)
-    }
-
-    pub const fn rshift(self, n: u8) -> Self {
-        Self(self.0 >> n)
-    }
-
-    pub const fn lshift(self, n: u8) -> Self {
-        Self(self.0 << n)
     }
 
     // Rank up
@@ -581,14 +721,6 @@ impl BitBoard {
         // (self >> 9) & Self::NOT_FILE_H
     }
 
-    pub fn iter(&self) -> BitBoardIter {
-        self.into_iter()
-    }
-
-    pub const fn population(&self) -> u32 {
-        self.0.count_ones()
-    }
-
     const fn north_fill(&self) -> Self {
         let mut bits = self.0;
         bits |= bits << 8;
@@ -603,6 +735,56 @@ impl BitBoard {
         bits |= bits >> 16;
         bits |= bits >> 32;
         Self(bits)
+    }
+
+    pub fn iter(&self) -> BitBoardIter {
+        self.into_iter()
+    }
+
+    /// Yields the total number of `1`s in this [`BitBoard`].
+    ///
+    /// In other words, this function determines how many bits are activated.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::BitBoard;
+    /// let board = BitBoard::RANK_1;
+    /// assert_eq!(board.population(), 8);
+    /// ```
+    pub const fn population(&self) -> u32 {
+        self.0.count_ones()
+    }
+
+    pub fn to_hex_string(&self) -> String {
+        format!("0x{:0>16X}", self.0)
+    }
+}
+
+impl Shl<File> for BitBoard {
+    type Output = Self;
+    fn shl(self, rhs: File) -> Self::Output {
+        Self::new(self.0 << rhs.0)
+    }
+}
+
+impl Shr<File> for BitBoard {
+    type Output = Self;
+    fn shr(self, rhs: File) -> Self::Output {
+        Self::new(self.0 >> rhs.0)
+    }
+}
+
+impl Shl<Rank> for BitBoard {
+    type Output = Self;
+    fn shl(self, rhs: Rank) -> Self::Output {
+        Self::new(self.0 << rhs.0 * 8)
+    }
+}
+
+impl Shr<Rank> for BitBoard {
+    type Output = Self;
+    fn shr(self, rhs: Rank) -> Self::Output {
+        Self::new(self.0 >> rhs.0 * 8)
     }
 }
 
@@ -642,21 +824,39 @@ impl From<Tile> for BitBoard {
     }
 }
 
+impl From<File> for BitBoard {
+    fn from(value: File) -> Self {
+        Self::from_file(value)
+    }
+}
+
+impl From<Rank> for BitBoard {
+    fn from(value: Rank) -> Self {
+        Self::from_rank(value)
+    }
+}
+
+impl From<u64> for BitBoard {
+    fn from(value: u64) -> Self {
+        Self::new(value)
+    }
+}
+
 impl fmt::UpperHex for BitBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:016X}", self.0)
+        write!(f, "0X{:0>16X}", self.0)
     }
 }
 
 impl fmt::LowerHex for BitBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:016x}", self.0)
+        write!(f, "0x{:0>16x}", self.0)
     }
 }
 
 impl fmt::Binary for BitBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:064b}", self.0)
+        write!(f, "0b{:0>64b}", self.0)
     }
 }
 
@@ -738,5 +938,68 @@ impl IntoIterator for &mut BitBoard {
     type IntoIter = BitBoardIter;
     fn into_iter(self) -> Self::IntoIter {
         BitBoardIter { bb: *self }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_bitboard_to_string() {
+        let board = BitBoard::A1_H8_DIAG;
+        let expected =
+            "00000001\n00000010\n00000100\n00001000\n00010000\n00100000\n01000000\n10000000";
+
+        assert_eq!(board.to_string(), expected);
+    }
+
+    #[test]
+    fn test_bitboard_masking() {
+        let file_a = BitBoard::FILE_A;
+        let full_board = BitBoard::FULL_BOARD;
+        let expected = BitBoard::NOT_FILE_A;
+
+        assert_eq!(file_a ^ full_board, expected);
+    }
+
+    #[test]
+    fn test_bitboard_from_str() {
+        let bits = "0x0101010101010101";
+        let board = BitBoard::from_str(&bits).unwrap();
+        assert_eq!(board, BitBoard::FILE_A);
+
+        let bits = "0101010101010101";
+        let board = BitBoard::from_str(&bits).unwrap();
+        assert_eq!(board, BitBoard::FILE_A);
+
+        let bits = "0b0000000100000001000000010000000100000001000000010000000100000001";
+        let board = BitBoard::from_str(&bits).unwrap();
+        assert_eq!(board, BitBoard::FILE_A);
+
+        let bits = "0000000100000001000000010000000100000001000000010000000100000001";
+        let board = BitBoard::from_str(&bits).unwrap();
+        assert_eq!(board, BitBoard::FILE_A);
+
+        let bits = "0b0000000200000002000000020000000200000002000000010000000100000001";
+        let board = BitBoard::from_str(bits);
+        assert!(board.is_err());
+
+        let bits = "0000000200000002000000020000000200000002000000010000000100000001";
+        let board = BitBoard::from_str(bits);
+        assert!(board.is_err());
+
+        let bits = "x0awdk";
+        let board = BitBoard::from_str(bits);
+        assert!(board.is_err());
+
+        let bits = "";
+        let board = BitBoard::from_str(bits);
+        assert!(board.is_err());
+    }
+
+    #[test]
+    fn test_bitboard_constructors() {
+        assert_eq!(BitBoard::RANK_4, BitBoard::from_rank(Rank::FOUR));
     }
 }

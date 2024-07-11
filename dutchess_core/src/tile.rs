@@ -12,10 +12,12 @@ pub enum ChessError {
     OutOfBounds { val: usize, min: usize, max: usize },
     InvalidFileChar { val: char },
     InvalidRankChar { val: char },
+    InvalidColorChar { val: char },
     InvalidTileNotation,
     InvalidPieceNotation,
     InvalidPieceChar { val: char },
     InvalidBitBoardString,
+    InvalidFenString,
 }
 
 impl fmt::Display for ChessError {
@@ -24,8 +26,9 @@ impl fmt::Display for ChessError {
             Self::OutOfBounds { val, min, max } => {
                 write!(f, "value {val} must be within {min}..={max}")
             }
-            Self::InvalidFileChar { val } => write!(f, "file chars must be [a, h], found {val}"),
-            Self::InvalidRankChar { val } => write!(f, "rank chars must be [1, 8], found {val}"),
+            Self::InvalidFileChar { val } => write!(f, "file chars must be [a, h]. found {val}"),
+            Self::InvalidRankChar { val } => write!(f, "rank chars must be [1, 8]. found {val}"),
+            Self::InvalidColorChar { val } => write!(f, "color chars must be `w` or `b`. found {val}"),
             Self::InvalidTileNotation => write!(
                 f,
                 "tile is not valid notation. notation must be <file><rank>"
@@ -38,7 +41,8 @@ impl fmt::Display for ChessError {
                 f,
                 "pieces must be [p | n | b | r | q | k] or uppercase equivalent. found {val}"
             ),
-            Self::InvalidBitBoardString => write!(f, "BitBoards must be constructed by either hexadecimal strings of length 16 or binary strings of length 64")
+            Self::InvalidBitBoardString => write!(f, "BitBoards must be constructed by either hexadecimal strings of length 16 or binary strings of length 64"),
+            Self::InvalidFenString => write!(f, "Invalid FEN string")
         }
     }
 }
@@ -147,20 +151,60 @@ impl Tile {
         (Self::MIN..=Self::MAX).map(|i| Self(i))
     }
 
+    /// Creates a new [`Tile`] from the provided [`File`] and [`Rank`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Tile, File, Rank};
+    /// let c4 = Tile::new(File::C, Rank::FOUR);
+    /// assert_eq!(c4, Tile::C4);
+    /// ```
     pub const fn new(file: File, rank: Rank) -> Self {
         // least-significant file mapping
-        // Self(file.0 + rank.0 * 8)
         Self(file.0 ^ rank.0 << 3)
     }
 
+    /// Creates a new [`Tile`] from the provided index value.
+    ///
+    /// The provided `index` must be `[0, 63]` or else a [`ChessError`] is returned.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// let c4 = Tile::from_index(26);
+    /// assert_eq!(c4, Ok(Tile::C4));
+    /// ```
     pub const fn from_index(index: usize) -> Result<Self, ChessError> {
         Self::from_int(index as u8)
     }
 
+    /// Creates a new [`Tile`] from the provided index value, without error checking.
+    ///
+    /// # Panics
+    ///
+    /// If `index` is greater than `63`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// let c4 = Tile::from_index_unchecked(26);
+    /// assert_eq!(c4, Tile::C4);
+    /// ```
     pub const fn from_index_unchecked(index: usize) -> Self {
+        debug_assert!(index < 64, "Index must be between [0,64)");
         Self(index as u8)
     }
 
+    /// Creates a new [`Tile`] from the provided index value.
+    ///
+    /// The provided `index` must be `[0, 63]` or else a [`ChessError`] is returned.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// let c4 = Tile::from_int(26);
+    /// assert_eq!(c4, Ok(Tile::C4));
+    /// ```
     pub const fn from_int(int: u8) -> Result<Self, ChessError> {
         if int > Self::MAX {
             return Err(ChessError::OutOfBounds {
@@ -172,28 +216,70 @@ impl Tile {
         Ok(Self(int))
     }
 
+    /// Fetches the inner index value of the [`Tile`], which represented as a [`u8`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::C4.inner(), 26);
+    /// ```
     pub const fn inner(&self) -> u8 {
         self.0
     }
 
+    /// Fetches the [`File`] of this [`Tile`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Tile, File};
+    /// assert_eq!(Tile::C4.file(), File::C);
+    /// ```
     pub const fn file(&self) -> File {
-        // File(self.0 % 8)
-        File(self.0 & 7)
+        File(self.0 & 7) // Same as % 8
     }
 
+    /// Fetches the [`Rank`] of this [`Tile`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Tile, Rank};
+    /// assert_eq!(Tile::C4.rank(), Rank::FOUR);
+    /// ```
     pub const fn rank(&self) -> Rank {
-        // Rank(self.0 / 8)
-        Rank(self.0 >> 3)
+        Rank(self.0 >> 3) // Same as / 8
     }
 
+    /// Fetches the inner index value of the [`Tile`], casted to a [`usize`].
+    ///
+    /// Useful when using a [`Tile`] to index into things.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::C4.index(), 26);
+    /// ```
     pub const fn index(&self) -> usize {
-        self.0 as usize
+        self.inner() as usize
     }
 
+    /// Converts this [`Tile`] into a [`u64`] mask, primarily for use with [`BitBoard`]s.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::C4.to_u64_mask(), 1 << 26); // 1 << 26 = 67108864
+    /// ```
     pub const fn to_u64_mask(&self) -> u64 {
         1 << self.0
     }
 
+    /// Fetches the [`File`] and [`Rank`] of this [`Tile`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Tile, File, Rank};
+    /// assert_eq!(Tile::C4.parts(), (File::C, Rank::FOUR));
+    /// ```
     pub const fn parts(&self) -> (File, Rank) {
         (self.file(), self.rank())
     }
@@ -206,14 +292,39 @@ impl Tile {
     //     (self.rank().index() + self.file().index()) ^ 7
     // }
 
+    /// Returns `true` if this [`Tile`] is a light square.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert!(Tile::C4.is_light());
+    /// ```
     pub const fn is_light(&self) -> bool {
         (self.file().0 + self.rank().0) % 2 != 0
     }
 
+    /// Returns `true` if this [`Tile`] is a dark square.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert!(Tile::C5.is_dark());
+    /// ```
     pub const fn is_dark(&self) -> bool {
         !self.is_light()
     }
 
+    /// Creates a [`Tile`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// let c4 = Tile::from_uci("c4");
+    /// assert_eq!(c4, Ok(Tile::C4));
+    ///
+    /// let err = Tile::from_uci("z0");
+    /// assert!(err.is_err());
+    /// ```
     pub fn from_uci(tile: &str) -> Result<Self, ChessError> {
         let mut chars = tile.chars();
 
@@ -225,10 +336,28 @@ impl Tile {
         Ok(Self::new(File::from_char(file)?, Rank::from_char(rank)?))
     }
 
-    fn to_uci(self) -> String {
+    /// Converts this [`Tile`] to a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!("c4", Tile::C4.to_uci());
+    /// ```
+    pub fn to_uci(self) -> String {
         format!("{}{}", self.file(), self.rank())
     }
 
+    /// Increments this [`Tile`] "North" (+rank) by one, if possible.
+    ///
+    /// Returns [`None`] if it is already at the maximum rank.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::C4.north(), Some(Tile::C5));
+    ///
+    /// assert_eq!(Tile::C8.north(), None);
+    /// ```
     pub const fn north(&self) -> Option<Self> {
         if let Some(next) = self.rank().increase() {
             Some(Self::new(self.file(), next))
@@ -237,6 +366,17 @@ impl Tile {
         }
     }
 
+    /// Increments this [`Tile`] "South" (-rank) by one, if possible.
+    ///
+    /// Returns [`None`] if it is already at the minimum rank.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::C4.south(), Some(Tile::C3));
+    ///
+    /// assert_eq!(Tile::C1.south(), None);
+    /// ```
     pub const fn south(&self) -> Option<Self> {
         if let Some(next) = self.rank().decrease() {
             Some(Self::new(self.file(), next))
@@ -245,14 +385,17 @@ impl Tile {
         }
     }
 
-    pub const fn west(&self) -> Option<Self> {
-        if let Some(next) = self.file().decrease() {
-            Some(Self::new(next, self.rank()))
-        } else {
-            None
-        }
-    }
-
+    /// Increments this [`Tile`] "East" (+file) by one, if possible.
+    ///
+    /// Returns [`None`] if it is already at the maximum file.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::C4.east(), Some(Tile::D4));
+    ///
+    /// assert_eq!(Tile::H4.east(), None);
+    /// ```
     pub const fn east(&self) -> Option<Self> {
         if let Some(next) = self.file().increase() {
             Some(Self::new(next, self.rank()))
@@ -261,6 +404,35 @@ impl Tile {
         }
     }
 
+    /// Increments this [`Tile`] "West" (-file) by one, if possible.
+    ///
+    /// Returns [`None`] if it is already at the minimum file.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::C4.west(), Some(Tile::B4));
+    ///
+    /// assert_eq!(Tile::A4.west(), None);
+    /// ```
+    pub const fn west(&self) -> Option<Self> {
+        if let Some(next) = self.file().decrease() {
+            Some(Self::new(next, self.rank()))
+        } else {
+            None
+        }
+    }
+
+    /// Increments (if `color` is [`White`]) or decrements (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by one, if possible.
+    ///
+    /// Returns [`None`] if it is already at the edge of the board.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Tile, Color};
+    /// assert_eq!(Tile::C4.forward(Color::White), Some(Tile::C5));
+    /// assert_eq!(Tile::C4.forward(Color::Black), Some(Tile::C3));
+    /// ```
     pub const fn forward(&self, color: Color) -> Option<Self> {
         match color {
             Color::White => self.north(),
@@ -268,6 +440,16 @@ impl Tile {
         }
     }
 
+    /// Decrements (if `color` is [`White`]) or increments (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by one, if possible.
+    ///
+    /// Returns [`None`] if it is already at the edge of the board.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Tile, Color};
+    /// assert_eq!(Tile::C4.backward(Color::White), Some(Tile::C3));
+    /// assert_eq!(Tile::C4.backward(Color::Black), Some(Tile::C5));
+    /// ```
     pub const fn backward(&self, color: Color) -> Option<Self> {
         match color {
             Color::White => self.south(),
@@ -275,17 +457,37 @@ impl Tile {
         }
     }
 
-    pub const fn left(&self, color: Color) -> Option<Self> {
-        match color {
-            Color::White => self.west(),
-            Color::Black => self.east(),
-        }
-    }
-
+    /// Increments (if `color` is [`White`]) or decrements (if `color` is [`Black`]) the [`File`] of this [`Tile`] by one, if possible.
+    ///
+    /// Returns [`None`] if it is already at the edge of the board.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Tile, Color};
+    /// assert_eq!(Tile::C4.right(Color::White), Some(Tile::D4));
+    /// assert_eq!(Tile::C4.right(Color::Black), Some(Tile::B4));
+    /// ```
     pub const fn right(&self, color: Color) -> Option<Self> {
         match color {
             Color::White => self.east(),
             Color::Black => self.west(),
+        }
+    }
+
+    /// Decrements (if `color` is [`White`]) or increments (if `color` is [`Black`]) the [`File`] of this [`Tile`] by one, if possible.
+    ///
+    /// Returns [`None`] if it is already at the edge of the board.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Tile, Color};
+    /// assert_eq!(Tile::C4.left(Color::White), Some(Tile::B4));
+    /// assert_eq!(Tile::C4.left(Color::Black), Some(Tile::D4));
+    /// ```
+    pub const fn left(&self, color: Color) -> Option<Self> {
+        match color {
+            Color::White => self.west(),
+            Color::Black => self.east(),
         }
     }
 }
@@ -815,6 +1017,10 @@ impl File {
             });
         }
         Ok(Self(file))
+    }
+
+    pub const fn new_unchecked(file: u8) -> Self {
+        Self(file)
     }
 
     pub const fn from_char(file: char) -> Result<Self, ChessError> {
