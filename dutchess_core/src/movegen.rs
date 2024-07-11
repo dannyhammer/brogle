@@ -64,7 +64,7 @@ pub fn moves_for(piece: &Piece, tile: Tile, board: &ChessBoard) -> BitBoard {
 
 /// Get all squares that are either empty or occupied by the enemy
 fn enemy_or_empty(color: Color, board: &ChessBoard) -> BitBoard {
-    !board.color(color)
+    !board[color]
 }
 
 const fn checkmask(color: Color, board: &ChessBoard) -> BitBoard {

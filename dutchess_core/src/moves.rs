@@ -30,15 +30,30 @@ pub enum MoveType {
     PawnPushTwo,
 }
 
-/// Represents a move made on a chess board, including where a piece is to be promoted.
+/// Represents a move made on a chess board, including whether a piece is to be promoted.
+///
+/// Internally encoded using the following bit pattern:
+/// ```text
+///     0000 000000 000000
+///      |     |      |
+///      |     |      +- Source tile of the move.
+///      |     +- Target tile of the move.
+///      +- Special flags.
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub struct Move {
-    from: Tile,
-    to: Tile,
-    promote: Option<PieceKind>,
-}
+#[repr(transparent)]
+pub struct Move(u16);
 
 impl Move {
+    // const NO_FLAG: u16 = 0b0000_0000_0000_0000;
+    // const PROMOTE_ROOK: u16 = 0b0001_0000_0000_0000;
+    // const PROMOTE_QUEEN: u16 = 0b0011_0000_0000_0000;
+    // const PROMOTE_BISHOP: u16 = 0b0111_0000_0000_0000;
+    // const PROMOTE_KNIGHT: u16 = 0b1111_0000_0000_0000;
+    const SRC_MASK: u16 = 0b0000_0000_0011_1111;
+    const DST_MASK: u16 = 0b0000_1111_1100_0000;
+    const FLG_MASK: u16 = 0b1111_0000_0000_0000;
+
     /// Creates a new [`Move`] from the given [`Tile`]s and optional [`PieceKind`] for promotion.
     ///
     /// # Example
@@ -48,7 +63,17 @@ impl Move {
     /// assert_eq!(e7e8Q.to_string(), "e7e8Q");
     /// ```
     pub fn new(from: Tile, to: Tile, promote: Option<PieceKind>) -> Self {
-        Self { from, to, promote }
+        let from = from.inner() as u16;
+        let to = to.inner() as u16;
+
+        // If there is a promotion, fetch that PieceKind's bit value and add 1, because 0 represents no promotion
+        let flag = if let Some(kind) = promote {
+            kind.bits() as u16 + 1
+        } else {
+            0
+        };
+
+        Self(from | to << 6 | flag << 12)
     }
 
     /// Creates a new [`Move`] from the given [`Tile`]s that does promote a piece.
@@ -72,7 +97,22 @@ impl Move {
     /// assert_eq!(illegal.to_string(), "a1a1");
     /// ```
     pub fn illegal() -> Self {
-        Self::new(Tile::A1, Tile::A1, None)
+        Self(0)
+    }
+
+    /// Internal function to fetch the bit pattern of the source (or "from") part of this [`Move`].
+    fn src_bits(&self) -> u8 {
+        (self.0 & Self::SRC_MASK) as u8
+    }
+
+    /// Internal function to fetch the bit pattern of the destination (or "to") part of this [`Move`].
+    fn dst_bits(&self) -> u8 {
+        ((self.0 & Self::DST_MASK) >> 6) as u8
+    }
+
+    /// Internal function to fetch the bit pattern of the special flag (piece promotions) of this [`Move`].
+    fn flg_bits(&self) -> u8 {
+        ((self.0 & Self::FLG_MASK) >> 12) as u8
     }
 
     /// Fetches the source (or "from") part of this [`Move`], as a [`Tile`].
@@ -85,7 +125,7 @@ impl Move {
     /// assert_eq!(from, Tile::E2);
     /// ```
     pub fn src(&self) -> Tile {
-        self.from
+        Tile(self.src_bits())
     }
 
     /// Fetches the destination (or "to") part of this [`Move`], as a [`Tile`].
@@ -98,7 +138,7 @@ impl Move {
     /// assert_eq!(to, Tile::E4);
     /// ```
     pub fn dst(&self) -> Tile {
-        self.to
+        Tile(self.dst_bits())
     }
 
     /// Fetches the destination (or "to") part of this [`Move`], as a [`Tile`].
@@ -110,7 +150,10 @@ impl Move {
     /// assert_eq!(e7e8Q.promote(), Some(PieceKind::Queen));
     /// ```
     pub fn promote(&self) -> Option<PieceKind> {
-        self.promote
+        let bits = self.flg_bits();
+
+        // We subtract 1 here because we added 1 in `Self::new`
+        (bits != 0).then(|| PieceKind::from_bits_unchecked(bits - 1))
     }
 
     /*

@@ -13,10 +13,12 @@ pub enum ChessError {
     InvalidFileChar { val: char },
     InvalidRankChar { val: char },
     InvalidColorChar { val: char },
+    InvalidColorStr,
     InvalidTileNotation,
     InvalidPieceNotation,
     InvalidPieceChar { val: char },
     InvalidBitBoardString,
+    InvalidCastlingRights,
     InvalidFenString,
 }
 
@@ -29,6 +31,7 @@ impl fmt::Display for ChessError {
             Self::InvalidFileChar { val } => write!(f, "file chars must be [a, h]. found {val}"),
             Self::InvalidRankChar { val } => write!(f, "rank chars must be [1, 8]. found {val}"),
             Self::InvalidColorChar { val } => write!(f, "color chars must be `w` or `b`. found {val}"),
+            Self::InvalidColorStr => write!(f, "color strings must be `w` or `b`"),
             Self::InvalidTileNotation => write!(
                 f,
                 "tile is not valid notation. notation must be <file><rank>"
@@ -42,6 +45,7 @@ impl fmt::Display for ChessError {
                 "pieces must be [p | n | b | r | q | k] or uppercase equivalent. found {val}"
             ),
             Self::InvalidBitBoardString => write!(f, "BitBoards must be constructed by either hexadecimal strings of length 16 or binary strings of length 64"),
+            Self::InvalidCastlingRights => write!(f, "Invalid castling rights in FEN string"),
             Self::InvalidFenString => write!(f, "Invalid FEN string")
         }
     }
@@ -53,15 +57,25 @@ impl Error for ChessError {
 
 /// Represents a single tile (or square) on an `8x8` chess board.
 ///
-/// Internally encoded using [Little-Endian Rank-File Mapping](https://www.chessprogramming.org/Square_Mapping_Considerations#Little-Endian_Rank-File_Mapping) (LERF)
+/// Internally encoded using the following bit pattern:
+/// ```text
+///     00 000 000
+///      |  |   |
+///      |  |   +- Represents the File.
+///      |  +- Represents the Rank.
+///      +- Unused.
+/// ```
 ///
-/// Locations are computed through [Least Significant File Mapping](https://www.chessprogramming.org/Square_Mapping_Considerations#Deduction_on_Files_and_Ranks),
+/// This bit pattern is also known as [Least Significant File Mapping](https://www.chessprogramming.org/Square_Mapping_Considerations#Deduction_on_Files_and_Ranks),
 /// so `tile = file + rank * 8`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Tile(pub(crate) u8);
 
 impl Tile {
+    // const FILE_MASK: u8 = 0b0000_0111;
+    // const RANK_MASK: u8 = 0b0011_1000;
+
     pub const A1: Tile = Self::new(File::A, Rank::ONE);
     pub const A2: Tile = Self::new(File::A, Rank::TWO);
     pub const A3: Tile = Self::new(File::A, Rank::THREE);

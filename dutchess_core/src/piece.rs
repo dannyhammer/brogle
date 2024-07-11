@@ -68,7 +68,7 @@ impl Color {
         *self as u8
     }
 
-    /// Creates a [`Color`] from a char, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    /// Creates a [`Color`] from a `char`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
     ///
     /// # Example
     /// ```
@@ -84,6 +84,25 @@ impl Color {
             'w' | 'W' => Ok(Self::White),
             'b' | 'B' => Ok(Self::Black),
             val => Err(ChessError::InvalidColorChar { val }),
+        }
+    }
+
+    /// Creates a [`Color`] from a `str`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Color;
+    /// let white = Color::from_str("w");
+    /// assert_eq!(white, Ok(Color::White));
+    ///
+    /// let err = Color::from_str("x");
+    /// assert!(err.is_err());
+    /// ```
+    pub fn from_str(color: &str) -> Result<Self, ChessError> {
+        match color {
+            "w" | "W" => Ok(Self::White),
+            "b" | "B" => Ok(Self::Black),
+            _ => Err(ChessError::InvalidColorStr),
         }
     }
 
@@ -355,8 +374,8 @@ impl fmt::Display for PieceKind {
 /// ```text
 ///     0000 0 000
 ///      |   |  |
-///      |   |  +- Represents the [`PieceKind`].
-///      |   +- Represents the [`Color`]. `0` for White, `1` for Black.
+///      |   |  +- Represents the PieceKind.
+///      |   +- Represents the Color. `0` for White, `1` for Black.
 ///      +- Unused.
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -474,7 +493,7 @@ impl Piece {
         *self = Self::new(self.color(), promotion)
     }
 
-    /// Promotes (or, in a less likely scenario, demotes) this [`Piece`] to a new [`PieceKind`], based on the value of `promotion`, consuming `Self` in the process.
+    /// Promotes (or, in a less likely scenario, demotes) this [`Piece`] to a new [`PieceKind`], based on the value of `promotion`, consuming `self` in the process.
     ///
     /// # Example
     /// ```
@@ -516,6 +535,6 @@ impl<T> IndexMut<Piece> for [T; 12] {
 
 impl fmt::Display for Piece {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.char())
+        write!(f, "{}", self.to_uci())
     }
 }

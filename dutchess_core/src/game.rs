@@ -1,11 +1,7 @@
 use std::fmt;
-use std::ops::{Index, IndexMut};
-use std::str::FromStr;
-
-use chess::{Board, MoveGen};
 
 use crate::utils::DEFAULT_FEN;
-use crate::{ChessBoard, Color, File, Move, Piece, PieceKind, Rank, Tile};
+use crate::{ChessBoard, ChessError, Color, File, Move, Piece, PieceKind, Rank, Tile};
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct Game {
@@ -23,7 +19,7 @@ impl Game {
         s
     }
 
-    pub fn from_fen(fen: &str) -> Result<Self, String> {
+    pub fn from_fen(fen: &str) -> Result<Self, ChessError> {
         let state = GameState::from_fen(fen)?;
         Ok(Self::new(state, []))
     }
@@ -53,7 +49,7 @@ impl Game {
         }
 
         // Place the piece in it's new position
-        self.state.set(chessmove.dst(), piece);
+        self.state.set(piece, chessmove.dst());
 
         // Record the move in history
         self.history.push(chessmove);
@@ -91,22 +87,56 @@ impl Default for Game {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub struct CastlingRights {
+    white_kingside: bool,
+    white_queenside: bool,
+    black_kingside: bool,
+    black_queenside: bool,
+}
+
+impl CastlingRights {
+    fn from_uci(castling: &str) -> Result<Self, ChessError> {
+        if castling.is_empty() {
+            Err(ChessError::InvalidCastlingRights)
+        } else {
+            Ok(Self {
+                white_kingside: castling.contains('K'),
+                white_queenside: castling.contains('Q'),
+                black_kingside: castling.contains('k'),
+                black_queenside: castling.contains('q'),
+            })
+        }
+    }
+
+    fn to_uci(&self) -> String {
+        let wk = if self.white_kingside { 'K' } else { ' ' };
+        let wq = if self.white_queenside { 'Q' } else { ' ' };
+        let bk = if self.black_kingside { 'k' } else { ' ' };
+        let bq = if self.black_queenside { 'q' } else { ' ' };
+        let castling = format!("{wk}{wq}{bk}{bq}");
+
+        if castling.is_empty() {
+            String::from("-")
+        } else {
+            castling
+        }
+    }
+}
+
 /// Represents the current state of the game, including move counters
 ///
 /// Analogous to a FEN string.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct GameState {
     /// Can be indexed by [`Tile`]
-    pieces: [Option<Piece>; 64],
+    // pieces: [Option<Piece>; 64],
 
     /// BitBoard representation of the game board.
     board: ChessBoard,
 
     current_player: Color,
-    can_white_kingside_castle: bool,
-    can_white_queenside_castle: bool,
-    can_black_kingside_castle: bool,
-    can_black_queenside_castle: bool,
+    castling_rights: CastlingRights,
     en_passant_tile: Option<Tile>,
 
     /// Used to enforce the fifty-move rule.
@@ -114,67 +144,34 @@ pub struct GameState {
     /// Is reset after a capture or a pawn moves.
     halfmove: u8,
 
-    /// Number of moves since the beginning of the game/
+    /// Number of moves since the beginning of the game.
     /// A fullmove is a complete turn by white and then by black.
     fullmove: u8,
 }
 
 impl GameState {
-    pub fn from_fen(fen: &str) -> Result<Self, &'static str> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn from_fen(fen: &str) -> Result<Self, ChessError> {
         let mut split = fen.split(' ');
-        let placements = split.next().ok_or("Empty string is not valid FEN")?;
-
-        if placements.matches('/').count() != 7 {
-            return Err(
-                "Valid FEN placements must have 8 rows delimited with 7 forward slashes `/`",
-            );
-        }
-
-        let mut pieces = [None; 64];
-        // Have to reverse this so that white appears on the bottom
-        for (rank, placements) in placements.split('/').rev().enumerate() {
-            let mut file = 0;
-            for piece_char in placements.chars() {
-                if let Ok(kind) = PieceKind::from_char(piece_char) {
-                    let piece = if piece_char.is_ascii_uppercase() {
-                        Piece::new(Color::White, kind)
-                    } else {
-                        Piece::new(Color::Black, kind)
-                    };
-
-                    pieces[rank * 8 + file] = Some(piece);
-                    file += 1;
-                } else {
-                    let Some(empty) = piece_char.to_digit(10) else {
-                        return Err("Invalid non-char digit when parsing FEN string");
-                    };
-                    file += empty as usize
-                }
-            }
-        }
-
-        let board = ChessBoard::from(pieces);
+        let placements = split.next().ok_or(ChessError::InvalidFenString)?;
+        let board = ChessBoard::from_fen(placements)?;
 
         let active_color = split.next().unwrap_or_else(|| {
             let x = "w";
             eprintln!("Warning: No active color specified; defaulting to {x}");
             x
         });
-        let current_player = match active_color {
-            "w" | "W" => Color::White,
-            "b" | "B" => Color::Black,
-            _ => return Err("Active color must be either `w` or `b`"),
-        };
+        let current_player = Color::from_str(active_color)?;
 
         let castling = split.next().unwrap_or_else(|| {
             let x = "KQkq";
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        let can_white_kingside_castle = castling.contains('K');
-        let can_white_queenside_castle = castling.contains('Q');
-        let can_black_kingside_castle = castling.contains('k');
-        let can_black_queenside_castle = castling.contains('q');
+        let castling_rights = CastlingRights::from_uci(castling)?;
 
         let en_passant_target = split.next().unwrap_or_else(|| {
             let x = "-";
@@ -183,12 +180,7 @@ impl GameState {
         });
         let en_passant_tile = match en_passant_target {
             "-" => None,
-            tile => {
-                let Ok(pos) = Tile::from_uci(tile) else {
-                    return Err("Invalid En Passant target when parsing FEN string");
-                };
-                Some(pos)
-            }
+            tile => Some(Tile::from_uci(tile)?),
         };
 
         let halfmove = split.next().unwrap_or_else(|| {
@@ -196,31 +188,26 @@ impl GameState {
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        let Ok(halfmove) = halfmove.parse() else {
-            return Err("Invalid halfmove; must be numeric");
-        };
+        let halfmove = halfmove.parse().or(Err(ChessError::InvalidFenString))?;
 
         let fullmove = split.next().unwrap_or_else(|| {
             let x = "1";
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        let Ok(fullmove) = fullmove.parse() else {
-            return Err("Invalid fullmove; must be numeric");
-        };
+        let fullmove = fullmove.parse().or(Err(ChessError::InvalidFenString))?;
 
         Ok(Self {
-            pieces,
+            // pieces,
             board,
             current_player,
-            can_white_kingside_castle,
-            can_white_queenside_castle,
-            can_black_kingside_castle,
-            can_black_queenside_castle,
+            castling_rights,
             en_passant_tile,
             halfmove,
             fullmove,
         })
+
+        // Ok(state)
     }
 
     pub fn to_fen(&self) -> String {
@@ -229,7 +216,7 @@ impl GameState {
         for rank in Rank::iter() {
             let mut empty_spaces = 0;
             for file in File::iter() {
-                if let Some(piece) = self.piece(file * rank) {
+                if let Some(piece) = self.board.piece_at(file * rank) {
                     if empty_spaces != 0 {
                         placements[rank.index()] += &empty_spaces.to_string();
                         empty_spaces = 0;
@@ -249,19 +236,7 @@ impl GameState {
 
         let active_color = self.current_player;
 
-        let mut castling = String::with_capacity(4);
-        if self.can_white_kingside_castle {
-            castling += "K"
-        }
-        if self.can_white_queenside_castle {
-            castling += "Q"
-        }
-        if self.can_black_kingside_castle {
-            castling += "k"
-        }
-        if self.can_black_queenside_castle {
-            castling += "q"
-        }
+        let mut castling = self.castling_rights.to_uci();
         if castling.is_empty() {
             castling = String::from("-");
         }
@@ -282,30 +257,39 @@ impl GameState {
         fen
     }
 
-    /// Fetch the piece at the requested position, if it exists.
     pub const fn get(&self, tile: Tile) -> Option<Piece> {
-        *self.piece(tile)
+        self.board.piece_at(tile)
     }
 
     /// Set the piece at the specified position.
-    pub fn set(&mut self, tile: Tile, piece: Piece) {
-        self.board.set(tile, piece); // Update the bitboards
-        *self.piece_mut(tile) = Some(piece); // Update the state
+    pub fn set(&mut self, piece: Piece, tile: Tile) {
+        self.board.set(piece, tile); // Update the bitboards
+
+        // *self.piece_mut(tile) = Some(piece); // Update the state
     }
 
     /// Remove a piece from the specified position, returning it if it exists.
     pub fn clear(&mut self, tile: Tile) -> Option<Piece> {
         self.board.clear(tile); // Update the bitboards
-        self.piece_mut(tile).take() // Update the state
+
+        // self.piece_mut(tile).take() // Update the state
+        // self.piece(tile).take();
+        None
     }
 
+    /*
     pub const fn piece(&self, tile: Tile) -> &Option<Piece> {
-        &self.pieces[tile.index()]
+        // &self.board.piece_at(tile)
+        self.board.piece_at(tile)
     }
+     */
 
+    /*
     pub fn piece_mut(&mut self, tile: Tile) -> &mut Option<Piece> {
         &mut self.pieces[tile.index()]
+        self.board.piece_at(tile)
     }
+     */
 
     pub fn current_player(&self) -> Color {
         self.current_player
@@ -317,13 +301,14 @@ impl GameState {
     }
 
     pub fn legal_moves(&self) -> impl Iterator<Item = Move> {
-        let fen = self.to_fen();
-        println!("FEN: {fen}");
-        let board = Board::from_str(&fen).unwrap();
+        // let fen = self.to_fen();
+        // println!("FEN: {fen}");
+        // let board = Board::from_str(&fen).unwrap();
 
-        println!("{board}");
-        println!("{board:?}");
+        // println!("{board}");
+        // println!("{board:?}");
 
+        /*
         MoveGen::new_legal(&board).map(|legal| {
             let src = Tile::from_index_unchecked(legal.get_source().to_index());
             let dst = Tile::from_index_unchecked(legal.get_dest().to_index());
@@ -341,21 +326,30 @@ impl GameState {
 
             Move::new(src, dst, promotion)
         })
+         */
+
+        todo!();
+        [].into_iter()
     }
 }
 
+/*
 impl Index<Tile> for GameState {
     type Output = Option<Piece>;
     fn index(&self, index: Tile) -> &Self::Output {
-        &self.pieces[index]
+        // &self.pieces[index]
+        self.board.piece_at(index)
     }
 }
+ */
 
+/*
 impl IndexMut<Tile> for GameState {
     fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
         &mut self.pieces[index]
     }
 }
+ */
 
 impl Default for GameState {
     fn default() -> Self {
@@ -366,33 +360,23 @@ impl Default for GameState {
 
 impl fmt::Display for GameState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut board = String::with_capacity(577);
+        let title =
+            "+---+---+---+---+---+---+---+---+ GAME STATE +---+---+---+---+---+---+---+---+";
+        let current = self.current_player;
+        let board = self.board;
+        let castling_helper = |can_castle| if can_castle { "Yes" } else { "No" };
+        let en_passant = if let Some(tile) = self.en_passant_tile {
+            tile.to_string()
+        } else {
+            String::from("None")
+        };
 
-        for rank in Rank::iter() {
-            for _ in File::iter() {
-                board += "+---";
-            }
+        let fen = self.to_fen();
 
-            board += "+\n";
-
-            for file in File::iter() {
-                let occupant = if let Some(piece) = self.piece(file * rank) {
-                    piece.to_string()
-                } else {
-                    String::from(" ")
-                };
-
-                board += &format!("| {occupant} ");
-            }
-
-            board += "|\n";
-        }
-        for _ in File::iter() {
-            board += "+---";
-        }
-        board += "+";
-
-        write!(f, "{board}")
+        write!(
+            f,
+            "{title}\n\n\tCurrent Player: {current}\n\n\tEn Passant? {en_passant}\n\n{board}\n\nFEN: {fen}"
+        )
     }
 }
 

@@ -1,11 +1,16 @@
-use chess::{BitBoard, Board, Color, Piece};
+// use chess::{BitBoard, Board, Color, Piece};
+
+use dutchess_core::GameState;
 
 fn main() {
-    let board = Board::default();
+    let state = GameState::default();
+    println!("{state}");
+    // let board = Board::default();
 
-    println!("Eval: {}", eval(board));
+    // println!("Eval: {}", eval(board));
 }
 
+/*
 pub fn eval(state: Board) -> i32 {
     let mut score = 0;
     let white = state.color_combined(Color::White);
@@ -31,3 +36,4 @@ pub fn eval(state: Board) -> i32 {
 
     score
 }
+ */
