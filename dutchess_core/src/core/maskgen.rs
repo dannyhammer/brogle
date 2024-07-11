@@ -1,4 +1,4 @@
-use crate::BitBoard;
+use crate::core::BitBoard;
 
 pub fn generate_blobs() {
     let bishop: [u8; 512] = unsafe { std::mem::transmute(bishop_moves()) };
@@ -45,10 +45,10 @@ fn knight_moves() -> [BitBoard; 64] {
     for i in 0..64 {
         let bb = BitBoard::from_index(i);
 
-        let mut n = bb.north();
-        let mut s = bb.south();
-        let mut e = bb.east();
-        let mut w = bb.west();
+        let n = bb.north();
+        let s = bb.south();
+        let e = bb.east();
+        let w = bb.west();
 
         boards[i as usize] = n.northwest()
             | n.northeast()

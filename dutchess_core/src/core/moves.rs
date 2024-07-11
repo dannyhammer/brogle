@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{ChessError, PieceKind, Tile};
+use crate::core::{ChessError, PieceKind, Tile};
 
 /// Represents which side castling can occur on.
 pub enum CastleSide {
@@ -38,7 +38,7 @@ pub enum MoveType {
 ///      |     |      |
 ///      |     |      +- Source tile of the move.
 ///      |     +- Target tile of the move.
-///      +- Special flags.
+///      +- Special flags for promotion, castling, etc.
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 #[repr(transparent)]
@@ -58,7 +58,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Move, Tile, PieceKind};
+    /// # use dutchess_core::core::{Move, Tile, PieceKind};
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, Some(PieceKind::Queen));
     /// assert_eq!(e7e8Q.to_string(), "e7e8Q");
     /// ```
@@ -80,7 +80,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Move, Tile};
+    /// # use dutchess_core::core::{Move, Tile};
     /// let e2e4 = Move::new_quiet(Tile::E2, Tile::E4);
     /// assert_eq!(e2e4.to_string(), "e2e4");
     /// ```
@@ -92,7 +92,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Move;
+    /// # use dutchess_core::core::Move;
     /// let illegal = Move::illegal();
     /// assert_eq!(illegal.to_string(), "a1a1");
     /// ```
@@ -119,7 +119,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Move, Tile};
+    /// # use dutchess_core::core::{Move, Tile};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, None);
     /// let from = e2e4.src();
     /// assert_eq!(from, Tile::E2);
@@ -132,7 +132,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Move, Tile};
+    /// # use dutchess_core::core::{Move, Tile};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, None);
     /// let to = e2e4.dst();
     /// assert_eq!(to, Tile::E4);
@@ -145,7 +145,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Move, Tile, PieceKind};
+    /// # use dutchess_core::core::{Move, Tile, PieceKind};
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, Some(PieceKind::Queen));
     /// assert_eq!(e7e8Q.promote(), Some(PieceKind::Queen));
     /// ```
@@ -173,7 +173,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Move, Tile, PieceKind};
+    /// # use dutchess_core::core::{Move, Tile, PieceKind};
     /// let e7e8Q = Move::from_uci("e7e8Q");
     /// assert_eq!(e7e8Q, Ok(Move::new(Tile::E7, Tile::E8, Some(PieceKind::Queen))));
     /// ```
@@ -199,7 +199,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Move, Tile, PieceKind};
+    /// # use dutchess_core::core::{Move, Tile, PieceKind};
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, Some(PieceKind::Queen));
     /// assert_eq!(e7e8Q.to_uci(), "e7e8Q");
     /// ```

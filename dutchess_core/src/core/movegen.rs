@@ -1,4 +1,4 @@
-use crate::{
+use crate::core::{
     // utils::{BISHOP_INDEX_BITS, BISHOP_MAGICS, ROOK_INDEX_BITS, ROOK_MAGICS},
     BitBoard,
     ChessBoard,

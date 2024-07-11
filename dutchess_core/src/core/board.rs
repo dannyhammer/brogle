@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    ops::{Index, Shl, Shr},
+    ops::{Index, IndexMut, Shl, Shr},
 };
 
 use derive_more::{
@@ -8,7 +8,7 @@ use derive_more::{
     ShrAssign,
 };
 
-use crate::{utils::DEFAULT_FEN, ChessError, Color, File, Piece, PieceKind, Rank, Tile};
+use crate::core::{utils::DEFAULT_FEN, ChessError, Color, File, Piece, PieceKind, Rank, Tile};
 
 /// Represents a full chess board at any given state.
 ///
@@ -44,7 +44,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::ChessBoard;
+    /// # use dutchess_core::core::ChessBoard;
     /// let board = ChessBoard::new();
     /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
     /// ```
@@ -56,7 +56,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::ChessBoard;
+    /// # use dutchess_core::core::ChessBoard;
     /// let board = ChessBoard::new().with_default_setup();
     /// assert_eq!(board.fen(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
     /// ```
@@ -69,7 +69,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, Piece, PieceKind, Color, Tile};
+    /// # use dutchess_core::core::{ChessBoard, Piece, PieceKind, Color, Tile};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// let board = ChessBoard::new().with_piece(white_knight, Tile::C4);
     /// assert_eq!(board.fen(), "8/8/8/8/2N5/8/8/8");
@@ -83,7 +83,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, Piece, PieceKind, Color, Tile};
+    /// # use dutchess_core::core::{ChessBoard, Piece, PieceKind, Color, Tile};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// let black_rook = Piece::new(Color::Black, PieceKind::Rook);
     /// let board = ChessBoard::new().with_pieces([white_knight, black_rook], [Tile::C4, Tile::H7]);
@@ -161,7 +161,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, Piece, PieceKind, Color, Tile};
+    /// # use dutchess_core::core::{ChessBoard, Piece, PieceKind, Color, Tile};
     /// let board = ChessBoard::new().with_default_setup();
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(board.get(Tile::B1), Some(white_knight));
@@ -176,26 +176,15 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, Piece, PieceKind, Color, Tile};
+    /// # use dutchess_core::core::{ChessBoard, Piece, PieceKind, Color, Tile};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// let mut board = ChessBoard::new();
     /// board.set(white_knight, Tile::C4);
     /// assert_eq!(board.fen(), "8/8/8/8/2N5/8/8/8");
     /// ```
     pub fn set(&mut self, piece: Piece, tile: Tile) {
-        match piece.color() {
-            Color::White => self.white.set(tile),
-            Color::Black => self.black.set(tile),
-        }
-
-        match piece.kind() {
-            PieceKind::Pawn => self.pawn.set(tile),
-            PieceKind::Knight => self.knight.set(tile),
-            PieceKind::Bishop => self.bishop.set(tile),
-            PieceKind::Rook => self.rook.set(tile),
-            PieceKind::Queen => self.queen.set(tile),
-            PieceKind::King => self.king.set(tile),
-        }
+        self[piece.color()].set(tile);
+        self[piece.kind()].set(tile);
 
         // TODO: Compute attacks?
 
@@ -207,20 +196,16 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, Tile};
+    /// # use dutchess_core::core::{ChessBoard, Tile};
     /// let mut board = ChessBoard::new().with_setup("8/8/8/8/2N5/8/8/8").unwrap();
     /// board.clear(Tile::C4);
     /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
     /// ```
     pub fn clear(&mut self, tile: Tile) {
-        self.white.clear(tile);
-        self.black.clear(tile);
-        self.pawn.clear(tile);
-        self.knight.clear(tile);
-        self.bishop.clear(tile);
-        self.rook.clear(tile);
-        self.queen.clear(tile);
-        self.king.clear(tile);
+        if let Some(piece) = self.get(tile) {
+            self[piece.color()].clear(tile);
+            self[piece.kind()].clear(tile);
+        }
         self.occupied.clear(tile);
         self.empty.set(tile);
     }
@@ -229,7 +214,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::ChessBoard;
+    /// # use dutchess_core::core::ChessBoard;
     /// let mut board = ChessBoard::new().with_default_setup();
     /// board.clear_all();
     /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
@@ -242,7 +227,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, Color, Tile};
+    /// # use dutchess_core::core::{ChessBoard, Color, Tile};
     /// let mut board = ChessBoard::new().with_default_setup();
     /// assert_eq!(board.color_at(Tile::A2), Some(Color::White));
     /// assert!(board.color_at(Tile::E4).is_none());
@@ -259,11 +244,32 @@ impl ChessBoard {
         }
     }
 
+    /// Takes the [`Piece`] from a given [`Tile`], if there is one present.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::{ChessBoard, Piece, PieceKind, Color, Tile};
+    /// let mut board = ChessBoard::new().with_setup("8/8/8/8/2N5/8/8/8").unwrap();
+    /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
+    /// let taken = board.take(Tile::C4);
+    /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
+    /// assert_eq!(taken, Some(white_knight));
+    /// ```
+    pub fn take(&mut self, tile: Tile) -> Option<Piece> {
+        let piece = self.get(tile)?;
+        self[piece.color()].clear(tile);
+        self[piece.kind()].clear(tile);
+        self.occupied.clear(tile);
+        self.empty.set(tile);
+
+        Some(piece)
+    }
+
     /// Fetches the [`PieceKind`] of the piece at the provided [`Tile`], if there is one.
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, PieceKind, Tile};
+    /// # use dutchess_core::core::{ChessBoard, PieceKind, Tile};
     /// let mut board = ChessBoard::new().with_default_setup();
     /// assert_eq!(board.kind_at(Tile::A2), Some(PieceKind::Pawn));
     /// assert!(board.kind_at(Tile::E4).is_none());
@@ -292,7 +298,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, PieceKind, Color, Tile};
+    /// # use dutchess_core::core::{ChessBoard, PieceKind, Color, Tile};
     /// let mut board = ChessBoard::new().with_default_setup();
     /// assert_eq!(board.piece_at(Tile::A2).unwrap().kind(), PieceKind::Pawn);
     /// assert_eq!(board.piece_at(Tile::A2).unwrap().color(), Color::White);
@@ -312,7 +318,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, PieceKind, BitBoard};
+    /// # use dutchess_core::core::{ChessBoard, PieceKind, BitBoard};
     /// let board = ChessBoard::new().with_default_setup();
     /// let pawns = board.kind(PieceKind::Pawn);
     /// assert_eq!(pawns, BitBoard::RANK_2 | BitBoard::RANK_7);
@@ -327,7 +333,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, Color, Piece, BitBoard};
+    /// # use dutchess_core::core::{ChessBoard, Color, Piece, BitBoard};
     /// let board = ChessBoard::new().with_default_setup();
     /// let white_pieces = board.color(Color::White);
     /// assert_eq!(white_pieces, BitBoard::RANK_1 | BitBoard::RANK_2);
@@ -342,7 +348,7 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{ChessBoard, PieceKind, Color, Piece, BitBoard};
+    /// # use dutchess_core::core::{ChessBoard, PieceKind, Color, Piece, BitBoard};
     /// let board = ChessBoard::new().with_default_setup();
     /// let white_pawn = Piece::new(Color::White, PieceKind::Pawn);
     /// let white_pawns = board.piece(white_pawn);
@@ -484,12 +490,34 @@ impl Index<PieceKind> for ChessBoard {
     }
 }
 
+impl IndexMut<PieceKind> for ChessBoard {
+    fn index_mut(&mut self, index: PieceKind) -> &mut Self::Output {
+        match index {
+            PieceKind::Pawn => &mut self.pawn,
+            PieceKind::Knight => &mut self.knight,
+            PieceKind::Bishop => &mut self.bishop,
+            PieceKind::Rook => &mut self.rook,
+            PieceKind::Queen => &mut self.queen,
+            PieceKind::King => &mut self.king,
+        }
+    }
+}
+
 impl Index<Color> for ChessBoard {
     type Output = BitBoard;
     fn index(&self, index: Color) -> &Self::Output {
         match index {
             Color::White => &self.white,
             Color::Black => &self.black,
+        }
+    }
+}
+
+impl IndexMut<Color> for ChessBoard {
+    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
+        match index {
+            Color::White => &mut self.white,
+            Color::Black => &mut self.black,
         }
     }
 }
@@ -651,7 +679,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::BitBoard;
+    /// # use dutchess_core::core::BitBoard;
     /// let board = BitBoard::new(255);
     /// assert_eq!(board.to_hex_string(), "0x00000000000000FF");
     /// ```
@@ -665,7 +693,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::BitBoard;
+    /// # use dutchess_core::core::BitBoard;
     /// let board = BitBoard::from_index(63);
     /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
     /// ```
@@ -680,7 +708,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{BitBoard, Tile};
+    /// # use dutchess_core::core::{BitBoard, Tile};
     /// let board = BitBoard::from_tile(Tile::H8);
     /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
     /// ```
@@ -694,7 +722,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{BitBoard, File};
+    /// # use dutchess_core::core::{BitBoard, File};
     /// let board = BitBoard::from_file(File::F);
     /// assert_eq!(board.to_hex_string(), "0x2020202020202020");
     /// ```
@@ -708,7 +736,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{BitBoard, Rank};
+    /// # use dutchess_core::core::{BitBoard, Rank};
     /// let board = BitBoard::from_rank(Rank::SEVEN);
     /// assert_eq!(board.to_hex_string(), "0x00FF000000000000");
     /// ```
@@ -722,7 +750,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::BitBoard;
+    /// # use dutchess_core::core::BitBoard;
     /// let board1 = BitBoard::from_str("0x00FF000000000000");
     /// let board2 = BitBoard::from_str("00FF000000000000");
     /// let board3 = BitBoard::from_str("0000000011111111000000000000000000000000000000000000000000000000");
@@ -757,7 +785,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{BitBoard, Tile};
+    /// # use dutchess_core::core::{BitBoard, Tile};
     /// let board = BitBoard::from_index(14);
     /// assert_eq!(board.to_tile(), Tile::G2);
     /// ```
@@ -769,7 +797,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{BitBoard, Rank};
+    /// # use dutchess_core::core::{BitBoard, Rank};
     /// let board = BitBoard::from_rank(Rank::SEVEN);
     /// assert_eq!(board.to_hex_string(), "0x00FF000000000000");
     ///
@@ -784,7 +812,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::BitBoard;
+    /// # use dutchess_core::core::BitBoard;
     /// let board = BitBoard::new(0x0);
     /// assert!(board.is_empty());
     /// ```
@@ -796,7 +824,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{BitBoard, Tile};
+    /// # use dutchess_core::core::{BitBoard, Tile};
     /// let mut board = BitBoard::default();
     /// board.set(Tile::G2);
     /// assert_eq!(board.to_hex_string(), "0x0000000000004000");
@@ -811,7 +839,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{BitBoard, Tile};
+    /// # use dutchess_core::core::{BitBoard, Tile};
     /// let board = BitBoard::FILE_A;
     /// assert!(board.get(Tile::A3));
     /// ```
@@ -824,7 +852,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{BitBoard, Tile};
+    /// # use dutchess_core::core::{BitBoard, Tile};
     /// let mut board = BitBoard::RANK_1;
     /// board.clear(Tile::C1);
     /// assert_eq!(board.to_hex_string(), "0x00000000000000FB");
@@ -984,7 +1012,7 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::BitBoard;
+    /// # use dutchess_core::core::BitBoard;
     /// let board = BitBoard::RANK_1;
     /// assert_eq!(board.population(), 8);
     /// ```

@@ -1,7 +1,6 @@
 use std::fmt;
 
-use crate::utils::DEFAULT_FEN;
-use crate::{ChessBoard, ChessError, Color, File, Move, Piece, PieceKind, Rank, Tile};
+use crate::core::{utils::DEFAULT_FEN, ChessBoard, ChessError, Color, Move, Tile};
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct Game {
@@ -20,7 +19,7 @@ impl Game {
     }
 
     pub fn from_fen(fen: &str) -> Result<Self, ChessError> {
-        let state = GameState::from_fen(fen)?;
+        let state = GameState::new().from_fen(fen)?;
         Ok(Self::new(state, []))
     }
 
@@ -39,7 +38,7 @@ impl Game {
     /// Returns `true` if the move was made successful, and `false` if it cannot be made.
     pub fn make_move(&mut self, chessmove: Move) {
         // Remove the piece from it's previous location
-        let Some(mut piece) = self.state.clear(chessmove.src()) else {
+        let Some(mut piece) = self.state.board.take(chessmove.src()) else {
             return;
         };
 
@@ -49,7 +48,7 @@ impl Game {
         }
 
         // Place the piece in it's new position
-        self.state.set(piece, chessmove.dst());
+        self.state.board.set(piece, chessmove.dst());
 
         // Record the move in history
         self.history.push(chessmove);
@@ -87,7 +86,7 @@ impl Default for Game {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub struct CastlingRights {
     white_kingside: bool,
     white_queenside: bool,
@@ -110,11 +109,20 @@ impl CastlingRights {
     }
 
     fn to_uci(&self) -> String {
-        let wk = if self.white_kingside { 'K' } else { ' ' };
-        let wq = if self.white_queenside { 'Q' } else { ' ' };
-        let bk = if self.black_kingside { 'k' } else { ' ' };
-        let bq = if self.black_queenside { 'q' } else { ' ' };
-        let castling = format!("{wk}{wq}{bk}{bq}");
+        let mut castling = String::with_capacity(4);
+
+        if self.white_kingside {
+            castling.push_str("K");
+        }
+        if self.white_queenside {
+            castling.push_str("Q");
+        }
+        if self.black_kingside {
+            castling.push_str("k");
+        }
+        if self.black_queenside {
+            castling.push_str("q")
+        }
 
         if castling.is_empty() {
             String::from("-")
@@ -129,9 +137,6 @@ impl CastlingRights {
 /// Analogous to a FEN string.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct GameState {
-    /// Can be indexed by [`Tile`]
-    // pieces: [Option<Piece>; 64],
-
     /// BitBoard representation of the game board.
     board: ChessBoard,
 
@@ -150,35 +155,65 @@ pub struct GameState {
 }
 
 impl GameState {
+    /// Creates a new, empty [`GameState`] with the following properties:
+    /// * No pieces on the board
+    /// * White moves first
+    /// * No castling rights
+    /// * No en passant tile available
+    /// * Halfmove and fullmove counters set to 0
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::GameState;
+    /// let state = GameState::new();
+    /// assert_eq!(state.to_fen(), "8/8/8/8/8/8/8/8 w - - 0 0");
+    /// ```
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn from_fen(fen: &str) -> Result<Self, ChessError> {
+    /// Creates a new [`GameState`] with the standard chess setup.
+    /// * Pieces placed in standard positions
+    /// * White moves first
+    /// * All castling rights
+    /// * No en passant tile available
+    /// * Halfmove and fullmove counters set to 0
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::GameState;
+    /// let state = GameState::new().with_default_setup();
+    /// assert_eq!(state.to_fen(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    /// ```
+    pub fn with_default_setup(self) -> Self {
+        self.from_fen(DEFAULT_FEN).unwrap()
+    }
+
+    pub fn from_fen(mut self, fen: &str) -> Result<Self, ChessError> {
         let mut split = fen.split(' ');
         let placements = split.next().ok_or(ChessError::InvalidFenString)?;
-        let board = ChessBoard::from_fen(placements)?;
+        self.board = ChessBoard::from_fen(placements)?;
 
         let active_color = split.next().unwrap_or_else(|| {
             let x = "w";
             eprintln!("Warning: No active color specified; defaulting to {x}");
             x
         });
-        let current_player = Color::from_str(active_color)?;
+        self.current_player = Color::from_str(active_color)?;
 
         let castling = split.next().unwrap_or_else(|| {
             let x = "KQkq";
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        let castling_rights = CastlingRights::from_uci(castling)?;
+        self.castling_rights = CastlingRights::from_uci(castling)?;
 
         let en_passant_target = split.next().unwrap_or_else(|| {
             let x = "-";
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        let en_passant_tile = match en_passant_target {
+        self.en_passant_tile = match en_passant_target {
             "-" => None,
             tile => Some(Tile::from_uci(tile)?),
         };
@@ -188,58 +223,23 @@ impl GameState {
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        let halfmove = halfmove.parse().or(Err(ChessError::InvalidFenString))?;
+        self.halfmove = halfmove.parse().or(Err(ChessError::InvalidFenString))?;
 
         let fullmove = split.next().unwrap_or_else(|| {
             let x = "1";
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        let fullmove = fullmove.parse().or(Err(ChessError::InvalidFenString))?;
+        self.fullmove = fullmove.parse().or(Err(ChessError::InvalidFenString))?;
 
-        Ok(Self {
-            // pieces,
-            board,
-            current_player,
-            castling_rights,
-            en_passant_tile,
-            halfmove,
-            fullmove,
-        })
-
-        // Ok(state)
+        Ok(self)
     }
 
+    /// Generates a FEN string from this [`GameState`].
     pub fn to_fen(&self) -> String {
-        let mut placements: [String; 8] = Default::default();
-
-        for rank in Rank::iter() {
-            let mut empty_spaces = 0;
-            for file in File::iter() {
-                if let Some(piece) = self.board.piece_at(file * rank) {
-                    if empty_spaces != 0 {
-                        placements[rank.index()] += &empty_spaces.to_string();
-                        empty_spaces = 0;
-                    }
-                    placements[rank.index()] += &piece.to_string();
-                } else {
-                    empty_spaces += 1;
-                }
-            }
-
-            if empty_spaces != 0 {
-                placements[rank.index()] += &empty_spaces.to_string();
-            }
-        }
-        placements.reverse();
-        let placements = placements.join("/");
-
+        let placements = self.board.fen();
         let active_color = self.current_player;
-
-        let mut castling = self.castling_rights.to_uci();
-        if castling.is_empty() {
-            castling = String::from("-");
-        }
+        let castling = self.castling_rights.to_uci();
 
         let en_passant_target = if let Some(tile) = self.en_passant_tile {
             tile.to_string()
@@ -250,13 +250,29 @@ impl GameState {
         let halfmove = self.halfmove;
         let fullmove = self.fullmove;
 
-        let fen = format!(
-            "{placements} {active_color} {castling} {en_passant_target} {halfmove} {fullmove}"
-        );
-
-        fen
+        format!("{placements} {active_color} {castling} {en_passant_target} {halfmove} {fullmove}")
     }
 
+    /// Applies a [`Move`] to this [`GameState`], updating metadata along the way.
+    fn make_move(&mut self, chessmove: Move) {
+        // Remove the piece from it's previous location, exiting early if there is no piece there
+        let Some(mut piece) = self.board.take(chessmove.src()) else {
+            return;
+        };
+
+        // Perform promotion, if necessary.
+        if let Some(promotion) = chessmove.promote() {
+            piece.promote(promotion)
+        }
+
+        // Place the piece in it's new position
+        self.board.set(piece, chessmove.dst());
+
+        // Next player's turn
+        self.toggle_current_player();
+    }
+
+    /*
     pub const fn get(&self, tile: Tile) -> Option<Piece> {
         self.board.piece_at(tile)
     }
@@ -276,6 +292,7 @@ impl GameState {
         // self.piece(tile).take();
         None
     }
+     */
 
     /*
     pub const fn piece(&self, tile: Tile) -> &Option<Piece> {
@@ -293,6 +310,10 @@ impl GameState {
 
     pub fn current_player(&self) -> Color {
         self.current_player
+    }
+
+    pub fn board(&self) -> &ChessBoard {
+        &self.board
     }
 
     pub fn toggle_current_player(&mut self) {
@@ -353,8 +374,14 @@ impl IndexMut<Tile> for GameState {
 
 impl Default for GameState {
     fn default() -> Self {
-        // Safe unwrap: Default FEN is always valid
-        Self::from_fen(DEFAULT_FEN).unwrap()
+        Self {
+            board: ChessBoard::default(),
+            current_player: Color::White,
+            castling_rights: CastlingRights::default(),
+            en_passant_tile: None,
+            halfmove: 0,
+            fullmove: 0,
+        }
     }
 }
 
@@ -364,7 +391,6 @@ impl fmt::Display for GameState {
             "+---+---+---+---+---+---+---+---+ GAME STATE +---+---+---+---+---+---+---+---+";
         let current = self.current_player;
         let board = self.board;
-        let castling_helper = |can_castle| if can_castle { "Yes" } else { "No" };
         let en_passant = if let Some(tile) = self.en_passant_tile {
             tile.to_string()
         } else {
@@ -379,24 +405,3 @@ impl fmt::Display for GameState {
         )
     }
 }
-
-/*
-impl From<chess::Board> for GameState {
-    fn from(value: chess::Board) -> Self {
-
-
-        Self {
-            pieces,
-            board,
-            current_player: (),
-            can_white_kingside_castle: (),
-            can_white_queenside_castle: (),
-            can_black_kingside_castle: (),
-            can_black_queenside_castle: (),
-            en_passant_tile: (),
-            halfmove: (),
-            fullmove: (),
-        }
-    }
-}
- */

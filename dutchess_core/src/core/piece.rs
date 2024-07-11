@@ -1,168 +1,9 @@
 use std::{
     fmt,
-    ops::{Index, IndexMut, Not},
+    ops::{Index, IndexMut},
 };
 
-use crate::ChessError;
-
-/// Represents the color of a player, piece, tile, etc. within a chess board.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
-pub enum Color {
-    White,
-    Black,
-}
-
-impl Color {
-    /// Returns `true` if this [`Color`] is White.
-    pub const fn is_white(&self) -> bool {
-        // *self == Self::White
-        matches!(self, Self::White)
-    }
-
-    /// Returns `true` if this [`Color`] is Black.
-    pub const fn is_black(&self) -> bool {
-        matches!(self, Self::Black)
-    }
-
-    /// Returns this [`Color`]'s opposite / inverse / enemy.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Color;
-    /// assert_eq!(Color::White.opponent(), Color::Black);
-    /// ```
-    pub const fn opponent(&self) -> Self {
-        match self {
-            Self::White => Self::Black,
-            Self::Black => Self::White,
-        }
-    }
-
-    /// Returns this [`Color`] as a `usize`.
-    ///
-    /// Will be `0` for White, `1` for Black.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Color;
-    /// assert_eq!(Color::White.index(), 0);
-    /// assert_eq!(Color::Black.index(), 1);
-    /// ```
-    pub const fn index(&self) -> usize {
-        *self as usize
-    }
-
-    /// Returns this [`Color`] as a `u8`.
-    ///
-    /// Will be `0` for White, `1` for Black.
-    ///
-    /// Useful for bit twiddling.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Color;
-    /// assert_eq!(Color::White.bits(), 0);
-    /// assert_eq!(Color::Black.bits(), 1);
-    /// ```
-    pub const fn bits(&self) -> u8 {
-        *self as u8
-    }
-
-    /// Creates a [`Color`] from a `char`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Color;
-    /// let white = Color::from_uci('w');
-    /// assert_eq!(white, Ok(Color::White));
-    ///
-    /// let err = Color::from_uci('x');
-    /// assert!(err.is_err());
-    /// ```
-    pub const fn from_uci(color: char) -> Result<Self, ChessError> {
-        match color {
-            'w' | 'W' => Ok(Self::White),
-            'b' | 'B' => Ok(Self::Black),
-            val => Err(ChessError::InvalidColorChar { val }),
-        }
-    }
-
-    /// Creates a [`Color`] from a `str`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Color;
-    /// let white = Color::from_str("w");
-    /// assert_eq!(white, Ok(Color::White));
-    ///
-    /// let err = Color::from_str("x");
-    /// assert!(err.is_err());
-    /// ```
-    pub fn from_str(color: &str) -> Result<Self, ChessError> {
-        match color {
-            "w" | "W" => Ok(Self::White),
-            "b" | "B" => Ok(Self::Black),
-            _ => Err(ChessError::InvalidColorStr),
-        }
-    }
-
-    /// Creates a [`Color`] based on the ASCII case of the provided character, with uppercase being White and lowercase being Black.
-    ///
-    /// Note this is intended to follow the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation, but can be used in odd ways, such as trying to find the color of the char `'z'` (Black).
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Color;
-    /// assert_eq!(Color::from_case('k'), Color::Black);
-    /// ```
-    pub const fn from_case(c: char) -> Self {
-        if c.is_ascii_uppercase() {
-            Self::White
-        } else {
-            Self::Black
-        }
-    }
-
-    /// Converts this [`Color`] to a char, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Color;
-    /// assert_eq!(Color::White.to_uci(), 'w');
-    /// ```
-    pub const fn to_uci(&self) -> char {
-        match self {
-            Self::White => 'w',
-            Self::Black => 'b',
-        }
-    }
-}
-
-impl Not for Color {
-    type Output = Self;
-    fn not(self) -> Self::Output {
-        self.opponent()
-    }
-}
-
-impl<T> Index<Color> for [T; 2] {
-    type Output = T;
-    fn index(&self, index: Color) -> &Self::Output {
-        &self[index.index()]
-    }
-}
-
-impl<T> IndexMut<Color> for [T; 2] {
-    fn index_mut(&mut self, index: Color) -> &mut Self::Output {
-        &mut self[index.index()]
-    }
-}
-
-impl fmt::Display for Color {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_uci())
-    }
-}
+use crate::core::{ChessError, Color};
 
 /// Represents the kind (or "class") that a chess piece can be.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -186,7 +27,7 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::PieceKind;
+    /// # use dutchess_core::core::PieceKind;
     /// let queen = PieceKind::from_bits_unchecked(4);
     /// assert_eq!(queen, PieceKind::Queen);
     /// ```
@@ -208,7 +49,7 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::PieceKind;
+    /// # use dutchess_core::core::PieceKind;
     /// let bits = PieceKind::Queen.bits();
     /// assert_eq!(bits, 4);
     /// ```
@@ -224,7 +65,7 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::PieceKind;
+    /// # use dutchess_core::core::PieceKind;
     /// let index = PieceKind::Queen.index();
     /// assert_eq!(index, 4);
     /// ```
@@ -251,7 +92,7 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::PieceKind;
+    /// # use dutchess_core::core::PieceKind;
     /// let queen = PieceKind::from_uci('Q');
     /// assert_eq!(queen, Ok(PieceKind::Queen));
     /// ```
@@ -287,7 +128,7 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::PieceKind;
+    /// # use dutchess_core::core::PieceKind;
     /// let queen = PieceKind::Queen.name();
     /// assert_eq!(queen, "Queen");
     /// ```
@@ -308,7 +149,7 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::PieceKind;
+    /// # use dutchess_core::core::PieceKind;
     /// let queen = PieceKind::Queen;
     /// assert_eq!(queen.to_uci(), 'Q');
     /// ```
@@ -382,11 +223,25 @@ impl fmt::Display for PieceKind {
 pub struct Piece(u8);
 
 impl Piece {
+    pub const WHITE_PAWN: Self = Self::new(Color::White, PieceKind::Pawn);
+    pub const WHITE_ROOK: Self = Self::new(Color::White, PieceKind::Rook);
+    pub const WHITE_KING: Self = Self::new(Color::White, PieceKind::King);
+    pub const WHITE_QUEEN: Self = Self::new(Color::White, PieceKind::Queen);
+    pub const WHITE_KNIGHT: Self = Self::new(Color::White, PieceKind::Knight);
+    pub const WHITE_BISHOP: Self = Self::new(Color::White, PieceKind::Bishop);
+
+    pub const BLACK_PAWN: Self = Self::new(Color::Black, PieceKind::Pawn);
+    pub const BLACK_ROOK: Self = Self::new(Color::Black, PieceKind::Rook);
+    pub const BLACK_KING: Self = Self::new(Color::Black, PieceKind::King);
+    pub const BLACK_QUEEN: Self = Self::new(Color::Black, PieceKind::Queen);
+    pub const BLACK_KNIGHT: Self = Self::new(Color::Black, PieceKind::Knight);
+    pub const BLACK_BISHOP: Self = Self::new(Color::Black, PieceKind::Bishop);
+
     /// Creates a new [`Piece`] from the given [`Color`] and [`PieceKind`].
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(white_knight.to_string(), "N");
     /// ```
@@ -401,7 +256,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(white_knight.color(), Color::White);
     /// ```
@@ -418,7 +273,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(white_knight.kind(), PieceKind::Knight);
     /// ```
@@ -448,7 +303,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::from_uci('N').unwrap();
     /// assert_eq!(white_knight.color(), Color::White);
     /// assert_eq!(white_knight.kind(), PieceKind::Knight);
@@ -463,7 +318,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(white_knight.to_uci(), 'N');
     /// ```
@@ -484,7 +339,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Piece, PieceKind};
+    /// # use dutchess_core::core::{Piece, PieceKind};
     /// let mut pawn_to_queen = Piece::from_uci('P').unwrap();
     /// pawn_to_queen.promote(PieceKind::Queen);
     /// assert_eq!(pawn_to_queen.kind(), PieceKind::Queen);
@@ -497,7 +352,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Piece, PieceKind};
+    /// # use dutchess_core::core::{Piece, PieceKind};
     /// let pawn = Piece::from_uci('P').unwrap();
     /// let queen = pawn.promoted(PieceKind::Queen);
     /// assert_eq!(queen.kind(), PieceKind::Queen);
@@ -510,7 +365,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Piece, Color};
+    /// # use dutchess_core::core::{Piece, Color};
     /// let mut michael_jackson = Piece::from_uci('k').unwrap();
     /// michael_jackson.change_color();
     /// assert_eq!(michael_jackson.color(), Color::White);

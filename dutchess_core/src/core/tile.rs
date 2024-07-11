@@ -1,59 +1,10 @@
 use std::{
-    error::Error,
     fmt,
     ops::{Add, AddAssign, Index, IndexMut, Mul, Sub, SubAssign},
     str::FromStr,
 };
 
-use crate::Color;
-
-#[derive(Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
-pub enum ChessError {
-    OutOfBounds { val: usize, min: usize, max: usize },
-    InvalidFileChar { val: char },
-    InvalidRankChar { val: char },
-    InvalidColorChar { val: char },
-    InvalidColorStr,
-    InvalidTileNotation,
-    InvalidPieceNotation,
-    InvalidPieceChar { val: char },
-    InvalidBitBoardString,
-    InvalidCastlingRights,
-    InvalidFenString,
-}
-
-impl fmt::Display for ChessError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::OutOfBounds { val, min, max } => {
-                write!(f, "value {val} must be within {min}..={max}")
-            }
-            Self::InvalidFileChar { val } => write!(f, "file chars must be [a, h]. found {val}"),
-            Self::InvalidRankChar { val } => write!(f, "rank chars must be [1, 8]. found {val}"),
-            Self::InvalidColorChar { val } => write!(f, "color chars must be `w` or `b`. found {val}"),
-            Self::InvalidColorStr => write!(f, "color strings must be `w` or `b`"),
-            Self::InvalidTileNotation => write!(
-                f,
-                "tile is not valid notation. notation must be <file><rank>"
-            ),
-            Self::InvalidPieceNotation => write!(
-                f,
-                "tile is not valid notation. notation must be <file><rank>"
-            ),
-            Self::InvalidPieceChar { val } => write!(
-                f,
-                "pieces must be [p | n | b | r | q | k] or uppercase equivalent. found {val}"
-            ),
-            Self::InvalidBitBoardString => write!(f, "BitBoards must be constructed by either hexadecimal strings of length 16 or binary strings of length 64"),
-            Self::InvalidCastlingRights => write!(f, "Invalid castling rights in FEN string"),
-            Self::InvalidFenString => write!(f, "Invalid FEN string")
-        }
-    }
-}
-
-impl Error for ChessError {
-    //
-}
+use crate::core::{ChessError, Color};
 
 /// Represents a single tile (or square) on an `8x8` chess board.
 ///
@@ -155,7 +106,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// let mut iter = Tile::iter();
     /// assert_eq!(iter.len(), 64);
     /// assert_eq!(iter.next().unwrap(), Tile::A1);
@@ -169,7 +120,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Tile, File, Rank};
+    /// # use dutchess_core::core::{Tile, File, Rank};
     /// let c4 = Tile::new(File::C, Rank::FOUR);
     /// assert_eq!(c4, Tile::C4);
     /// ```
@@ -184,7 +135,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// let c4 = Tile::from_index(26);
     /// assert_eq!(c4, Ok(Tile::C4));
     /// ```
@@ -200,7 +151,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// let c4 = Tile::from_index_unchecked(26);
     /// assert_eq!(c4, Tile::C4);
     /// ```
@@ -215,7 +166,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// let c4 = Tile::from_int(26);
     /// assert_eq!(c4, Ok(Tile::C4));
     /// ```
@@ -234,7 +185,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert_eq!(Tile::C4.inner(), 26);
     /// ```
     pub const fn inner(&self) -> u8 {
@@ -245,7 +196,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Tile, File};
+    /// # use dutchess_core::core::{Tile, File};
     /// assert_eq!(Tile::C4.file(), File::C);
     /// ```
     pub const fn file(&self) -> File {
@@ -256,7 +207,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Tile, Rank};
+    /// # use dutchess_core::core::{Tile, Rank};
     /// assert_eq!(Tile::C4.rank(), Rank::FOUR);
     /// ```
     pub const fn rank(&self) -> Rank {
@@ -269,7 +220,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert_eq!(Tile::C4.index(), 26);
     /// ```
     pub const fn index(&self) -> usize {
@@ -280,7 +231,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert_eq!(Tile::C4.to_u64_mask(), 1 << 26); // 1 << 26 = 67108864
     /// ```
     pub const fn to_u64_mask(&self) -> u64 {
@@ -291,7 +242,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Tile, File, Rank};
+    /// # use dutchess_core::core::{Tile, File, Rank};
     /// assert_eq!(Tile::C4.parts(), (File::C, Rank::FOUR));
     /// ```
     pub const fn parts(&self) -> (File, Rank) {
@@ -310,7 +261,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert!(Tile::C4.is_light());
     /// ```
     pub const fn is_light(&self) -> bool {
@@ -321,7 +272,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert!(Tile::C5.is_dark());
     /// ```
     pub const fn is_dark(&self) -> bool {
@@ -332,7 +283,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// let c4 = Tile::from_uci("c4");
     /// assert_eq!(c4, Ok(Tile::C4));
     ///
@@ -354,7 +305,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert_eq!("c4", Tile::C4.to_uci());
     /// ```
     pub fn to_uci(self) -> String {
@@ -367,7 +318,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert_eq!(Tile::C4.north(), Some(Tile::C5));
     ///
     /// assert_eq!(Tile::C8.north(), None);
@@ -386,7 +337,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert_eq!(Tile::C4.south(), Some(Tile::C3));
     ///
     /// assert_eq!(Tile::C1.south(), None);
@@ -405,7 +356,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert_eq!(Tile::C4.east(), Some(Tile::D4));
     ///
     /// assert_eq!(Tile::H4.east(), None);
@@ -424,7 +375,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Tile;
+    /// # use dutchess_core::core::Tile;
     /// assert_eq!(Tile::C4.west(), Some(Tile::B4));
     ///
     /// assert_eq!(Tile::A4.west(), None);
@@ -443,7 +394,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Tile, Color};
+    /// # use dutchess_core::core::{Tile, Color};
     /// assert_eq!(Tile::C4.forward(Color::White), Some(Tile::C5));
     /// assert_eq!(Tile::C4.forward(Color::Black), Some(Tile::C3));
     /// ```
@@ -460,7 +411,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Tile, Color};
+    /// # use dutchess_core::core::{Tile, Color};
     /// assert_eq!(Tile::C4.backward(Color::White), Some(Tile::C3));
     /// assert_eq!(Tile::C4.backward(Color::Black), Some(Tile::C5));
     /// ```
@@ -477,7 +428,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Tile, Color};
+    /// # use dutchess_core::core::{Tile, Color};
     /// assert_eq!(Tile::C4.right(Color::White), Some(Tile::D4));
     /// assert_eq!(Tile::C4.right(Color::Black), Some(Tile::B4));
     /// ```
@@ -494,7 +445,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Tile, Color};
+    /// # use dutchess_core::core::{Tile, Color};
     /// assert_eq!(Tile::C4.left(Color::White), Some(Tile::B4));
     /// assert_eq!(Tile::C4.left(Color::Black), Some(Tile::D4));
     /// ```
@@ -654,7 +605,7 @@ impl Rank {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::Rank;
+    /// # use dutchess_core::core::Rank;
     /// let mut iter = Rank::iter();
     /// assert_eq!(iter.len(), 8);
     /// assert_eq!(iter.next().unwrap(), Rank::ONE);
@@ -1012,7 +963,7 @@ impl File {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::File;
+    /// # use dutchess_core::core::File;
     /// let mut iter = File::iter();
     /// assert_eq!(iter.len(), 8);
     /// assert_eq!(iter.next().unwrap(), File::A);
