@@ -3,7 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use crate::core::{ChessError, Color};
+use super::{ChessError, Color};
 
 /// Represents the kind (or "class") that a chess piece can be.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -203,10 +203,6 @@ impl fmt::Display for PieceKind {
         write!(f, "{}", self.to_uci())
     }
 }
-
-/*********************************************************************************
- * Game pieces
-*********************************************************************************/
 
 /// Represents a chess piece on the game board.
 ///

@@ -1,10 +1,13 @@
 // use chess::{BitBoard, Board, Color, Piece};
 
-use dutchess_core::core::{moves_for, GameState, Piece, Tile};
+use dutchess_core::core::{Game, Tile};
 
 fn main() {
-    let state = GameState::new().with_default_setup();
-    println!("{state}");
+    let game = Game::default_setup();
+    println!("{game}");
+
+    let moves = game.get_legal_moves(Tile::C7);
+    println!("{}", moves);
 
     // let board = ChessBoard::new().with_default_setup();
     // println!("{board}");

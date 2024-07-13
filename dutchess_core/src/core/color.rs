@@ -3,10 +3,11 @@ use std::{
     ops::{Index, IndexMut, Not},
 };
 
-use crate::core::ChessError;
+use super::ChessError;
 
 /// Represents the color of a player, piece, tile, etc. within a chess board.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+#[repr(u8)]
 pub enum Color {
     White,
     Black,

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::core::{utils::DEFAULT_FEN, ChessBoard, ChessError, Color, Move, Tile};
+use super::{moves_for, utils::DEFAULT_FEN, BitBoard, ChessBoard, ChessError, Color, Move, Tile};
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct Game {
@@ -16,6 +16,10 @@ impl Game {
         s.state = init;
         s.make_moves(moves);
         s
+    }
+
+    pub fn default_setup() -> Self {
+        Self::from_fen(DEFAULT_FEN).unwrap()
     }
 
     pub fn from_fen(fen: &str) -> Result<Self, ChessError> {
@@ -37,15 +41,15 @@ impl Game {
 
     /// Returns `true` if the move was made successful, and `false` if it cannot be made.
     pub fn make_move(&mut self, chessmove: Move) {
-        // Remove the piece from it's previous location
-        let Some(mut piece) = self.state.board.take(chessmove.src()) else {
+        // Remove the piece from it's previous location, exiting early if there is no piece there
+        let Some(piece) = self.state.board.take(chessmove.src()) else {
             return;
         };
 
-        // Perform promotion, if possible.
-        if let Some(promotion) = chessmove.promote() {
-            piece.promote(promotion)
-        }
+        // Perform promotion, if necessary.
+        // if let Some(promotion) = chessmove.promote() {
+        // //     piece.promote(promotion)
+        // // }
 
         // Place the piece in it's new position
         self.state.board.set(piece, chessmove.dst());
@@ -74,6 +78,14 @@ impl Game {
             self.unmake_move();
         }
     }
+
+    pub fn get_legal_moves(&self, tile: Tile) -> BitBoard {
+        let Some(piece) = self.state.board.piece_at(tile) else {
+            return BitBoard::default();
+        };
+
+        moves_for(&piece, tile, &self.state)
+    }
 }
 
 impl Default for Game {
@@ -83,6 +95,27 @@ impl Default for Game {
             init: GameState::default(),
             history: Vec::with_capacity(128),
         }
+    }
+}
+
+impl fmt::Display for Game {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let title =
+            "+---+---+---+---+---+---+---+---+ GAME STATE +---+---+---+---+---+---+---+---+";
+        let current = self.state.current_player();
+        let board = self.state.board();
+        let en_passant = if let Some(tile) = self.state.ep_tile() {
+            tile.to_string()
+        } else {
+            String::from("None")
+        };
+
+        let fen = self.state.to_fen();
+
+        write!(
+            f,
+            "{title}\n\n\tCurrent Player: {current}\n\n\tEn Passant? {en_passant}\n\n{board}\n\nFEN: {fen}"
+        )
     }
 }
 
@@ -142,7 +175,7 @@ pub struct GameState {
 
     current_player: Color,
     castling_rights: CastlingRights,
-    en_passant_tile: Option<Tile>,
+    ep_tile: Option<Tile>,
 
     /// Used to enforce the fifty-move rule.
     /// Is incremented after each move.
@@ -213,7 +246,7 @@ impl GameState {
             eprintln!("Warning: No castling availability specified; defaulting to {x}");
             x
         });
-        self.en_passant_tile = match en_passant_target {
+        self.ep_tile = match en_passant_target {
             "-" => None,
             tile => Some(Tile::from_uci(tile)?),
         };
@@ -241,7 +274,7 @@ impl GameState {
         let active_color = self.current_player;
         let castling = self.castling_rights.to_uci();
 
-        let en_passant_target = if let Some(tile) = self.en_passant_tile {
+        let en_passant_target = if let Some(tile) = self.ep_tile {
             tile.to_string()
         } else {
             String::from("-")
@@ -251,25 +284,6 @@ impl GameState {
         let fullmove = self.fullmove;
 
         format!("{placements} {active_color} {castling} {en_passant_target} {halfmove} {fullmove}")
-    }
-
-    /// Applies a [`Move`] to this [`GameState`], updating metadata along the way.
-    fn make_move(&mut self, chessmove: Move) {
-        // Remove the piece from it's previous location, exiting early if there is no piece there
-        let Some(mut piece) = self.board.take(chessmove.src()) else {
-            return;
-        };
-
-        // Perform promotion, if necessary.
-        if let Some(promotion) = chessmove.promote() {
-            piece.promote(promotion)
-        }
-
-        // Place the piece in it's new position
-        self.board.set(piece, chessmove.dst());
-
-        // Next player's turn
-        self.toggle_current_player();
     }
 
     /*
@@ -308,69 +322,23 @@ impl GameState {
     }
      */
 
-    pub fn current_player(&self) -> Color {
+    pub const fn current_player(&self) -> Color {
         self.current_player
     }
 
-    pub fn board(&self) -> &ChessBoard {
+    pub const fn board(&self) -> &ChessBoard {
         &self.board
+    }
+
+    pub const fn ep_tile(&self) -> Option<Tile> {
+        self.ep_tile
     }
 
     pub fn toggle_current_player(&mut self) {
         // println!("Current player is now {}", self.current_player.opponent());
         self.current_player = self.current_player.opponent();
     }
-
-    pub fn legal_moves(&self) -> impl Iterator<Item = Move> {
-        // let fen = self.to_fen();
-        // println!("FEN: {fen}");
-        // let board = Board::from_str(&fen).unwrap();
-
-        // println!("{board}");
-        // println!("{board:?}");
-
-        /*
-        MoveGen::new_legal(&board).map(|legal| {
-            let src = Tile::from_index_unchecked(legal.get_source().to_index());
-            let dst = Tile::from_index_unchecked(legal.get_dest().to_index());
-            let promotion = legal.get_promotion().map(|piece| {
-                use chess::Piece::*;
-                match piece {
-                    Pawn => PieceKind::Pawn,
-                    Knight => PieceKind::Knight,
-                    Bishop => PieceKind::Bishop,
-                    Rook => PieceKind::Rook,
-                    Queen => PieceKind::Queen,
-                    King => PieceKind::King,
-                }
-            });
-
-            Move::new(src, dst, promotion)
-        })
-         */
-
-        todo!();
-        [].into_iter()
-    }
 }
-
-/*
-impl Index<Tile> for GameState {
-    type Output = Option<Piece>;
-    fn index(&self, index: Tile) -> &Self::Output {
-        // &self.pieces[index]
-        self.board.piece_at(index)
-    }
-}
- */
-
-/*
-impl IndexMut<Tile> for GameState {
-    fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
-        &mut self.pieces[index]
-    }
-}
- */
 
 impl Default for GameState {
     fn default() -> Self {
@@ -378,7 +346,7 @@ impl Default for GameState {
             board: ChessBoard::default(),
             current_player: Color::White,
             castling_rights: CastlingRights::default(),
-            en_passant_tile: None,
+            ep_tile: None,
             halfmove: 0,
             fullmove: 0,
         }
@@ -387,21 +355,6 @@ impl Default for GameState {
 
 impl fmt::Display for GameState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let title =
-            "+---+---+---+---+---+---+---+---+ GAME STATE +---+---+---+---+---+---+---+---+";
-        let current = self.current_player;
-        let board = self.board;
-        let en_passant = if let Some(tile) = self.en_passant_tile {
-            tile.to_string()
-        } else {
-            String::from("None")
-        };
-
-        let fen = self.to_fen();
-
-        write!(
-            f,
-            "{title}\n\n\tCurrent Player: {current}\n\n\tEn Passant? {en_passant}\n\n{board}\n\nFEN: {fen}"
-        )
+        write!(f, "{}", self.to_fen())
     }
 }

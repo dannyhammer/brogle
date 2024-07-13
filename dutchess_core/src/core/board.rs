@@ -8,7 +8,7 @@ use derive_more::{
     ShrAssign,
 };
 
-use crate::core::{utils::DEFAULT_FEN, ChessError, Color, File, Piece, PieceKind, Rank, Tile};
+use super::{utils::DEFAULT_FEN, ChessError, Color, File, Piece, PieceKind, Rank, Tile};
 
 /// Represents a full chess board at any given state.
 ///
@@ -388,6 +388,19 @@ impl ChessBoard {
     //     self[kind]
     // }
 
+    /// Get all squares that are either empty or occupied by the enemy
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::{BitBoard, ChessBoard, Color};
+    /// let board = ChessBoard::new().with_default_setup();
+    /// let not_white = board.enemy_or_empty(Color::White);
+    /// assert_eq!(not_white.to_hex_string(), "0xFFFFFFFFFFFF0000");
+    /// ```
+    pub fn enemy_or_empty(&self, color: Color) -> BitBoard {
+        !self[color]
+    }
+
     /// Creates a [`BoardIter`] to iterate over all occupied [`Tile`]s in this [`GameBoard`].
     // pub fn iter<'a>(&'a self) -> BoardIter<'a> {
     pub fn iter(&self) -> BoardIter<'_> {
@@ -611,6 +624,9 @@ fn check_bit(bits: u8, n: u8) -> u8 {
 /// The internal representation is a 64-bit binary number, so the values will represent the entire board.
 /// They are color-agnostic, with the low order bits representing the "lower" half of the board.
 ///
+/// Bit index 0 is the least-significant bit (LSB = 2^0)
+/// Bit index 63 is the most-significant bit (MSB = 2^63)
+///
 /// The internal encoding uses [Little-Endian Rank-File Mapping (LERF)](https://www.chessprogramming.org/Square_Mapping_Considerations#Little-Endian_Rank-File_Mapping),
 /// so a bitboard of first Rank would look like this in binary:
 /// ```text
@@ -668,7 +684,7 @@ impl BitBoard {
     pub const A1_H8_DIAG: Self = Self(0x8040201008040201);
     pub const H1_A8_DIAG: Self = Self(0x0102040810204080);
     pub const LIGHT_SQUARES: Self = Self(0x55AA55AA55AA55AA);
-    pub const DARKS_SQUARES: Self = Self(0xAA55AA55AA55AA55);
+    pub const DARK_SQUARES: Self = Self(0xAA55AA55AA55AA55);
     pub const EMPTY_BOARD: Self = Self(0x0000000000000000);
     pub const FULL_BOARD: Self = Self(0xFFFFFFFFFFFFFFFF);
     pub const EDGES: Self = Self(0xFF818181818181FF);
@@ -775,6 +791,20 @@ impl BitBoard {
             Ok(Self::new(bits))
         } else {
             Err(ChessError::InvalidBitBoardString)
+        }
+    }
+
+    pub const fn home_rank(color: Color) -> Self {
+        match color {
+            Color::White => Self::RANK_1,
+            Color::Black => Self::RANK_8,
+        }
+    }
+
+    pub const fn pawn_rank(color: Color) -> Self {
+        match color {
+            Color::White => Self::RANK_2,
+            Color::Black => Self::RANK_7,
         }
     }
 
@@ -936,12 +966,68 @@ impl BitBoard {
         // *self & *other != Self::EMPTY_BOARD
     }
 
-    // Rank up
+    /// Shifts this [`BitBoard`] forward by one, according to `color`.
+    ///
+    /// If `color` is White, this shifts one rank up. If Black, it shifts by one rank down.
+    ///
+    /// Note: This can "wrap" by advancing beyond the end of the board, so be careful!
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::{BitBoard, Color};
+    /// let rank4 = BitBoard::RANK_4;
+    /// assert_eq!(rank4.advance(Color::White), BitBoard::RANK_5);
+    /// assert_eq!(rank4.advance(Color::Black), BitBoard::RANK_3);
+    /// assert_eq!(BitBoard::RANK_8.advance(Color::White), BitBoard::RANK_1);
+    /// ```
+    pub const fn advance(self, color: Color) -> Self {
+        // Black magic: If `color` is White, this rotates left by 8, which is the same as "one rank up"
+        // If `color` is Black, this rotates left by 504, which is the same as rotating right by 8, or "one rank down"
+        Self(self.0.rotate_left(8 + color as u32 * 496))
+    }
+
+    /// Shifts this [`BitBoard`] backward by one, according to `color`.
+    ///
+    /// If `color` is White, this shifts one rank up. If Black, it shifts by one rank down.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::{BitBoard, Color};
+    /// let rank4 = BitBoard::RANK_4;
+    /// assert_eq!(rank4.retreat(Color::White), BitBoard::RANK_3);
+    /// assert_eq!(rank4.retreat(Color::Black), BitBoard::RANK_5);
+    /// ```
+    pub const fn retreat(self, color: Color) -> Self {
+        // Black magic: If `color` is White, this rotates right by 8, which is the same as "one rank down"
+        // If `color` is Black, this rotates right by 504, which is the same as rotating left by 8, or "one rank up"
+        Self(self.0.rotate_right(8 + color as u32 * 496))
+    }
+
+    /// Shifts this [`BitBoard`] by one rank up.
+    ///
+    /// If already at the final rank (8), returns an empty board.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::BitBoard;
+    /// assert_eq!(BitBoard::RANK_4.north(), BitBoard::RANK_5);
+    /// assert_eq!(BitBoard::RANK_8.north(), BitBoard::EMPTY_BOARD);
+    /// ```
     pub const fn north(self) -> Self {
         Self(self.0 << 8)
     }
 
     // Rank down
+    /// Shifts this [`BitBoard`] by one rank board.
+    ///
+    /// If already at the first rank (1), returns an empty board.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::BitBoard;
+    /// assert_eq!(BitBoard::RANK_4.south(), BitBoard::RANK_3);
+    /// assert_eq!(BitBoard::RANK_1.south(), BitBoard::EMPTY_BOARD);
+    /// ```
     pub const fn south(self) -> Self {
         Self(self.0 >> 8)
     }
@@ -1070,6 +1156,19 @@ impl From<Tile> for BitBoard {
     }
 }
 
+impl<T> From<Option<T>> for BitBoard
+where
+    Self: From<T>,
+{
+    fn from(value: Option<T>) -> Self {
+        if let Some(t) = value {
+            Self::from(t)
+        } else {
+            Self::default()
+        }
+    }
+}
+
 impl From<File> for BitBoard {
     fn from(value: File) -> Self {
         Self::from_file(value)
@@ -1108,13 +1207,33 @@ impl fmt::Binary for BitBoard {
 
 impl fmt::Display for BitBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // let bytes = self.0.to_ne_bytes();
-        // let bytes = self.0.to_be_bytes();
-        let bytes = self.0.to_le_bytes();
+        let s = format!("{:0>64b}", self.0).chars().collect::<Vec<_>>();
+
+        let rank = |i: usize| {
+            format!(
+                "{}{}{}{}{}{}{}{}",
+                s[i - 0],
+                s[i - 1],
+                s[i - 2],
+                s[i - 3],
+                s[i - 4],
+                s[i - 5],
+                s[i - 6],
+                s[i - 7],
+            )
+        };
+
         write!(
             f,
-            "{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}\n{:08b}",
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            rank(7),
+            rank(15),
+            rank(23),
+            rank(31),
+            rank(39),
+            rank(47),
+            rank(55),
+            rank(63)
         )
     }
 }
@@ -1193,10 +1312,17 @@ mod test {
 
     #[test]
     fn test_bitboard_to_string() {
-        let board = BitBoard::A1_H8_DIAG;
         let expected =
             "00000001\n00000010\n00000100\n00001000\n00010000\n00100000\n01000000\n10000000";
+        assert_eq!(BitBoard::A1_H8_DIAG.to_string(), expected);
 
+        let expected =
+            "00000000\n00000000\n00000000\n00000000\n00000000\n00000000\n11111111\n00000000";
+        assert_eq!(BitBoard::RANK_2.to_string(), expected);
+
+        let board = BitBoard::RANK_2 | BitBoard::FILE_C;
+        let expected =
+            "00100000\n00100000\n00100000\n00100000\n00100000\n00100000\n11111111\n00100000";
         assert_eq!(board.to_string(), expected);
     }
 

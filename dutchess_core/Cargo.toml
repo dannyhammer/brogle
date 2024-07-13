@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 derive_more = "0.99.17"
+log = "0.4.22"
+rand = "0.8.5"

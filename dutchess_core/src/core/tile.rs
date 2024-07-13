@@ -4,7 +4,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::core::{ChessError, Color};
+use super::{ChessError, Color};
 
 /// Represents a single tile (or square) on an `8x8` chess board.
 ///
@@ -19,7 +19,7 @@ use crate::core::{ChessError, Color};
 ///
 /// This bit pattern is also known as [Least Significant File Mapping](https://www.chessprogramming.org/Square_Mapping_Considerations#Deduction_on_Files_and_Ranks),
 /// so `tile = file + rank * 8`.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Tile(pub(crate) u8);
 
@@ -312,38 +312,38 @@ impl Tile {
         format!("{}{}", self.file(), self.rank())
     }
 
-    /// Increments this [`Tile`] "North" (+rank) by one, if possible.
+    /// Increments this [`Tile`] "North" (+rank) by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the maximum rank.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::core::Tile;
-    /// assert_eq!(Tile::C4.north(), Some(Tile::C5));
+    /// assert_eq!(Tile::C4.north_by(1), Some(Tile::C5));
     ///
-    /// assert_eq!(Tile::C8.north(), None);
+    /// assert_eq!(Tile::C8.north_by(1), None);
     /// ```
-    pub const fn north(&self) -> Option<Self> {
-        if let Some(next) = self.rank().increase() {
+    pub const fn north_by(&self, n: u8) -> Option<Self> {
+        if let Some(next) = self.rank().increase_by(n) {
             Some(Self::new(self.file(), next))
         } else {
             None
         }
     }
 
-    /// Increments this [`Tile`] "South" (-rank) by one, if possible.
+    /// Increments this [`Tile`] "South" (-rank) by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the minimum rank.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::core::Tile;
-    /// assert_eq!(Tile::C4.south(), Some(Tile::C3));
+    /// assert_eq!(Tile::C4.south_by(1), Some(Tile::C3));
     ///
-    /// assert_eq!(Tile::C1.south(), None);
+    /// assert_eq!(Tile::C1.south_by(1), None);
     /// ```
-    pub const fn south(&self) -> Option<Self> {
-        if let Some(next) = self.rank().decrease() {
+    pub const fn south_by(&self, n: u8) -> Option<Self> {
+        if let Some(next) = self.rank().decrease_by(n) {
             Some(Self::new(self.file(), next))
         } else {
             None
@@ -388,37 +388,37 @@ impl Tile {
         }
     }
 
-    /// Increments (if `color` is [`White`]) or decrements (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by one, if possible.
+    /// Increments (if `color` is [`White`]) or decrements (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::core::{Tile, Color};
-    /// assert_eq!(Tile::C4.forward(Color::White), Some(Tile::C5));
-    /// assert_eq!(Tile::C4.forward(Color::Black), Some(Tile::C3));
+    /// assert_eq!(Tile::C4.forward_by(Color::White, 1), Some(Tile::C5));
+    /// assert_eq!(Tile::C4.forward_by(Color::Black, 1), Some(Tile::C3));
     /// ```
-    pub const fn forward(&self, color: Color) -> Option<Self> {
+    pub const fn forward_by(&self, color: Color, n: u8) -> Option<Self> {
         match color {
-            Color::White => self.north(),
-            Color::Black => self.south(),
+            Color::White => self.north_by(n),
+            Color::Black => self.south_by(n),
         }
     }
 
-    /// Decrements (if `color` is [`White`]) or increments (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by one, if possible.
+    /// Decrements (if `color` is [`White`]) or increments (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::core::{Tile, Color};
-    /// assert_eq!(Tile::C4.backward(Color::White), Some(Tile::C3));
-    /// assert_eq!(Tile::C4.backward(Color::Black), Some(Tile::C5));
+    /// assert_eq!(Tile::C4.backward_by(Color::White, 1), Some(Tile::C3));
+    /// assert_eq!(Tile::C4.backward_by(Color::Black, 1), Some(Tile::C5));
     /// ```
-    pub const fn backward(&self, color: Color) -> Option<Self> {
+    pub const fn backward_by(&self, color: Color, n: u8) -> Option<Self> {
         match color {
-            Color::White => self.south(),
-            Color::Black => self.north(),
+            Color::White => self.south_by(n),
+            Color::Black => self.north_by(n),
         }
     }
 
@@ -584,6 +584,19 @@ impl fmt::Display for Tile {
     }
 }
 
+impl fmt::Debug for Tile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.to_uci())
+        // write!(
+        //     f,
+        //     "{} ({}, {})",
+        //     self.to_uci(),
+        //     self.file().0,
+        //     self.rank().0
+        // )
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 #[repr(transparent)]
 pub struct Rank(pub(crate) u8);
@@ -631,6 +644,20 @@ impl Rank {
         Self(rank)
     }
 
+    pub fn home_rank(color: Color) -> Self {
+        match color {
+            Color::White => Self::ONE,
+            Color::Black => Self::EIGHT,
+        }
+    }
+
+    pub fn pawn_rank(color: Color) -> Self {
+        match color {
+            Color::White => Self::TWO,
+            Color::Black => Self::SEVEN,
+        }
+    }
+
     pub const fn from_char(rank: char) -> Result<Self, ChessError> {
         debug_assert!(rank.is_ascii(), "Rank chars must be ASCII!");
 
@@ -673,18 +700,26 @@ impl Rank {
     }
 
     pub const fn increase(&self) -> Option<Self> {
+        self.increase_by(1)
+    }
+
+    pub const fn increase_by(&self, n: u8) -> Option<Self> {
         if self.0 == 7 {
             None
         } else {
-            Some(Self(self.0 + 1))
+            Some(Self(self.0 + n))
         }
     }
 
     pub const fn decrease(&self) -> Option<Self> {
+        self.decrease_by(1)
+    }
+
+    pub const fn decrease_by(&self, n: u8) -> Option<Self> {
         if self.0 == 0 {
             None
         } else {
-            Some(Self(self.0 - 1))
+            Some(Self(self.0 - n))
         }
     }
 

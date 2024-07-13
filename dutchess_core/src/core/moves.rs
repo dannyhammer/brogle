@@ -1,15 +1,10 @@
 use std::fmt;
 
-use crate::core::{ChessError, PieceKind, Tile};
-
-/// Represents which side castling can occur on.
-pub enum CastleSide {
-    Queenside,
-    Kingside,
-}
+use super::{ChessError, PieceKind, Tile};
 
 /// Represents the different kinds of moves that can be made during a chess game.
-pub enum MoveType {
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum MoveKind {
     /// Involves only a single piece moving from one location to another, and does not change the quantity or kind of any pieces on the board.
     Quiet,
 
@@ -19,9 +14,11 @@ pub enum MoveType {
     /// A special variant of capturing that occurs when a Pawn executes En Passant.
     EnPassantCapture,
 
-    /// Involves the King and a Rook sliding past each other, either on the King's side or the Queen's side.
-    /// See [`CastleSide`] for more.
-    Castle(CastleSide),
+    /// Involves the King and a Rook sliding past each other on the King's side of the board.
+    KingsideCastle,
+
+    /// Involves the King and a Rook sliding past each other on the Queen's side of the board.
+    QueensideCastle,
 
     /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming another kind of piece, such as a Knight or Queen.
     Promote(PieceKind),
@@ -41,19 +38,42 @@ pub enum MoveType {
 ///      +- Special flags for promotion, castling, etc.
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-#[repr(transparent)]
-pub struct Move(u16);
+// #[repr(transparent)]
+// pub struct Move(u16);
+pub struct Move {
+    from: Tile,
+    to: Tile,
+    kind: MoveKind,
+}
 
 impl Move {
-    // const NO_FLAG: u16 = 0b0000_0000_0000_0000;
+    /// Flags fetched from [here](https://www.chessprogramming.org/Encoding_Moves#From-To_Based)
     // const PROMOTE_ROOK: u16 = 0b0001_0000_0000_0000;
     // const PROMOTE_QUEEN: u16 = 0b0011_0000_0000_0000;
     // const PROMOTE_BISHOP: u16 = 0b0111_0000_0000_0000;
     // const PROMOTE_KNIGHT: u16 = 0b1111_0000_0000_0000;
+    /*
     const SRC_MASK: u16 = 0b0000_0000_0011_1111;
     const DST_MASK: u16 = 0b0000_1111_1100_0000;
     const FLG_MASK: u16 = 0b1111_0000_0000_0000;
 
+    const FLAG_QUIET_M: u16 = 0 << 12;
+    const FLAG_PDOUBLE: u16 = 1 << 12;
+    const FLAG_KCASTLE: u16 = 2 << 12;
+    const FLAG_QCASTLE: u16 = 3 << 12;
+    const FLAG_CAPTURE: u16 = 4 << 12;
+    const FLAG_EP_CAPT: u16 = 5 << 12;
+    const FLAG_PROMO_N: u16 = 8 << 12;
+    const FLAG_PROMO_B: u16 = 9 << 12;
+    const FLAG_PROMO_R: u16 = 10 << 12;
+    const FLAG_PROMO_Q: u16 = 11 << 12;
+    const FLAG_PRO_N_C: u16 = 12 << 12;
+    const FLAG_PRO_B_C: u16 = 13 << 12;
+    const FLAG_PRO_R_C: u16 = 14 << 12;
+    const FLAG_PRO_Q_C: u16 = 15 << 12;
+     */
+
+    /*
     /// Creates a new [`Move`] from the given [`Tile`]s and optional [`PieceKind`] for promotion.
     ///
     /// # Example
@@ -75,17 +95,30 @@ impl Move {
 
         Self(from | to << 6 | flag << 12)
     }
+         */
+
+    /// Creates a new [`Move`] from the given [`Tile`]s and a [`MoveKind`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::{Move, Tile, MoveKind};
+    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
+    /// assert_eq!(e2e4.to_string(), "e2e4");
+    /// ```
+    pub fn new(from: Tile, to: Tile, kind: MoveKind) -> Self {
+        Self { from, to, kind }
+    }
 
     /// Creates a new [`Move`] from the given [`Tile`]s that does promote a piece.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::core::{Move, Tile};
-    /// let e2e4 = Move::new_quiet(Tile::E2, Tile::E4);
-    /// assert_eq!(e2e4.to_string(), "e2e4");
+    /// let e2e3 = Move::new_quiet(Tile::E2, Tile::E3);
+    /// assert_eq!(e2e3.to_string(), "e2e3");
     /// ```
     pub fn new_quiet(from: Tile, to: Tile) -> Self {
-        Self::new(from, to, None)
+        Self::new(from, to, MoveKind::Quiet)
     }
 
     /// Creates an "illegal" [`Move`], representing moving a piece to and from the same [`Tile`].
@@ -97,9 +130,11 @@ impl Move {
     /// assert_eq!(illegal.to_string(), "a1a1");
     /// ```
     pub fn illegal() -> Self {
-        Self(0)
+        // Self(0)
+        Self::new_quiet(Tile::A1, Tile::A1)
     }
 
+    /*
     /// Internal function to fetch the bit pattern of the source (or "from") part of this [`Move`].
     fn src_bits(&self) -> u8 {
         (self.0 & Self::SRC_MASK) as u8
@@ -114,46 +149,50 @@ impl Move {
     fn flg_bits(&self) -> u8 {
         ((self.0 & Self::FLG_MASK) >> 12) as u8
     }
+     */
 
     /// Fetches the source (or "from") part of this [`Move`], as a [`Tile`].
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile};
-    /// let e2e4 = Move::new(Tile::E2, Tile::E4, None);
+    /// # use dutchess_core::core::{Move, Tile, MoveKind};
+    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
     /// let from = e2e4.src();
     /// assert_eq!(from, Tile::E2);
     /// ```
     pub fn src(&self) -> Tile {
-        Tile(self.src_bits())
+        // Tile(self.src_bits())
+        self.from
     }
 
     /// Fetches the destination (or "to") part of this [`Move`], as a [`Tile`].
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile};
-    /// let e2e4 = Move::new(Tile::E2, Tile::E4, None);
+    /// # use dutchess_core::core::{Move, Tile, MoveKind};
+    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
     /// let to = e2e4.dst();
     /// assert_eq!(to, Tile::E4);
     /// ```
     pub fn dst(&self) -> Tile {
-        Tile(self.dst_bits())
+        // Tile(self.dst_bits())
+        self.to
     }
 
-    /// Fetches the destination (or "to") part of this [`Move`], as a [`Tile`].
+    /// Fetches the [`MoveKind`] part of this [`Move`].
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile, PieceKind};
-    /// let e7e8Q = Move::new(Tile::E7, Tile::E8, Some(PieceKind::Queen));
-    /// assert_eq!(e7e8Q.promote(), Some(PieceKind::Queen));
+    /// # use dutchess_core::core::{Move, MoveKind, PieceKind, Tile};
+    /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
+    /// assert_eq!(e7e8Q.kind(), MoveKind::Promote(PieceKind::Queen));
     /// ```
-    pub fn promote(&self) -> Option<PieceKind> {
-        let bits = self.flg_bits();
+    pub fn kind(&self) -> MoveKind {
+        // let bits = self.flg_bits();
 
         // We subtract 1 here because we added 1 in `Self::new`
-        (bits != 0).then(|| PieceKind::from_bits_unchecked(bits - 1))
+        // (bits != 0).then(|| PieceKind::from_bits_unchecked(bits - 1))
+        self.kind
     }
 
     /*
@@ -173,9 +212,9 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile, PieceKind};
+    /// # use dutchess_core::core::{Move, Tile, MoveKind, PieceKind};
     /// let e7e8Q = Move::from_uci("e7e8Q");
-    /// assert_eq!(e7e8Q, Ok(Move::new(Tile::E7, Tile::E8, Some(PieceKind::Queen))));
+    /// assert_eq!(e7e8Q, Ok(Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen))));
     /// ```
     pub fn from_uci(uci: &str) -> Result<Self, ChessError> {
         let from = uci.get(0..2).ok_or(ChessError::InvalidTileNotation)?;
@@ -184,13 +223,13 @@ impl Move {
         let from = Tile::from_uci(from)?;
         let to = Tile::from_uci(to)?;
 
-        let promote = if let Some(promote) = uci.get(4..5) {
-            Some(PieceKind::from_str(promote)?)
+        let kind = if let Some(promote) = uci.get(4..5) {
+            MoveKind::Promote(PieceKind::from_str(promote)?)
         } else {
-            None
+            MoveKind::Quiet
         };
 
-        Ok(Self::new(from, to, promote))
+        Ok(Self::new(from, to, kind))
     }
 
     /// Converts this [`Move`] to a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
@@ -199,15 +238,14 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile, PieceKind};
-    /// let e7e8Q = Move::new(Tile::E7, Tile::E8, Some(PieceKind::Queen));
+    /// # use dutchess_core::core::{Move, Tile, MoveKind, PieceKind};
+    /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8Q.to_uci(), "e7e8Q");
     /// ```
     pub fn to_uci(&self) -> String {
-        if let Some(promote) = self.promote() {
-            format!("{}{}{}", self.src(), self.dst(), promote)
-        } else {
-            format!("{}{}", self.src(), self.dst())
+        match self.kind() {
+            MoveKind::Promote(promote) => format!("{}{}{}", self.src(), self.dst(), promote),
+            _ => format!("{}{}", self.src(), self.dst()),
         }
     }
 }

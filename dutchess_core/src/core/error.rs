@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, str::FromStr};
+use std::{error::Error, fmt};
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub enum ChessError {

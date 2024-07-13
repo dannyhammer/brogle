@@ -1,10 +1,14 @@
-use crate::core::{
+use std::arch::x86_64::_XCR_XFEATURE_ENABLED_MASK;
+
+use super::{
     // utils::{BISHOP_INDEX_BITS, BISHOP_MAGICS, ROOK_INDEX_BITS, ROOK_MAGICS},
     BitBoard,
     ChessBoard,
     Color,
+    GameState,
     Piece,
     PieceKind,
+    Rank,
     Tile,
 };
 
@@ -29,18 +33,17 @@ const QUEEN_MASKS: [BitBoard; 64] =
 // const ROOK_ATTACKS: [[BitBoard; 4096]; 64] =
 //     unsafe { std::mem::transmute(*include_bytes!("masks/rook_attacks.blob")) };
 
-pub fn moves_for(piece: &Piece, tile: Tile, board: &ChessBoard) -> BitBoard {
-    use PieceKind::*;
+pub fn moves_for(piece: &Piece, tile: Tile, state: &GameState) -> BitBoard {
+    println!("Computing moves for {piece} at {tile}");
 
-    // println!("Computing moves for {piece} at {tile}");
-
-    let moves = match piece.kind() {
-        Pawn => pawn_masks(tile, piece.color(), board),
-        Knight => knight_masks(tile),
-        Bishop => bishop_masks(tile),
-        Rook => rook_masks(tile),
-        Queen => queen_masks(tile),
-        King => king_masks(tile),
+    // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
+    let masks = match piece.kind() {
+        PieceKind::Pawn => pawn_masks(tile, state, piece.color()),
+        PieceKind::Knight => knight_masks(tile),
+        PieceKind::Bishop => bishop_masks(tile),
+        PieceKind::Rook => rook_masks(tile),
+        PieceKind::Queen => queen_masks(tile),
+        PieceKind::King => king_masks(tile),
     };
 
     // All squares that can block a piece, excluding edge squares
@@ -59,14 +62,10 @@ pub fn moves_for(piece: &Piece, tile: Tile, board: &ChessBoard) -> BitBoard {
     //     & !(pinmask(piece.color(), board))
 
     // moves.and(board.color(piece.color()).not())
-    moves
+    masks
 }
 
-/// Get all squares that are either empty or occupied by the enemy
-fn enemy_or_empty(color: Color, board: &ChessBoard) -> BitBoard {
-    !board[color]
-}
-
+/*
 const fn checkmask(color: Color, board: &ChessBoard) -> BitBoard {
     todo!()
 }
@@ -75,14 +74,48 @@ const fn pinmask(color: Color, board: &ChessBoard) -> BitBoard {
     // Horizontal/Vertical and then both diags
     todo!()
 }
+ */
 
-const fn pawn_masks(tile: Tile, color: Color, board: &ChessBoard) -> BitBoard {
-    let src = BitBoard::from_tile(tile);
-    if color.is_white() {
-        src.north()
+fn pawn_masks(tile: Tile, state: &GameState, color: Color) -> BitBoard {
+    let can_double_push = tile.rank() == Rank::pawn_rank(color);
+    let enemies = state.board().color(color.opponent());
+
+    // If there is an en passant tile, add that to the pawn's movement options, too
+    // TODO: Only allow if THIS pawn can perform en passant
+    let en_passant = BitBoard::from(state.ep_tile());
+    let valid_en_passant_files = BitBoard::from_file(tile.file())
+        | BitBoard::from(tile.file().decrease())
+        | BitBoard::from(tile.file().increase());
+
+    let pushes = pawn_push_masks(tile, color, can_double_push);
+    let attacks = pawn_attack_masks(tile, color);
+
+    pushes | (attacks & enemies) | (en_passant & valid_en_passant_files)
+}
+
+fn pawn_push_masks(tile: Tile, color: Color, can_double_push: bool) -> BitBoard {
+    // By default, pawns can move one space forward one space
+    let push = BitBoard::from_tile(tile).advance(color);
+
+    // If it's this pawn's first move, it can move forward two spaces.
+    let double_push = if can_double_push {
+        push.advance(color)
     } else {
-        src.south()
-    }
+        BitBoard::EMPTY_BOARD
+    };
+
+    // This mask ensures we're not "teleporting" by moving past the first/final rank
+    let not_home_rank = !BitBoard::home_rank(color);
+
+    (push | double_push) & not_home_rank
+}
+
+fn pawn_attack_masks(tile: Tile, color: Color) -> BitBoard {
+    let push = BitBoard::from_tile(tile).advance(color);
+    let diag1 = push.east();
+    let diag2 = push.west();
+
+    diag1 | diag2
 }
 
 const fn knight_masks(tile: Tile) -> BitBoard {
@@ -202,9 +235,97 @@ fn perft(depth: usize) -> u64 {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+    use crate::core::DEFAULT_FEN;
+
+    // Sets up a game from the provided FEN
+    fn setup_game(fen: &str) -> GameState {
+        GameState::new().from_fen(fen).unwrap()
+    }
+
+    /// Checks if `moves` and `legal_moves` contain all the same elements, ignoring order
+    fn lists_match(moves: BitBoard, legal_moves: &[Tile]) {
+        assert_eq!(
+            moves.population() as usize,
+            legal_moves.len(),
+            "\nMoves: {:?}\nLegal: {:?}",
+            moves.iter().collect::<Vec<_>>(),
+            legal_moves
+        );
+
+        for mv in moves {
+            assert!(
+                legal_moves.contains(&mv),
+                "{} not found in {:?}",
+                mv,
+                legal_moves
+            );
+        }
+    }
 
     #[test]
-    fn test_perft() {
-        //
+    fn pawn_initial_setup() {
+        let state = setup_game(&DEFAULT_FEN);
+
+        let test_setup_for = |color| {
+            for pawn_pos in BitBoard::pawn_rank(color) {
+                let legal_moves = [
+                    pawn_pos.forward_by(color, 1).unwrap(),
+                    pawn_pos.forward_by(color, 2).unwrap(),
+                ];
+                let moves = pawn_masks(pawn_pos, &state, color);
+
+                lists_match(moves, &legal_moves);
+            }
+        };
+
+        // test_setup_for(Color::White);
+        test_setup_for(Color::Black);
+    }
+
+    #[test]
+    fn pawn_captures() {
+        // White
+        // Can push two and capture on both diagonals
+        let state = setup_game("8/8/8/8/8/2r1n3/3P4/8 w - - 0 1");
+        let legal_moves = [Tile::D3, Tile::D4, Tile::C3, Tile::E3];
+        let moves = pawn_masks(Tile::D2, &state, Color::White);
+        lists_match(moves, &legal_moves);
+
+        // Black
+        // Can push two and capture on both diagonals
+        let state = setup_game("8/5p2/4Q1B1/8/8/8/8/8 b - - 0 1");
+        let legal_moves = [Tile::F6, Tile::F5, Tile::E6, Tile::G6];
+        let moves = pawn_masks(Tile::F7, &state, Color::Black);
+        lists_match(moves, &legal_moves);
+
+        // Edge case
+        // Black can move forward and capture one diagonal
+        let state = setup_game("8/8/8/8/7p/n5B1/8/8 b - - 0 1");
+        let legal_moves = [Tile::G3, Tile::H3];
+        let moves = pawn_masks(Tile::H4, &state, Color::Black);
+        lists_match(moves, &legal_moves);
+
+        // Impossible case
+        // White pawn at enemy home rank and not promoted; cannot move
+        let state = setup_game("3P4/8/8/8/8/8/8/8 w - - 0 1");
+        let legal_moves = [];
+        let moves = pawn_masks(Tile::D8, &state, Color::White);
+        lists_match(moves, &legal_moves);
+    }
+
+    #[test]
+    fn en_passant() {
+        // White pawn can move forward or en passant
+        let state = setup_game("8/8/8/3pP3/8/8/8/8 w - d6 0 1");
+        let legal_moves = [Tile::E6, Tile::D6];
+        let moves = pawn_masks(Tile::E5, &state, Color::White);
+        lists_match(moves, &legal_moves);
+
+        // White pawn can move forward, but NOT en passant
+        let state = setup_game("8/8/8/3p3P/8/8/8/8 w - d6 0 1");
+        let legal_moves = [Tile::H6];
+        let moves = pawn_masks(Tile::H5, &state, Color::White);
+        lists_match(moves, &legal_moves);
     }
 }

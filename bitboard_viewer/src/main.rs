@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use dutchess_core::{BitBoard, File, Rank, Tile};
+use dutchess_core::core::{BitBoard, File, Rank, Tile};
 
 fn draw_centered_text(text: &str, x: f32, y: f32, font_size: f32, color: Color) {
     let center = get_text_center(text, None, font_size as u16, 1.0, 0.0);
@@ -19,9 +19,7 @@ fn parse_args() -> BitBoard {
         } else {
             2
         };
-        println!("BEFORE: {bit_string}");
         let bit_string = bit_string.trim_start_matches("0x");
-        println!("AFTER : {bit_string}");
         let bits = u64::from_str_radix(&bit_string, radix)
             .expect("Expected argument of hexadecimal or binary number");
 
@@ -33,6 +31,7 @@ fn parse_args() -> BitBoard {
 async fn main() {
     // Get a BitBoard to render
     let mut board = parse_args();
+    println!("\nBitBoard:\n{board}");
 
     loop {
         // Compute all necessary coordinates and values
