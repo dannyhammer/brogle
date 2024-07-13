@@ -7,11 +7,11 @@ pub fn generate_blobs() {
     let king: [u8; 512] = unsafe { std::mem::transmute(king_moves()) };
     let queen: [u8; 512] = unsafe { std::mem::transmute(queen_moves()) };
 
-    std::fs::write("dutchess_engine/src/masks/bishop_masks.blob", bishop).unwrap();
-    std::fs::write("dutchess_engine/src/masks/rook_masks.blob", rook).unwrap();
-    std::fs::write("dutchess_engine/src/masks/knight_masks.blob", knight).unwrap();
-    std::fs::write("dutchess_engine/src/masks/king_masks.blob", king).unwrap();
-    std::fs::write("dutchess_engine/src/masks/queen_masks.blob", queen).unwrap();
+    std::fs::write("dutchess_engine/src/blobs/bishop_masks.blob", bishop).unwrap();
+    std::fs::write("dutchess_engine/src/blobs/rook_masks.blob", rook).unwrap();
+    std::fs::write("dutchess_engine/src/blobs/knight_masks.blob", knight).unwrap();
+    std::fs::write("dutchess_engine/src/blobs/king_masks.blob", king).unwrap();
+    std::fs::write("dutchess_engine/src/blobs/queen_masks.blob", queen).unwrap();
 
     // let rook_attacks = rook_attacks();
     // println!("{:?}", rook_attacks);

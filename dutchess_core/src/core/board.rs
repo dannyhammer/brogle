@@ -388,6 +388,7 @@ impl ChessBoard {
     //     self[kind]
     // }
 
+    /*
     /// Get all squares that are either empty or occupied by the enemy
     ///
     /// # Example
@@ -398,8 +399,10 @@ impl ChessBoard {
     /// assert_eq!(not_white.to_hex_string(), "0xFFFFFFFFFFFF0000");
     /// ```
     pub fn enemy_or_empty(&self, color: Color) -> BitBoard {
+        todo!("Remember that this causes issues with en passant!");
         !self[color]
     }
+     */
 
     /// Creates a [`BoardIter`] to iterate over all occupied [`Tile`]s in this [`GameBoard`].
     // pub fn iter<'a>(&'a self) -> BoardIter<'a> {
@@ -691,6 +694,8 @@ impl BitBoard {
     pub const NOT_EDGES: Self = Self(0x007E7E7E7E7E7E00);
     pub const CORNERS: Self = Self(0x8100000000000081);
 
+    const RANK_END_INDICES: [usize; 8] = [7, 15, 23, 31, 39, 47, 55, 63];
+
     /// Constructs a new [`BitBoard`] from the provided bit pattern.
     ///
     /// # Example
@@ -925,6 +930,15 @@ impl BitBoard {
         }
     }
 
+    // https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set
+    pub fn carry_rippler(&mut self, mask: Self) {
+        self.0 = self.0.wrapping_sub(mask.0) & mask.0;
+    }
+
+    pub fn to_carry_rippler(self, mask: Self) -> Self {
+        Self(self.0.wrapping_sub(mask.0) & mask.0)
+    }
+
     pub fn toggle(&mut self, mask: Self) {
         *self ^= mask
     }
@@ -966,9 +980,9 @@ impl BitBoard {
         // *self & *other != Self::EMPTY_BOARD
     }
 
-    /// Shifts this [`BitBoard`] forward by one, according to `color`.
+    /// Shifts this [`BitBoard`] forward by `n`, according to `color`.
     ///
-    /// If `color` is White, this shifts one rank up. If Black, it shifts by one rank down.
+    /// If `color` is White, this shifts `n` ranks up. If Black, it shifts by `n` rank down.
     ///
     /// Note: This can "wrap" by advancing beyond the end of the board, so be careful!
     ///
@@ -976,31 +990,37 @@ impl BitBoard {
     /// ```
     /// # use dutchess_core::core::{BitBoard, Color};
     /// let rank4 = BitBoard::RANK_4;
-    /// assert_eq!(rank4.advance(Color::White), BitBoard::RANK_5);
-    /// assert_eq!(rank4.advance(Color::Black), BitBoard::RANK_3);
-    /// assert_eq!(BitBoard::RANK_8.advance(Color::White), BitBoard::RANK_1);
+    /// assert_eq!(rank4.advance_by(Color::White, 1), BitBoard::RANK_5);
+    /// assert_eq!(rank4.advance_by(Color::Black, 1), BitBoard::RANK_3);
+    /// // Wrapping
+    /// assert_eq!(rank4.advance_by(Color::White, 5), BitBoard::RANK_1);
     /// ```
-    pub const fn advance(self, color: Color) -> Self {
-        // Black magic: If `color` is White, this rotates left by 8, which is the same as "one rank up"
-        // If `color` is Black, this rotates left by 504, which is the same as rotating right by 8, or "one rank down"
-        Self(self.0.rotate_left(8 + color as u32 * 496))
+    pub fn advance_by(self, color: Color, n: u32) -> Self {
+        // Black magic: If `color` is White, this rotates left by 8, which is the same as "n ranks up"
+        // If `color` is Black, this rotates left by 496, which is the same as rotating right by 8, or "n ranks down"
+        // Self(self.0.rotate_left(8 + color as u32 * 496))
+        Self(self.0.rotate_left(n * 8 * (1 + color as u32 * 62)))
     }
 
-    /// Shifts this [`BitBoard`] backward by one, according to `color`.
+    /// Shifts this [`BitBoard`] backward by `n`, according to `color`.
     ///
-    /// If `color` is White, this shifts one rank up. If Black, it shifts by one rank down.
+    /// If `color` is White, this shifts `n` ranks up. If Black, it shifts by `n` ranks down.
+    ///
+    /// Note: This can "wrap" by advancing beyond the end of the board, so be careful!
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::core::{BitBoard, Color};
     /// let rank4 = BitBoard::RANK_4;
-    /// assert_eq!(rank4.retreat(Color::White), BitBoard::RANK_3);
-    /// assert_eq!(rank4.retreat(Color::Black), BitBoard::RANK_5);
+    /// assert_eq!(rank4.retreat_by(Color::White, 1), BitBoard::RANK_3);
+    /// assert_eq!(rank4.retreat_by(Color::Black, 1), BitBoard::RANK_5);
+    /// // Wrapping
+    /// assert_eq!(rank4.retreat_by(Color::Black, 5), BitBoard::RANK_1);
     /// ```
-    pub const fn retreat(self, color: Color) -> Self {
-        // Black magic: If `color` is White, this rotates right by 8, which is the same as "one rank down"
-        // If `color` is Black, this rotates right by 504, which is the same as rotating left by 8, or "one rank up"
-        Self(self.0.rotate_right(8 + color as u32 * 496))
+    pub const fn retreat_by(self, color: Color, n: u32) -> Self {
+        // Black magic: If `color` is White, this rotates right by 8, which is the same as "n ranks down"
+        // If `color` is Black, this rotates right by 496, which is the same as rotating left by 8, or "n ranks up"
+        Self(self.0.rotate_right(n * 8 * (1 + color as u32 * 62)))
     }
 
     /// Shifts this [`BitBoard`] by one rank up.
@@ -1109,6 +1129,18 @@ impl BitBoard {
     pub fn to_hex_string(&self) -> String {
         format!("0x{:0>16X}", self.0)
     }
+
+    pub fn passed_pawn_mask(tile: Tile, color: Color) -> Self {
+        let forward_ranks = match color {
+            Color::White => Self::FULL_BOARD << (tile.rank() + 1),
+            Color::Black => Self::FULL_BOARD << (tile.rank() - 1),
+        };
+
+        let files =
+            Self::from(tile.file()) | Self::from(tile.file() + 1) | Self::from(tile.file() - 1);
+
+        forward_ranks & files
+    }
 }
 
 impl Shl<File> for BitBoard {
@@ -1207,34 +1239,31 @@ impl fmt::Binary for BitBoard {
 
 impl fmt::Display for BitBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = format!("{:0>64b}", self.0).chars().collect::<Vec<_>>();
+        let s = format!("{:0>64b}", self.0).into_bytes();
+        // 48 = '0'
+        // 49 = '1'
+        // 88 = 'X'
+        // 46 = '.'
+        // 88 - 46 = 42
+
+        // If `bit` is `1`, yields 'X', otherwise '.z'
+        let bit2char = |bit| (46 + (bit - 48) * 42) as char;
 
         let rank = |i: usize| {
             format!(
-                "{}{}{}{}{}{}{}{}",
-                s[i - 0],
-                s[i - 1],
-                s[i - 2],
-                s[i - 3],
-                s[i - 4],
-                s[i - 5],
-                s[i - 6],
-                s[i - 7],
+                "{} {} {} {} {} {} {} {}",
+                bit2char(s[i - 0]),
+                bit2char(s[i - 1]),
+                bit2char(s[i - 2]),
+                bit2char(s[i - 3]),
+                bit2char(s[i - 4]),
+                bit2char(s[i - 5]),
+                bit2char(s[i - 6]),
+                bit2char(s[i - 7]),
             )
         };
 
-        write!(
-            f,
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
-            rank(7),
-            rank(15),
-            rank(23),
-            rank(31),
-            rank(39),
-            rank(47),
-            rank(55),
-            rank(63)
-        )
+        write!(f, "{}", Self::RANK_END_INDICES.map(rank).join("\n"))
     }
 }
 
@@ -1312,17 +1341,35 @@ mod test {
 
     #[test]
     fn test_bitboard_to_string() {
-        let expected =
-            "00000001\n00000010\n00000100\n00001000\n00010000\n00100000\n01000000\n10000000";
+        let expected = ". . . . . . . X\n\
+                              . . . . . . X .\n\
+                              . . . . . X . .\n\
+                              . . . . X . . .\n\
+                              . . . X . . . .\n\
+                              . . X . . . . .\n\
+                              . X . . . . . .\n\
+                              X . . . . . . .";
         assert_eq!(BitBoard::A1_H8_DIAG.to_string(), expected);
 
-        let expected =
-            "00000000\n00000000\n00000000\n00000000\n00000000\n00000000\n11111111\n00000000";
+        let expected = ". . . . . . . .\n\
+                              . . . . . . . .\n\
+                              . . . . . . . .\n\
+                              . . . . . . . .\n\
+                              . . . . . . . .\n\
+                              . . . . . . . .\n\
+                              X X X X X X X X\n\
+                              . . . . . . . .";
         assert_eq!(BitBoard::RANK_2.to_string(), expected);
 
         let board = BitBoard::RANK_2 | BitBoard::FILE_C;
-        let expected =
-            "00100000\n00100000\n00100000\n00100000\n00100000\n00100000\n11111111\n00100000";
+        let expected = ". . X . . . . .\n\
+                              . . X . . . . .\n\
+                              . . X . . . . .\n\
+                              . . X . . . . .\n\
+                              . . X . . . . .\n\
+                              . . X . . . . .\n\
+                              X X X X X X X X\n\
+                              . . X . . . . .";
         assert_eq!(board.to_string(), expected);
     }
 

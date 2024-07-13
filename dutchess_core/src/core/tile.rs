@@ -4,7 +4,7 @@ use std::{
     str::FromStr,
 };
 
-use super::{ChessError, Color};
+use super::{BitBoard, ChessError, Color};
 
 /// Represents a single tile (or square) on an `8x8` chess board.
 ///
@@ -101,6 +101,7 @@ impl Tile {
 
     pub const MIN: u8 = 0;
     pub const MAX: u8 = 63;
+    pub const COUNT: usize = 64;
 
     /// Returns an iterator over all available tiles.
     ///
@@ -310,6 +311,18 @@ impl Tile {
     /// ```
     pub fn to_uci(self) -> String {
         format!("{}{}", self.file(), self.rank())
+    }
+
+    /// Alias for [`BitBoard::from_tile`].
+    pub fn bitboard(&self) -> BitBoard {
+        BitBoard::from_tile(*self)
+    }
+
+    pub fn try_offset(&self, file_offset: i8, rank_offset: i8) -> Result<Self, ChessError> {
+        Ok(Self::new(
+            File::try_from(self.file().0 as i8 + file_offset)?,
+            Rank::try_from(self.rank().0 as i8 + rank_offset)?,
+        ))
     }
 
     /// Increments this [`Tile`] "North" (+rank) by `n`, if possible.
@@ -672,7 +685,7 @@ impl Rank {
         Self::new(rank as u8)
     }
 
-    pub const fn from_tile_index(index: usize) -> Result<Self, ChessError> {
+    pub const fn from_index(index: usize) -> Result<Self, ChessError> {
         debug_assert!(index <= 64, "Rank indices must be [0,64)");
         Self::new(index as u8 % 8)
     }
@@ -764,7 +777,7 @@ impl TryFrom<char> for Rank {
 impl TryFrom<usize> for Rank {
     type Error = ChessError;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Self::from_tile_index(value)
+        Self::from_index(value)
     }
 }
 
@@ -772,6 +785,13 @@ impl TryFrom<u8> for Rank {
     type Error = ChessError;
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Self::new(value)
+    }
+}
+
+impl TryFrom<i8> for Rank {
+    type Error = ChessError;
+    fn try_from(value: i8) -> Result<Self, Self::Error> {
+        Self::new(value as u8)
     }
 }
 
@@ -1036,7 +1056,7 @@ impl File {
         Self::new(file_int)
     }
 
-    pub const fn from_tile_index(index: usize) -> Result<Self, ChessError> {
+    pub const fn from_index(index: usize) -> Result<Self, ChessError> {
         debug_assert!(index <= 64, "File indices must be [0,64)");
         Self::new(index as u8 / 8)
     }
@@ -1098,7 +1118,7 @@ impl TryFrom<char> for File {
 impl TryFrom<usize> for File {
     type Error = ChessError;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Self::from_tile_index(value)
+        Self::from_index(value)
     }
 }
 
@@ -1112,6 +1132,13 @@ impl TryFrom<u8> for File {
 impl TryFrom<i32> for File {
     type Error = ChessError;
     fn try_from(value: i32) -> Result<Self, Self::Error> {
+        Self::new(value as u8)
+    }
+}
+
+impl TryFrom<i8> for File {
+    type Error = ChessError;
+    fn try_from(value: i8) -> Result<Self, Self::Error> {
         Self::new(value as u8)
     }
 }

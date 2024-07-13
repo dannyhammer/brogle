@@ -1,9 +1,8 @@
-use std::arch::x86_64::_XCR_XFEATURE_ENABLED_MASK;
+use std::collections::HashMap;
 
 use super::{
     // utils::{BISHOP_INDEX_BITS, BISHOP_MAGICS, ROOK_INDEX_BITS, ROOK_MAGICS},
     BitBoard,
-    ChessBoard,
     Color,
     GameState,
     Piece,
@@ -12,20 +11,29 @@ use super::{
     Tile,
 };
 
-const BISHOP_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/bishop_masks.blob")) };
+// include!(concat!(env!("OUT_DIR"), "/magics.rs"));
+include!("pregenerated_magics.rs");
+struct MagicEntry {
+    mask: u64,
+    magic: u64,
+    shift: u8,
+    offset: u32,
+}
 
-const ROOK_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/rook_masks.blob")) };
+// const BISHOP_MASKS: [BitBoard; 64] =
+//     unsafe { std::mem::transmute(*include_bytes!("blobs/bishop_masks.blob")) };
+
+// const ROOK_MASKS: [BitBoard; 64] =
+//     unsafe { std::mem::transmute(*include_bytes!("blobs/rook_masks.blob")) };
 
 const KNIGHT_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/knight_masks.blob")) };
+    unsafe { std::mem::transmute(*include_bytes!("blobs/knight_masks.blob")) };
 
 const KING_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/king_masks.blob")) };
+    unsafe { std::mem::transmute(*include_bytes!("blobs/king_masks.blob")) };
 
 const QUEEN_MASKS: [BitBoard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("masks/queen_masks.blob")) };
+    unsafe { std::mem::transmute(*include_bytes!("blobs/queen_masks.blob")) };
 
 // const BISHOP_ATTACKS: [[BitBoard; 512]; 64] =
 //     unsafe { std::mem::transmute(*include_bytes!("masks/bishop_attacks.blob")) };
@@ -36,14 +44,17 @@ const QUEEN_MASKS: [BitBoard; 64] =
 pub fn moves_for(piece: &Piece, tile: Tile, state: &GameState) -> BitBoard {
     println!("Computing moves for {piece} at {tile}");
 
+    let blockers = state.board().blockers(BitBoard::FULL_BOARD) & !BitBoard::EDGES;
+
     // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
-    let masks = match piece.kind() {
+    let default_moves = match piece.kind() {
         PieceKind::Pawn => pawn_masks(tile, state, piece.color()),
         PieceKind::Knight => knight_masks(tile),
-        PieceKind::Bishop => bishop_masks(tile),
-        PieceKind::Rook => rook_masks(tile),
+        // PieceKind::Bishop => bishop_masks(tile),
+        PieceKind::Rook => get_rook_moves(tile, blockers),
         PieceKind::Queen => queen_masks(tile),
         PieceKind::King => king_masks(tile),
+        _ => unimplemented!(),
     };
 
     // All squares that can block a piece, excluding edge squares
@@ -53,26 +64,81 @@ pub fn moves_for(piece: &Piece, tile: Tile, state: &GameState) -> BitBoard {
     // let blocker_board = board.blockers(blocker_mask);
 
     // Will result in a board that can capture your own pieces
-    // let move_board = BitBoard::default();
 
     // moves & !board[piece.color()]
-    // moves
-    //     & enemy_or_empty(piece.color(), board)
-    //     & checkmask(piece.color(), board)
-    //     & !(pinmask(piece.color(), board))
-
-    // moves.and(board.color(piece.color()).not())
-    masks
+    default_moves
+    //& state.board().enemy_or_empty(piece.color())
+    // & checkmask(piece.color(), state)
+    // & !(pinmask(piece.color(), state))
 }
 
 /*
-const fn checkmask(color: Color, board: &ChessBoard) -> BitBoard {
-    todo!()
+fn blocker_bitboards(default_moves: BitBoard) -> Vec<BitBoard> {
+    let mut move_square_indices = Vec::with_capacity(64);
+    for i in 0..64 {
+        if ((default_moves >> i).0 & 1) == 1 {
+            move_square_indices.push(i);
+        }
+    }
+
+    let capacity = 1 << move_square_indices.len();
+    let mut blockers = vec![BitBoard::default(); capacity];
+
+    for pattern_index in 0..capacity {
+        for bit_index in 0..move_square_indices.len() {
+            let bit = (pattern_index >> bit_index) & 1;
+            blockers[pattern_index] |= BitBoard((bit as u64) << move_square_indices[bit_index]);
+        }
+    }
+
+    blockers
 }
 
-const fn pinmask(color: Color, board: &ChessBoard) -> BitBoard {
+fn create_rook_lookup_table() -> HashMap<(Tile, BitBoard), BitBoard> {
+    let mut map = HashMap::with_capacity(64);
+
+    for tile in Tile::iter() {
+        let movement_mask = rook_masks(tile);
+        let blockers = blocker_bitboards(movement_mask);
+
+        for blocker in blockers {
+            // TOOD: CreateRookLegalMoveBitBoard(tile, blocker);
+            let legal_moves = BitBoard::default();
+            map.insert((tile, blocker), legal_moves);
+        }
+    }
+
+    map
+}
+ */
+
+fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
+    let blockers = blockers.0 & entry.mask;
+    let hash = blockers.wrapping_mul(entry.magic);
+    let index = (hash >> entry.shift) as usize;
+    entry.offset as usize + index
+    // index
+}
+pub fn get_rook_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
+    let magic = &ROOK_MAGICS[tile];
+    BitBoard(ROOK_MOVES[magic_index(magic, blockers)])
+}
+
+pub fn get_bishop_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
+    let magic = &BISHOP_MAGICS[tile];
+    BitBoard(BISHOP_MOVES[magic_index(magic, blockers)])
+}
+
+/*
+const fn checkmask(color: Color, state: &GameState) -> BitBoard {
+    // todo!()
+    BitBoard::FULL_BOARD
+}
+
+const fn pinmask(color: Color, state: &GameState) -> BitBoard {
     // Horizontal/Vertical and then both diags
-    todo!()
+    // todo!()
+    BitBoard::FULL_BOARD
 }
  */
 
@@ -80,26 +146,30 @@ fn pawn_masks(tile: Tile, state: &GameState, color: Color) -> BitBoard {
     let can_double_push = tile.rank() == Rank::pawn_rank(color);
     let enemies = state.board().color(color.opponent());
 
-    // If there is an en passant tile, add that to the pawn's movement options, too
-    // TODO: Only allow if THIS pawn can perform en passant
+    // If there is an en passant tile, add that to the pawn's movement options
     let en_passant = BitBoard::from(state.ep_tile());
-    let valid_en_passant_files = BitBoard::from_file(tile.file())
-        | BitBoard::from(tile.file().decrease())
-        | BitBoard::from(tile.file().increase());
+    // But only allow it if it's on the pawn's adjacent files
+    let valid_en_passant_files =
+        BitBoard::from(tile.file().decrease()) | BitBoard::from(tile.file().increase());
+    let ep = en_passant & valid_en_passant_files;
 
+    //
     let pushes = pawn_push_masks(tile, color, can_double_push);
     let attacks = pawn_attack_masks(tile, color);
 
-    pushes | (attacks & enemies) | (en_passant & valid_en_passant_files)
+    // Can only attack spaces occupied by enemies
+    let valid_attacks = attacks & enemies;
+
+    pushes | valid_attacks | ep
 }
 
 fn pawn_push_masks(tile: Tile, color: Color, can_double_push: bool) -> BitBoard {
     // By default, pawns can move one space forward one space
-    let push = BitBoard::from_tile(tile).advance(color);
+    let push = BitBoard::from_tile(tile).advance_by(color, 1);
 
     // If it's this pawn's first move, it can move forward two spaces.
     let double_push = if can_double_push {
-        push.advance(color)
+        push.advance_by(color, 1)
     } else {
         BitBoard::EMPTY_BOARD
     };
@@ -111,24 +181,22 @@ fn pawn_push_masks(tile: Tile, color: Color, can_double_push: bool) -> BitBoard 
 }
 
 fn pawn_attack_masks(tile: Tile, color: Color) -> BitBoard {
-    let push = BitBoard::from_tile(tile).advance(color);
-    let diag1 = push.east();
-    let diag2 = push.west();
+    let push = BitBoard::from_tile(tile).advance_by(color, 1);
 
-    diag1 | diag2
+    push.east() | push.west()
 }
 
 const fn knight_masks(tile: Tile) -> BitBoard {
     KNIGHT_MASKS[tile.index()]
 }
 
-const fn bishop_masks(tile: Tile) -> BitBoard {
-    BISHOP_MASKS[tile.index()]
-}
+// const fn bishop_masks(tile: Tile) -> BitBoard {
+//     BISHOP_MASKS[tile.index()]
+// }
 
-const fn rook_masks(tile: Tile) -> BitBoard {
-    ROOK_MASKS[tile.index()]
-}
+// const fn rook_masks(tile: Tile) -> BitBoard {
+//     ROOK_MASKS[tile.index()]
+// }
 
 const fn queen_masks(tile: Tile) -> BitBoard {
     QUEEN_MASKS[tile.index()]
@@ -204,6 +272,7 @@ fn get_bishop_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
 }
  */
 
+/*
 fn perft(depth: usize) -> u64 {
     if depth == 0 {
         return 1;
@@ -232,6 +301,7 @@ fn perft(depth: usize) -> u64 {
 
     todo!()
 }
+ */
 
 #[cfg(test)]
 mod test {
@@ -326,6 +396,34 @@ mod test {
         let state = setup_game("8/8/8/3p3P/8/8/8/8 w - d6 0 1");
         let legal_moves = [Tile::H6];
         let moves = pawn_masks(Tile::H5, &state, Color::White);
+        lists_match(moves, &legal_moves);
+    }
+
+    #[test]
+    fn rook_blockers() {
+        // let state = setup_game("8/3n4/3Q4/8/1npR2N1/8/8/8 w - - 0 1");
+
+        let legal_moves = [
+            Tile::D1,
+            Tile::D2,
+            Tile::D3,
+            Tile::D5,
+            Tile::C4,
+            Tile::E4,
+            Tile::F4,
+        ];
+
+        // . . . X . . . X
+        // . . . . . . . .
+        // . . . X . . . .
+        // . . . . . . . .
+        // . . . . . . . X
+        // . . X . . . . .
+        // . . . X . X . .
+        // . . . . . . . .
+        let blockers =
+            BitBoard::new(0b1000100000000000000010000000000010000000000001000010100000000000);
+        let moves = get_rook_moves(Tile::D4, blockers);
         lists_match(moves, &legal_moves);
     }
 }
