@@ -114,12 +114,12 @@ impl PieceKind {
     }
 
     /// Does the same as [`PieceKind::from_uci`], but only if `kind` is one character in length.
-    pub fn from_str(kind: &str) -> Result<Self, ChessError> {
+    pub const fn from_str(kind: &str) -> Result<Self, ChessError> {
         if kind.is_empty() || kind.len() > 1 {
             return Err(ChessError::InvalidPieceNotation);
         }
 
-        Self::from_char(kind.chars().next().unwrap())
+        Self::from_char(kind.as_bytes()[0] as char)
     }
 
     /// Fetches a human-readable name for this [`PieceKind`].
@@ -304,10 +304,13 @@ impl Piece {
     /// assert_eq!(white_knight.color(), Color::White);
     /// assert_eq!(white_knight.kind(), PieceKind::Knight);
     /// ```
-    pub fn from_uci(piece: char) -> Result<Self, ChessError> {
-        let kind = PieceKind::from_uci(piece)?;
-        let color = Color::from_case(piece);
-        Ok(Self::new(color, kind))
+    pub const fn from_uci(piece: char) -> Result<Self, ChessError> {
+        if let Ok(kind) = PieceKind::from_uci(piece) {
+            let color = Color::from_case(piece);
+            Ok(Self::new(color, kind))
+        } else {
+            Err(ChessError::InvalidPieceChar { val: piece })
+        }
     }
 
     /// Converts this [`Piece`] into a character, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
@@ -368,6 +371,19 @@ impl Piece {
     /// ```
     pub fn change_color(&mut self) {
         *self = Self::new(self.color().opponent(), self.kind());
+    }
+}
+
+impl<T> Index<Piece> for [T; 6] {
+    type Output = T;
+    fn index(&self, index: Piece) -> &Self::Output {
+        &self[index.index()]
+    }
+}
+
+impl<T> IndexMut<Piece> for [T; 6] {
+    fn index_mut(&mut self, index: Piece) -> &mut Self::Output {
+        &mut self[index.index()]
     }
 }
 

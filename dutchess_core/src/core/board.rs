@@ -323,8 +323,15 @@ impl ChessBoard {
     /// let pawns = board.kind(PieceKind::Pawn);
     /// assert_eq!(pawns, BitBoard::RANK_2 | BitBoard::RANK_7);
     /// ```
-    pub fn kind(&self, kind: PieceKind) -> BitBoard {
-        self[kind]
+    pub const fn kind(&self, kind: PieceKind) -> BitBoard {
+        match kind {
+            PieceKind::Pawn => self.pawn,
+            PieceKind::Knight => self.knight,
+            PieceKind::Bishop => self.bishop,
+            PieceKind::Rook => self.rook,
+            PieceKind::Queen => self.queen,
+            PieceKind::King => self.king,
+        }
     }
 
     /// Fetches the [`BitBoard`] corresponding to the supplied [`Color`].
@@ -338,8 +345,11 @@ impl ChessBoard {
     /// let white_pieces = board.color(Color::White);
     /// assert_eq!(white_pieces, BitBoard::RANK_1 | BitBoard::RANK_2);
     /// ```
-    pub fn color(&self, color: Color) -> BitBoard {
-        self[color]
+    pub const fn color(&self, color: Color) -> BitBoard {
+        match color {
+            Color::White => self.white,
+            Color::Black => self.black,
+        }
     }
 
     /// Fetches the [`BitBoard`] corresponding to the supplied [`Piece`].
@@ -355,8 +365,8 @@ impl ChessBoard {
     /// assert_eq!(white_pawns, BitBoard::RANK_2);
     /// ```
     pub fn piece(&self, piece: Piece) -> BitBoard {
-        let color = self[piece.color()];
-        let kind = self[piece.kind()];
+        let color = self.color(piece.color());
+        let kind = self.kind(piece.kind());
         color & kind
     }
 
@@ -371,9 +381,9 @@ impl ChessBoard {
     }
      */
 
-    pub fn blockers(&self, blocker_mask: BitBoard) -> BitBoard {
+    pub const fn blockers(&self, blocker_mask: BitBoard) -> BitBoard {
         // All occupied squares within the blocker mask
-        self.occupied & blocker_mask
+        self.occupied.and(blocker_mask)
     }
 
     // pub fn generate_moves(&self) {
@@ -565,11 +575,13 @@ pub struct BoardIter<'a> {
     occupancy: BitBoard,
 }
 impl<'a> Iterator for BoardIter<'a> {
-    type Item = Piece;
+    type Item = (Tile, Piece);
 
     fn next(&mut self) -> Option<Self::Item> {
         let lsb = self.occupancy.pop_lsb()?;
-        self.board.get(Tile(lsb))
+        let tile = Tile(lsb);
+        let piece = self.board.get(tile)?;
+        Some((tile, piece))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -813,6 +825,10 @@ impl BitBoard {
         }
     }
 
+    pub const fn inner(&self) -> u64 {
+        self.0
+    }
+
     /// Creates a [`Tile`] from this [`BitBoard`] based on the lowest-index bit that is flipped.
     ///
     /// If this [`BitBoard`] contains more than a single flipped bit, it is converted into a [`Tile`]
@@ -935,7 +951,7 @@ impl BitBoard {
         self.0 = self.0.wrapping_sub(mask.0) & mask.0;
     }
 
-    pub fn to_carry_rippler(self, mask: Self) -> Self {
+    pub const fn to_carry_rippler(self, mask: Self) -> Self {
         Self(self.0.wrapping_sub(mask.0) & mask.0)
     }
 
@@ -995,10 +1011,9 @@ impl BitBoard {
     /// // Wrapping
     /// assert_eq!(rank4.advance_by(Color::White, 5), BitBoard::RANK_1);
     /// ```
-    pub fn advance_by(self, color: Color, n: u32) -> Self {
+    pub const fn advance_by(self, color: Color, n: u32) -> Self {
         // Black magic: If `color` is White, this rotates left by 8, which is the same as "n ranks up"
         // If `color` is Black, this rotates left by 496, which is the same as rotating right by 8, or "n ranks down"
-        // Self(self.0.rotate_left(8 + color as u32 * 496))
         Self(self.0.rotate_left(n * 8 * (1 + color as u32 * 62)))
     }
 
@@ -1140,6 +1155,19 @@ impl BitBoard {
             Self::from(tile.file()) | Self::from(tile.file() + 1) | Self::from(tile.file() - 1);
 
         forward_ranks & files
+    }
+
+    pub const fn and(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+    pub const fn or(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+    pub const fn xor(self, other: Self) -> Self {
+        Self(self.0 ^ other.0)
+    }
+    pub const fn not(self) -> Self {
+        Self(!self.0)
     }
 }
 

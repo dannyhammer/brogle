@@ -3,11 +3,12 @@ use std::io::prelude::*;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use crate::core::magics::*;
-use crate::core::{BitBoard, Tile};
+use dutchess_core::core::{BitBoard, Tile};
+mod magics;
+use crate::magics::*;
 
 fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
-    let blockers = blockers.0 & entry.mask;
+    let blockers = blockers.inner() & entry.mask;
     let hash = blockers.wrapping_mul(entry.magic);
     let index = (hash >> entry.shift) as usize;
     entry.offset as usize + index
@@ -37,16 +38,14 @@ fn make_table(
     let mut table = vec![BitBoard::EMPTY_BOARD; table_size];
     for tile in Tile::iter() {
         let magic_entry = &magics[tile];
-        let mask = BitBoard(magic_entry.mask);
+        let mask = BitBoard::new(magic_entry.mask);
 
         let mut blockers = BitBoard::EMPTY_BOARD;
         loop {
             let moves = slider_moves(slider_deltas, tile, blockers);
             table[magic_index(magic_entry, blockers)] = moves;
 
-            // Carry-Rippler trick that enumerates all subsets of the mask, getting us all blockers.
-            // https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set
-            blockers.0 = blockers.0.wrapping_sub(mask.0) & mask.0;
+            blockers.carry_rippler(mask);
             if blockers.is_empty() {
                 break;
             }
@@ -58,7 +57,7 @@ fn make_table(
 fn write_table(name: &str, table: &[BitBoard], out: &mut impl Write) -> std::io::Result<()> {
     write!(out, "const {}_MOVES: &[u64; {}] = &[", name, table.len())?;
     for entry in table {
-        write!(out, "{},", entry.0)?;
+        write!(out, "{},", entry.inner())?;
     }
     write!(out, "];")?;
     Ok(())
@@ -86,7 +85,7 @@ fn write_magics(
     Ok(())
 }
 
-pub fn write_moves() {
+pub fn main() {
     let rook_table = make_table(
         ROOK_TABLE_SIZE,
         &[(1, 0), (0, -1), (-1, 0), (0, 1)],
@@ -99,8 +98,7 @@ pub fn write_moves() {
     );
 
     // let mut out: PathBuf = std::env::var("OUT_DIR").unwrap().into();
-    let mut out = PathBuf::from("src/core");
-    out.push("pregenerated_magics.rs");
+    let out = PathBuf::from("pregenerated_magics.rs");
     let mut out = BufWriter::new(File::create(out).unwrap());
 
     write_magics("ROOK", ROOK_MAGICS, &mut out).unwrap();

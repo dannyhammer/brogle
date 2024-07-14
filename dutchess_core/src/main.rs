@@ -1,36 +1,19 @@
 // use chess::{BitBoard, Board, Color, Piece};
 
-use dutchess_core::core::{
-    gen::write_moves, get_bishop_moves, get_rook_moves, print_magics, BitBoard, Game, Tile,
-};
+use dutchess_core::core::Game;
 
 fn main() {
-    // let game = Game::default_setup();
-    // println!("{game}");
+    let game = Game::default_setup();
+    println!("{game}");
 
-    // let moves = game.get_legal_moves(Tile::A1);
-    // println!("{}", moves);
+    // let moves = game.get_legal_moves();
+    // println!("{:?}", moves.into_iter().collect::<Vec<_>>());
 
-    // magics_gen();
-    // print_magics();
-    // write_moves();
-
-    // . . . X . . . X
-    // . . . . . . . .
-    // . . . X . . . .
-    // . . . . . . . .
-    // . . . . . . . X
-    // . . X . . . . .
-    // . . . X . X . .
-    // . . . . . . . .
-    let blockers =
-        BitBoard::new(0b1000100000000000000010000000000010000000000001000010100000000000);
-    // let moves = get_rook_moves(Tile::D4, blockers);
-    let tile = Tile::D4;
-    println!("Blockers:\n{blockers}");
-    println!("Tile: {tile}");
-    println!("Rook moves:\n{}", get_rook_moves(tile, blockers));
-    println!("Bishop moves:\n{}", get_bishop_moves(tile, blockers));
+    for chessmove in game.get_legal_moves() {
+        let from = chessmove.from();
+        let piece = game.state().board().piece_at(from).unwrap();
+        println!("{piece} at {from} can {chessmove}");
+    }
 
     // let board = ChessBoard::new().with_default_setup();
     // println!("{board}");

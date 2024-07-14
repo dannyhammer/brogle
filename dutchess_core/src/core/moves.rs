@@ -37,7 +37,7 @@ pub enum MoveKind {
 ///      |     +- Target tile of the move.
 ///      +- Special flags for promotion, castling, etc.
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 // #[repr(transparent)]
 // pub struct Move(u16);
 pub struct Move {
@@ -157,10 +157,10 @@ impl Move {
     /// ```
     /// # use dutchess_core::core::{Move, Tile, MoveKind};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
-    /// let from = e2e4.src();
+    /// let from = e2e4.from();
     /// assert_eq!(from, Tile::E2);
     /// ```
-    pub fn src(&self) -> Tile {
+    pub fn from(&self) -> Tile {
         // Tile(self.src_bits())
         self.from
     }
@@ -171,10 +171,10 @@ impl Move {
     /// ```
     /// # use dutchess_core::core::{Move, Tile, MoveKind};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
-    /// let to = e2e4.dst();
+    /// let to = e2e4.to();
     /// assert_eq!(to, Tile::E4);
     /// ```
-    pub fn dst(&self) -> Tile {
+    pub fn to(&self) -> Tile {
         // Tile(self.dst_bits())
         self.to
     }
@@ -244,8 +244,8 @@ impl Move {
     /// ```
     pub fn to_uci(&self) -> String {
         match self.kind() {
-            MoveKind::Promote(promote) => format!("{}{}{}", self.src(), self.dst(), promote),
-            _ => format!("{}{}", self.src(), self.dst()),
+            MoveKind::Promote(promote) => format!("{}{}{}", self.from(), self.to(), promote),
+            _ => format!("{}{}", self.from(), self.to()),
         }
     }
 }
@@ -253,5 +253,11 @@ impl Move {
 impl fmt::Display for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_uci())
+    }
+}
+
+impl fmt::Debug for Move {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({:?})", self.to_uci(), self.kind())
     }
 }

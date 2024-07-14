@@ -1,6 +1,8 @@
 use std::{error::Error, fmt};
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+use super::{Color, Move};
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum ChessError {
     OutOfBounds { val: usize, min: usize, max: usize },
     InvalidFileChar { val: char },
@@ -13,6 +15,7 @@ pub enum ChessError {
     InvalidBitBoardString,
     InvalidCastlingRights,
     InvalidFenString,
+    InvalidMove { color: Color, chessmove: Move },
 }
 
 impl fmt::Display for ChessError {
@@ -39,7 +42,8 @@ impl fmt::Display for ChessError {
             ),
             Self::InvalidBitBoardString => write!(f, "BitBoards must be constructed by either hexadecimal strings of length 16 or binary strings of length 64"),
             Self::InvalidCastlingRights => write!(f, "Invalid castling rights in FEN string"),
-            Self::InvalidFenString => write!(f, "Invalid FEN string")
+            Self::InvalidFenString => write!(f, "Invalid FEN string"),
+            Self::InvalidMove { color, chessmove } => write!(f, "Player `{color}` attempted to perform `{chessmove}`")
         }
     }
 }

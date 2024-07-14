@@ -24,9 +24,6 @@ use super::{BitBoard, ChessError, Color};
 pub struct Tile(pub(crate) u8);
 
 impl Tile {
-    // const FILE_MASK: u8 = 0b0000_0111;
-    // const RANK_MASK: u8 = 0b0011_1000;
-
     pub const A1: Tile = Self::new(File::A, Rank::ONE);
     pub const A2: Tile = Self::new(File::A, Rank::TWO);
     pub const A3: Tile = Self::new(File::A, Rank::THREE);
@@ -103,6 +100,9 @@ impl Tile {
     pub const MAX: u8 = 63;
     pub const COUNT: usize = 64;
 
+    const FILE_MASK: u8 = 0b0000_0111;
+    // const RANK_MASK: u8 = 0b0011_1000;
+
     /// Returns an iterator over all available tiles.
     ///
     /// # Example
@@ -161,7 +161,7 @@ impl Tile {
         Self(index as u8)
     }
 
-    /// Creates a new [`Tile`] from the provided index value.
+    /// Creates a new [`Tile`] from the provided `u8` value.
     ///
     /// The provided `index` must be `[0, 63]` or else a [`ChessError`] is returned.
     ///
@@ -201,7 +201,7 @@ impl Tile {
     /// assert_eq!(Tile::C4.file(), File::C);
     /// ```
     pub const fn file(&self) -> File {
-        File(self.0 & 7) // Same as % 8
+        File(self.0 & Self::FILE_MASK) // Same as % 8
     }
 
     /// Fetches the [`Rank`] of this [`Tile`].
@@ -291,15 +291,19 @@ impl Tile {
     /// let err = Tile::from_uci("z0");
     /// assert!(err.is_err());
     /// ```
-    pub fn from_uci(tile: &str) -> Result<Self, ChessError> {
-        let mut chars = tile.chars();
-
-        // If there aren't two chars available, this is an invalid string.
-        let (Some(file), Some(rank)) = (chars.next(), chars.next()) else {
+    pub const fn from_uci(tile: &str) -> Result<Self, ChessError> {
+        let bytes = tile.as_bytes();
+        if tile.len() < 2 {
             return Err(ChessError::InvalidTileNotation);
-        };
+        }
+        let file = File::from_char(bytes[0] as char);
+        let rank = Rank::from_char(bytes[1] as char);
 
-        Ok(Self::new(File::from_char(file)?, Rank::from_char(rank)?))
+        if let (Ok(file), Ok(rank)) = (file, rank) {
+            Ok(Self::new(file, rank))
+        } else {
+            Err(ChessError::InvalidTileNotation)
+        }
     }
 
     /// Converts this [`Tile`] to a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
@@ -314,14 +318,24 @@ impl Tile {
     }
 
     /// Alias for [`BitBoard::from_tile`].
-    pub fn bitboard(&self) -> BitBoard {
+    pub const fn bitboard(&self) -> BitBoard {
         BitBoard::from_tile(*self)
     }
 
-    pub fn try_offset(&self, file_offset: i8, rank_offset: i8) -> Result<Self, ChessError> {
+    pub const fn try_offset(&self, df: i8, dr: i8) -> Result<Self, ChessError> {
+        let file_bits = self.file().0 as i8 + df;
+        if file_bits.is_negative() || file_bits > 7 {
+            return Err(ChessError::InvalidTileNotation);
+        }
+
+        let rank_bits = self.rank().0 as i8 + dr;
+        if rank_bits.is_negative() || rank_bits > 7 {
+            return Err(ChessError::InvalidTileNotation);
+        }
+
         Ok(Self::new(
-            File::try_from(self.file().0 as i8 + file_offset)?,
-            Rank::try_from(self.rank().0 as i8 + rank_offset)?,
+            File::new_unchecked(file_bits as u8),
+            Rank::new_unchecked(rank_bits as u8),
         ))
     }
 
@@ -599,18 +613,11 @@ impl fmt::Display for Tile {
 
 impl fmt::Debug for Tile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.to_uci())
-        // write!(
-        //     f,
-        //     "{} ({}, {})",
-        //     self.to_uci(),
-        //     self.file().0,
-        //     self.rank().0
-        // )
+        write!(f, "{} ({})", self.to_uci(), self.0)
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Rank(pub(crate) u8);
 
@@ -657,14 +664,14 @@ impl Rank {
         Self(rank)
     }
 
-    pub fn home_rank(color: Color) -> Self {
+    pub const fn home_rank(color: Color) -> Self {
         match color {
             Color::White => Self::ONE,
             Color::Black => Self::EIGHT,
         }
     }
 
-    pub fn pawn_rank(color: Color) -> Self {
+    pub const fn pawn_rank(color: Color) -> Self {
         match color {
             Color::White => Self::TWO,
             Color::Black => Self::SEVEN,
@@ -685,11 +692,6 @@ impl Rank {
         Self::new(rank as u8)
     }
 
-    pub const fn from_index(index: usize) -> Result<Self, ChessError> {
-        debug_assert!(index <= 64, "Rank indices must be [0,64)");
-        Self::new(index as u8 % 8)
-    }
-
     pub const fn inner(&self) -> u8 {
         self.0
     }
@@ -702,6 +704,20 @@ impl Rank {
         (self.0 + '1' as u8) as char
     }
 
+    pub const fn str(&self) -> &'static str {
+        match self.0 {
+            0 => "1",
+            1 => "2",
+            2 => "3",
+            3 => "4",
+            4 => "5",
+            5 => "6",
+            6 => "7",
+            7 => "8",
+            _ => unreachable!(),
+        }
+    }
+
     // Index in Little Endian (default)
     pub const fn index_le(&self) -> usize {
         self.0 as usize
@@ -712,15 +728,32 @@ impl Rank {
         self.index_le() ^ 56
     }
 
+    /// Alias for [`BitBoard::from_rank`].
+    pub const fn bitboard(&self) -> BitBoard {
+        BitBoard::from_rank(*self)
+    }
+
+    /*
+    const fn offset(&self, offset: i8) -> Option<Self> {
+        let bits = self.0 as i8 + offset;
+        if bits.is_negative() || bits > 7 {
+            None
+        } else {
+            Some(Self(bits as u8))
+        }
+    }
+     */
+
     pub const fn increase(&self) -> Option<Self> {
         self.increase_by(1)
     }
 
     pub const fn increase_by(&self, n: u8) -> Option<Self> {
-        if self.0 == 7 {
+        let val = self.0 + n;
+        if val > Self::MAX {
             None
         } else {
-            Some(Self(self.0 + n))
+            Some(Self(val))
         }
     }
 
@@ -729,19 +762,11 @@ impl Rank {
     }
 
     pub const fn decrease_by(&self, n: u8) -> Option<Self> {
-        if self.0 == 0 {
-            None
+        if let Some(val) = self.0.checked_sub(n) {
+            Some(Self(val))
         } else {
-            Some(Self(self.0 - n))
+            None
         }
-    }
-
-    pub const fn wrapping_increase(&self) -> Self {
-        Self(self.0.wrapping_add(1))
-    }
-
-    pub const fn wrapping_decrease(&self) -> Self {
-        Self(self.0.wrapping_sub(1))
     }
 
     pub const fn first_rank(&self, color: Color) -> Self {
@@ -767,6 +792,97 @@ impl Rank {
     }
 }
 
+macro_rules! impl_try_from_num {
+    ($t: ty) => {
+        impl_try_from_num!($t, u8);
+        impl_try_from_num!($t, u16);
+        impl_try_from_num!($t, u32);
+        impl_try_from_num!($t, u64);
+        impl_try_from_num!($t, usize);
+        impl_try_from_num!($t, i8);
+        impl_try_from_num!($t, i16);
+        impl_try_from_num!($t, i32);
+        impl_try_from_num!($t, i64);
+        impl_try_from_num!($t, isize);
+    };
+    ($t: ty, $from:ty) => {
+        impl TryFrom<$from> for $t {
+            type Error = ChessError;
+            fn try_from(value: $from) -> Result<Self, Self::Error> {
+                Self::new(value as u8)
+            }
+        }
+    };
+}
+
+macro_rules! impl_binary_ops_with_num {
+    // Entrypoint; impl ops on everything
+    ($t: ty) => {
+        // Implement ops on Self
+        impl_binary_ops_with_num!($t, Add, AddAssign, add, add_assign, +);
+        impl_binary_ops_with_num!($t, Sub, SubAssign, sub, sub_assign, -);
+        impl_binary_ops_with_num!($t, Mul, MulAssign, mul, mul_assign, *);
+        impl_binary_ops_with_num!($t, Div, DivAssign, div, div_assign, /);
+
+        // Implement ops on primitives
+        impl_binary_ops_with_num!($t, u8);
+        impl_binary_ops_with_num!($t, u16);
+        impl_binary_ops_with_num!($t, u32);
+        impl_binary_ops_with_num!($t, u64);
+        impl_binary_ops_with_num!($t, usize);
+        impl_binary_ops_with_num!($t, i8);
+        impl_binary_ops_with_num!($t, i16);
+        impl_binary_ops_with_num!($t, i32);
+        impl_binary_ops_with_num!($t, i64);
+        impl_binary_ops_with_num!($t, isize);
+    };
+
+    // Impl all four ops (and assigns) for given RHS
+    ($t:ty, $rhs:ty) => {
+        impl_binary_ops_with_num!($t, $rhs, Add, AddAssign, add, add_assign, +);
+        impl_binary_ops_with_num!($t, $rhs, Sub, SubAssign, sub, sub_assign, -);
+        impl_binary_ops_with_num!($t, $rhs, Mul, MulAssign, mul, mul_assign, *);
+        impl_binary_ops_with_num!($t, $rhs, Div, DivAssign, div, div_assign, /);
+    };
+
+    // Impl op and op_assign for Self
+    ($t:ty, $op:tt, $op_assign:tt, $func:ident, $func_assign:ident, $op_tok:tt) => {
+        impl std::ops::$op for $t {
+            type Output = Self;
+            fn $func(self, rhs: Self) -> Self::Output {
+                Self::new(self.0 $op_tok rhs.0)
+                    .expect("Attempted to add {self} and {rhs}, which is beyond Rank's bounds")
+            }
+        }
+
+        impl std::ops::$op_assign for $t {
+            fn $func_assign(&mut self, rhs: Self) {
+                *self = *self $op_tok rhs;
+            }
+        }
+    };
+
+    // Impl op and op_assign for Rhs
+    ($t:ty, $rhs:ty, $op:tt, $op_assign:tt, $func:ident, $func_assign:ident, $op_tok:tt) => {
+        impl std::ops::$op<$rhs> for $t {
+            type Output = Self;
+            fn $func(self, rhs: $rhs) -> Self::Output {
+                Self::new(self.0 $op_tok rhs as u8)
+                    .expect("Attempted to add {self} and {rhs}, which is beyond Rank's bounds")
+            }
+        }
+
+        impl std::ops::$op_assign<$rhs> for $t {
+            fn $func_assign(&mut self, rhs: $rhs) {
+                *self = *self $op_tok rhs;
+            }
+        }
+    };
+}
+
+impl_binary_ops_with_num!(Rank);
+impl_try_from_num!(Rank);
+
 impl TryFrom<char> for Rank {
     type Error = ChessError;
     fn try_from(value: char) -> Result<Self, Self::Error> {
@@ -774,175 +890,9 @@ impl TryFrom<char> for Rank {
     }
 }
 
-impl TryFrom<usize> for Rank {
-    type Error = ChessError;
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Self::from_index(value)
-    }
-}
-
-impl TryFrom<u8> for Rank {
-    type Error = ChessError;
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl TryFrom<i8> for Rank {
-    type Error = ChessError;
-    fn try_from(value: i8) -> Result<Self, Self::Error> {
-        Self::new(value as u8)
-    }
-}
-
-impl TryFrom<i32> for Rank {
-    type Error = ChessError;
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        Self::new(value as u8)
-    }
-}
-
 impl From<Tile> for Rank {
     fn from(value: Tile) -> Self {
         value.rank()
-    }
-}
-
-// macro_rules! impl_binary_op {
-//     ($trait:tt, $type:ty, $op_name:tt, $op:tt) => {
-//         impl $trait for $type {
-//             type Output = Self;
-//             fn $op_name(self, rhs: Self) -> Self::Output {
-//                 Self::new(self.0 $op rhs.0).expect("Attempted binary operation {$op} on {$type} went out of bounds")
-//             }
-//         }
-//     };
-// }
-
-// macro_rules! impl_binary_op_assign {
-//     ($trait:tt, $type:ty, $op_name:tt, $op:tt) => {
-//         impl $trait for $type {
-//             fn $op_name(&mut self, rhs: Self) {
-//                 *self = *self $op rhs;
-//             }
-//         }
-//     };
-// }
-
-// impl_binary_op!(Add, Rank, add, +);
-// impl_binary_op!(Sub, Rank, sub, -);
-// impl_binary_op_assign!(AddAssign, Rank, add_assign, -);
-// impl_binary_op_assign!(SubAssign, Rank, sub_assign, -);
-
-impl Add for Rank {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self::new(self.0 + rhs.0)
-            .expect("Attempted to add {self} and {rhs}, which is beyond Rank's bounds")
-    }
-}
-
-impl Sub for Rank {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self::new(self.0 - rhs.0)
-            .expect("Attempted to sub {self} and {rhs}, which is beyond Rank's bounds")
-    }
-}
-
-impl AddAssign for Rank {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
-    }
-}
-
-impl SubAssign for Rank {
-    fn sub_assign(&mut self, rhs: Self) {
-        *self = *self - rhs;
-    }
-}
-
-impl Add<u8> for Rank {
-    type Output = Self;
-    fn add(self, rhs: u8) -> Self::Output {
-        Self::new(self.0 + rhs)
-            .expect("Attempted to add {self} and {rhs}, which is beyond Rank's bounds")
-    }
-}
-
-impl Sub<u8> for Rank {
-    type Output = Self;
-    fn sub(self, rhs: u8) -> Self::Output {
-        Self::new(self.0 - rhs)
-            .expect("Attempted to sub {self} and {rhs}, which is beyond Rank's bounds")
-    }
-}
-
-impl AddAssign<u8> for Rank {
-    fn add_assign(&mut self, rhs: u8) {
-        *self = *self + rhs;
-    }
-}
-
-impl SubAssign<u8> for Rank {
-    fn sub_assign(&mut self, rhs: u8) {
-        *self = *self - rhs;
-    }
-}
-
-impl Add<i32> for Rank {
-    type Output = Self;
-    fn add(self, rhs: i32) -> Self::Output {
-        Self::new(self.0 + rhs as u8)
-            .expect("Attempted to add {self} and {rhs}, which is beyond Rank's bounds")
-    }
-}
-
-impl Sub<i32> for Rank {
-    type Output = Self;
-    fn sub(self, rhs: i32) -> Self::Output {
-        Self::new(self.0 - rhs as u8)
-            .expect("Attempted to sub {self} and {rhs}, which is beyond Rank's bounds")
-    }
-}
-
-impl AddAssign<i32> for Rank {
-    fn add_assign(&mut self, rhs: i32) {
-        *self = *self + rhs;
-    }
-}
-
-impl SubAssign<i32> for Rank {
-    fn sub_assign(&mut self, rhs: i32) {
-        *self = *self - rhs;
-    }
-}
-
-impl Add<usize> for Rank {
-    type Output = Self;
-    fn add(self, rhs: usize) -> Self::Output {
-        Self::new(self.0 + rhs as u8)
-            .expect("Attempted to add {self} and {rhs}, which is beyond Rank's bounds")
-    }
-}
-
-impl Sub<usize> for Rank {
-    type Output = Self;
-    fn sub(self, rhs: usize) -> Self::Output {
-        Self::new(self.0 - rhs as u8)
-            .expect("Attempted to sub {self} and {rhs}, which is beyond Rank's bounds")
-    }
-}
-
-impl AddAssign<usize> for Rank {
-    fn add_assign(&mut self, rhs: usize) {
-        *self = *self + rhs;
-    }
-}
-
-impl SubAssign<usize> for Rank {
-    fn sub_assign(&mut self, rhs: usize) {
-        *self = *self - rhs;
     }
 }
 
@@ -992,13 +942,25 @@ impl<T> IndexMut<Rank> for [T; 8] {
     }
 }
 
+impl AsRef<str> for Rank {
+    fn as_ref(&self) -> &str {
+        self.str()
+    }
+}
+
 impl fmt::Display for Rank {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.char())
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+impl fmt::Debug for Rank {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({})", self.char(), self.0)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct File(pub(crate) u8);
 
 impl File {
@@ -1056,11 +1018,6 @@ impl File {
         Self::new(file_int)
     }
 
-    pub const fn from_index(index: usize) -> Result<Self, ChessError> {
-        debug_assert!(index <= 64, "File indices must be [0,64)");
-        Self::new(index as u8 / 8)
-    }
-
     pub const fn inner(&self) -> u8 {
         self.0
     }
@@ -1073,6 +1030,20 @@ impl File {
         (self.0 + 'a' as u8) as char
     }
 
+    pub const fn str(&self) -> &'static str {
+        match self.0 {
+            0 => "a",
+            1 => "b",
+            2 => "c",
+            3 => "d",
+            4 => "e",
+            5 => "f",
+            6 => "g",
+            7 => "h",
+            _ => unreachable!(),
+        }
+    }
+
     // Index in Little Endian (default)
     pub const fn index_le(&self) -> usize {
         self.0 as usize
@@ -1083,30 +1054,39 @@ impl File {
         self.index_le() ^ 7
     }
 
+    /// Alias for [`BitBoard::from_file`].
+    pub const fn bitboard(&self) -> BitBoard {
+        BitBoard::from_file(*self)
+    }
+
     pub const fn increase(&self) -> Option<Self> {
-        if self.0 == 7 {
+        self.increase_by(1)
+    }
+
+    pub const fn increase_by(&self, n: u8) -> Option<Self> {
+        let val = self.0 + n;
+        if val > Self::MAX {
             None
         } else {
-            Some(Self(self.0 + 1))
+            Some(Self(val))
         }
     }
 
     pub const fn decrease(&self) -> Option<Self> {
-        if self.0 == 0 {
-            None
+        self.decrease_by(1)
+    }
+
+    pub const fn decrease_by(&self, n: u8) -> Option<Self> {
+        if let Some(val) = self.0.checked_sub(n) {
+            Some(Self(val))
         } else {
-            Some(Self(self.0 - 1))
+            None
         }
     }
-
-    pub const fn wrapping_increase(&self) -> Self {
-        Self(self.0.wrapping_add(1))
-    }
-
-    pub const fn wrapping_decrease(&self) -> Self {
-        Self(self.0.wrapping_sub(1))
-    }
 }
+
+impl_binary_ops_with_num!(File);
+impl_try_from_num!(File);
 
 impl TryFrom<char> for File {
     type Error = ChessError;
@@ -1115,149 +1095,9 @@ impl TryFrom<char> for File {
     }
 }
 
-impl TryFrom<usize> for File {
-    type Error = ChessError;
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Self::from_index(value)
-    }
-}
-
-impl TryFrom<u8> for File {
-    type Error = ChessError;
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl TryFrom<i32> for File {
-    type Error = ChessError;
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        Self::new(value as u8)
-    }
-}
-
-impl TryFrom<i8> for File {
-    type Error = ChessError;
-    fn try_from(value: i8) -> Result<Self, Self::Error> {
-        Self::new(value as u8)
-    }
-}
-
 impl From<Tile> for File {
     fn from(value: Tile) -> Self {
         value.file()
-    }
-}
-
-impl Add for File {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self::new(self.0 + rhs.0)
-            .expect("Attempted to add {self} and {rhs}, which is beyond File's bounds")
-    }
-}
-
-impl Sub for File {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self::new(self.0 - rhs.0)
-            .expect("Attempted to sub {self} and {rhs}, which is beyond File's bounds")
-    }
-}
-
-impl AddAssign for File {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
-    }
-}
-
-impl SubAssign for File {
-    fn sub_assign(&mut self, rhs: Self) {
-        *self = *self - rhs;
-    }
-}
-
-impl Add<u8> for File {
-    type Output = Self;
-    fn add(self, rhs: u8) -> Self::Output {
-        Self::new(self.0 + rhs)
-            .expect("Attempted to add {self} and {rhs}, which is beyond File's bounds")
-    }
-}
-
-impl Sub<u8> for File {
-    type Output = Self;
-    fn sub(self, rhs: u8) -> Self::Output {
-        Self::new(self.0 - rhs)
-            .expect("Attempted to sub {self} and {rhs}, which is beyond File's bounds")
-    }
-}
-
-impl AddAssign<u8> for File {
-    fn add_assign(&mut self, rhs: u8) {
-        *self = *self + rhs;
-    }
-}
-
-impl SubAssign<u8> for File {
-    fn sub_assign(&mut self, rhs: u8) {
-        *self = *self - rhs;
-    }
-}
-
-impl Add<usize> for File {
-    type Output = Self;
-    fn add(self, rhs: usize) -> Self::Output {
-        Self::new(self.0 + rhs as u8)
-            .expect("Attempted to add {self} and {rhs}, which is beyond File's bounds")
-    }
-}
-
-impl Sub<usize> for File {
-    type Output = Self;
-    fn sub(self, rhs: usize) -> Self::Output {
-        Self::new(self.0 - rhs as u8)
-            .expect("Attempted to sub {self} and {rhs}, which is beyond File's bounds")
-    }
-}
-
-impl AddAssign<usize> for File {
-    fn add_assign(&mut self, rhs: usize) {
-        *self = *self + rhs;
-    }
-}
-
-impl SubAssign<usize> for File {
-    fn sub_assign(&mut self, rhs: usize) {
-        *self = *self - rhs;
-    }
-}
-
-impl Add<i32> for File {
-    type Output = Self;
-    fn add(self, rhs: i32) -> Self::Output {
-        Self::new(self.0 + rhs as u8)
-            .expect("Attempted to add {self} and {rhs}, which is beyond File's bounds")
-    }
-}
-
-impl Sub<i32> for File {
-    type Output = Self;
-    fn sub(self, rhs: i32) -> Self::Output {
-        Self::new(self.0 - rhs as u8)
-            .expect("Attempted to sub {self} and {rhs}, which is beyond File's bounds")
-    }
-}
-
-impl AddAssign<i32> for File {
-    fn add_assign(&mut self, rhs: i32) {
-        *self = *self + rhs;
-    }
-}
-
-impl SubAssign<i32> for File {
-    fn sub_assign(&mut self, rhs: i32) {
-        *self = *self - rhs;
     }
 }
 
@@ -1307,9 +1147,21 @@ impl<T> IndexMut<File> for [T; 8] {
     }
 }
 
+impl AsRef<str> for File {
+    fn as_ref(&self) -> &str {
+        self.str()
+    }
+}
+
 impl fmt::Display for File {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.char())
+    }
+}
+
+impl fmt::Debug for File {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({})", self.char(), self.0)
     }
 }
 

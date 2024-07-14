@@ -3,5 +3,5 @@ resolver = "2"
 members = [
     "dutchess_engine",
     "dutchess_core",
-    "dutchess_gui", "bitboard_viewer",
+    "dutchess_gui", "bitboard_viewer", "magic_generator",
 ]

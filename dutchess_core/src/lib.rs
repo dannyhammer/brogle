@@ -3,10 +3,7 @@ pub mod core {
     pub mod color;
     pub mod error;
     pub mod game;
-    // pub mod maskgen;
-    pub mod gen;
     pub mod magicgen;
-    pub mod magics;
     pub mod movegen;
     pub mod moves;
     pub mod piece;
@@ -18,7 +15,6 @@ pub mod core {
     pub use error::*;
     pub use game::*;
     pub use magicgen::*;
-    // pub use magics::*;
     pub use movegen::*;
     pub use moves::*;
     pub use piece::*;
