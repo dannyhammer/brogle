@@ -18,6 +18,15 @@ pub enum PieceKind {
 }
 
 impl PieceKind {
+    pub const fn promotions() -> [Self; 4] {
+        [
+            PieceKind::Queen,
+            PieceKind::Rook,
+            PieceKind::Knight,
+            PieceKind::Bishop,
+        ]
+    }
+
     /// Creates a new [`PieceKind`] from a set of bits.
     ///
     /// `bits` must be `[0,5]`.
@@ -288,6 +297,10 @@ impl Piece {
         self.color().is_black()
     }
 
+    pub const fn is_pawn(&self) -> bool {
+        matches!(self.kind(), PieceKind::Pawn)
+    }
+
     pub const fn index(&self) -> usize {
         let offset = if self.is_white() { 0 } else { 6 };
         (self.kind().bits() + offset) as usize
@@ -334,19 +347,6 @@ impl Piece {
         self.to_uci()
     }
 
-    /// Promotes (or, in a less likely scenario, demotes) this [`Piece`] to a new [`PieceKind`], based on the value of `promotion`.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::core::{Piece, PieceKind};
-    /// let mut pawn_to_queen = Piece::from_uci('P').unwrap();
-    /// pawn_to_queen.promote(PieceKind::Queen);
-    /// assert_eq!(pawn_to_queen.kind(), PieceKind::Queen);
-    /// ```
-    pub fn promote(&mut self, promotion: PieceKind) {
-        *self = Self::new(self.color(), promotion)
-    }
-
     /// Promotes (or, in a less likely scenario, demotes) this [`Piece`] to a new [`PieceKind`], based on the value of `promotion`, consuming `self` in the process.
     ///
     /// # Example
@@ -358,6 +358,10 @@ impl Piece {
     /// ```
     pub const fn promoted(self, promotion: PieceKind) -> Self {
         Self::new(self.color(), promotion)
+    }
+
+    pub fn demoted(self) -> Self {
+        self.promoted(PieceKind::Pawn)
     }
 
     /// Changes the [`Color`] of this [`Piece`] to the opponent's color.

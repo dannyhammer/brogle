@@ -1,6 +1,14 @@
 use std::fmt;
 
-use super::{ChessError, PieceKind, Tile};
+use super::{BitBoard, ChessError, Piece, PieceKind, Tile};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+/// Represents all possible locations that can be moved to from a single [`Tile`], including whether the movement can result in a promotion.
+pub(crate) struct Mobility {
+    pub(crate) origin: Tile,
+    pub(crate) destinations: BitBoard,
+    pub(crate) possible_promotions: u8,
+}
 
 /// Represents the different kinds of moves that can be made during a chess game.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -8,23 +16,23 @@ pub enum MoveKind {
     /// Involves only a single piece moving from one location to another, and does not change the quantity or kind of any pieces on the board.
     Quiet,
 
-    /// Involves a piece moving onto a square occupied by an opponent's piece, removing it from the board.
-    Capture(PieceKind),
-
-    /// A special variant of capturing that occurs when a Pawn executes En Passant.
-    EnPassantCapture,
-
     /// Involves the King and a Rook sliding past each other on the King's side of the board.
     KingsideCastle,
 
     /// Involves the King and a Rook sliding past each other on the Queen's side of the board.
     QueensideCastle,
 
-    /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming another kind of piece, such as a Knight or Queen.
-    Promote(PieceKind),
-
     /// A special case on a Pawn's first move, wherein it can advance two squares forward.
     PawnPushTwo,
+
+    /// Involves a piece moving onto a square occupied by an opponent's piece, removing it from the board.
+    Capture(Piece),
+
+    /// A special variant of capturing that occurs when a Pawn executes En Passant.
+    EnPassantCapture(Piece),
+
+    /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming another kind of piece, such as a Knight or Queen.
+    Promote(PieceKind),
 }
 
 /// Represents a move made on a chess board, including whether a piece is to be promoted.

@@ -678,6 +678,14 @@ impl Rank {
         }
     }
 
+    pub const fn is_home_rank(&self, color: Color) -> bool {
+        self.0 == Self::home_rank(color).0
+    }
+
+    pub const fn is_pawn_rank(&self, color: Color) -> bool {
+        self.0 == Self::pawn_rank(color).0
+    }
+
     pub const fn from_char(rank: char) -> Result<Self, ChessError> {
         debug_assert!(rank.is_ascii(), "Rank chars must be ASCII!");
 

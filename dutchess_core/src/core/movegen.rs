@@ -1,4 +1,4 @@
-use super::{BitBoard, Color, Piece, PieceKind, Position, Rank, Tile};
+use super::{BitBoard, Color, Move, Piece, PieceKind, Position, Tile};
 
 include!("pregenerated_magics.rs");
 struct MagicEntry {
@@ -14,29 +14,44 @@ const KNIGHT_MASKS: [BitBoard; 64] =
 const KING_MASKS: [BitBoard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/king_masks.blob")) };
 
-pub fn moves_for(piece: &Piece, tile: Tile, position: &Position) -> BitBoard {
+pub struct MoveGenerator {
+    //
+}
+
+impl Iterator for MoveGenerator {
+    type Item = Move;
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+pub const fn attacks_for(piece: &Piece, tile: Tile, position: &Position) -> BitBoard {
     // All occupied spaces
-    let blockers = position.board().blockers(BitBoard::FULL_BOARD);
+    let blockers = position.board().occupied();
 
     // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
-    let default_moves = match piece.kind() {
+    match piece.kind() {
         PieceKind::Pawn => pawn_masks(tile, position, piece.color()),
-        PieceKind::Knight => KNIGHT_MASKS[tile],
-        PieceKind::Bishop => get_bishop_moves(tile, blockers),
-        PieceKind::Rook => get_rook_moves(tile, blockers),
-        PieceKind::Queen => get_rook_moves(tile, blockers) & get_bishop_moves(tile, blockers),
-        PieceKind::King => KING_MASKS[tile],
-    };
+        PieceKind::Knight => KNIGHT_MASKS[tile.index()],
+        PieceKind::Bishop => bishop_masks(tile, blockers),
+        PieceKind::Rook => rook_masks(tile, blockers),
+        PieceKind::Queen => rook_masks(tile, blockers).and(bishop_masks(tile, blockers)),
+        PieceKind::King => KING_MASKS[tile.index()],
+    }
+}
+
+pub fn generate_pseudo_legals_for(piece: &Piece, tile: Tile, position: &Position) -> BitBoard {
+    let attacks = attacks_for(piece, tile, position);
 
     // `default_moves` now holds all moves, with sliding moves stopping at the first blocker.
     // However, `default_moves` can capture your own pieces
-    let friendlies = !position.board().color(piece.color());
+    let friendlies = position.board().color(piece.color());
 
     let checkmask = checkmask(piece.color(), position);
 
     let pinmask = !pinmask(piece.color(), position);
 
-    default_moves & friendlies & checkmask & pinmask
+    attacks & !friendlies & checkmask & pinmask
 }
 
 const fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
@@ -44,15 +59,6 @@ const fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
     let hash = blockers.wrapping_mul(entry.magic);
     let index = (hash >> entry.shift) as usize;
     entry.offset as usize + index
-}
-pub const fn get_rook_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
-    let magic = &ROOK_MAGICS[tile.index()];
-    BitBoard(ROOK_MOVES[magic_index(magic, blockers)])
-}
-
-pub const fn get_bishop_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
-    let magic = &BISHOP_MAGICS[tile.index()];
-    BitBoard(BISHOP_MOVES[magic_index(magic, blockers)])
 }
 
 const fn checkmask(color: Color, position: &Position) -> BitBoard {
@@ -66,8 +72,27 @@ const fn pinmask(color: Color, position: &Position) -> BitBoard {
     BitBoard::EMPTY_BOARD
 }
 
+/// Computes the possible moves for a Rook at a given [`Tile`] with the provided blockers.
+///
+/// This will yield a [`BitBoard`] that allows the Rook to capture the first blocker.
+pub const fn rook_masks(tile: Tile, blockers: BitBoard) -> BitBoard {
+    let magic = &ROOK_MAGICS[tile.index()];
+    BitBoard(ROOK_MOVES[magic_index(magic, blockers)])
+}
+
+/// Computes the possible moves for a Bishop at a given [`Tile`] with the provided blockers.
+///
+/// This will yield a [`BitBoard`] that allows the Bishop to capture the first blocker.
+pub const fn bishop_masks(tile: Tile, blockers: BitBoard) -> BitBoard {
+    let magic = &BISHOP_MAGICS[tile.index()];
+    BitBoard(BISHOP_MOVES[magic_index(magic, blockers)])
+}
+
+/// Computes the attacks and pushes for a pawn at the provided [`Tile`].
+///
+/// This serves as a "mask" of all the pawn's available moves, regardless of legality (check).
 const fn pawn_masks(tile: Tile, position: &Position, color: Color) -> BitBoard {
-    let can_double_push = tile.rank().0 == Rank::pawn_rank(color).0;
+    let can_double_push = tile.rank().is_pawn_rank(color);
     let enemies = position.board().color(color.opponent());
 
     // If there is an en passant tile, add that to the pawn's movement options
@@ -76,24 +101,25 @@ const fn pawn_masks(tile: Tile, position: &Position, color: Color) -> BitBoard {
         let en_passant = BitBoard::from_tile(en_passant);
         let east = tile.file().bitboard().east();
         let west = tile.file().bitboard().west();
+        // But only allow it if it's on the pawn's adjacent files
         let valid_en_passant_files = east.or(west);
         en_passant.and(valid_en_passant_files)
     } else {
         BitBoard::EMPTY_BOARD
     };
-    // But only allow it if it's on the pawn's adjacent files
 
-    //
     let pushes = pawn_push_masks(tile, color, can_double_push);
     let attacks = pawn_attack_masks(tile, color);
 
-    // Can only attack spaces occupied by enemies
-    let valid_attacks = attacks.and(enemies);
+    // Can only attack spaces occupied by enemies, or it can do en passant
+    let valid_attacks = attacks.and(enemies.or(ep));
 
-    // pushes | valid_attacks | ep
-    pushes.or(valid_attacks).or(ep)
+    pushes.or(valid_attacks)
 }
 
+/// Computes the space(s) in front of the pawn.
+///
+/// If `can_double_push` is `true`, two spaces are calculated.
 const fn pawn_push_masks(tile: Tile, color: Color, can_double_push: bool) -> BitBoard {
     // By default, pawns can move one space forward one space
     let push = BitBoard::from_tile(tile).advance_by(color, 1);
@@ -109,13 +135,14 @@ const fn pawn_push_masks(tile: Tile, color: Color, can_double_push: bool) -> Bit
     let not_home_rank = BitBoard::home_rank(color).not();
 
     not_home_rank.and(push.or(double_push))
-    // (push | double_push) & not_home_rank
 }
 
+/// Computes the diagonals of the pawn's position, for attacking
+///
+/// Does NOT compute en passant attacks.
 const fn pawn_attack_masks(tile: Tile, color: Color) -> BitBoard {
     let push = BitBoard::from_tile(tile).advance_by(color, 1);
 
-    // push.east() | push.west()
     push.east().or(push.west())
 }
 
@@ -215,7 +242,7 @@ mod test {
     }
 
     #[test]
-    fn en_passant() {
+    fn pawn_en_passant() {
         // White pawn can move forward or en passant
         let position = setup_game("8/8/8/3pP3/8/8/8/8 w - d6 0 1");
         let legal_moves = [Tile::E6, Tile::D6];
@@ -257,7 +284,7 @@ mod test {
         // . . . . . . . .
         let blockers =
             BitBoard::new(0b1000100000000000000010000000000010000000000001000010100000000000);
-        let moves = get_rook_moves(Tile::D4, blockers);
+        let moves = rook_masks(Tile::D4, blockers);
         lists_match(moves, &legal_moves);
     }
 }

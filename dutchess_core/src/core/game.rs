@@ -1,15 +1,15 @@
 use std::fmt;
 
-use crate::core::Piece;
-
 use super::{
-    moves_for, utils::DEFAULT_FEN, BitBoard, ChessBoard, ChessError, Color, Move, MoveKind, Tile,
+    attacks_for, generate_pseudo_legals_for, utils::DEFAULT_FEN, BitBoard, ChessBoard, ChessError,
+    Color, Move, MoveKind, PieceKind, Tile,
 };
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct Game {
     init: Position,
-    state: Position,
+    // TOOD: DONT MAKE PUB
+    pub state: Position,
     history: Vec<Move>,
 }
 
@@ -44,35 +44,8 @@ impl Game {
     }
 
     pub fn make_move(&mut self, chessmove: Move) {
-        // Remove the piece from it's previous location, exiting early if there is no piece there
-        let Some(mut piece) = self.state.board.take(chessmove.from()) else {
-            return;
-        };
-
-        // Handle special cases like promotions, castling, and en passant
-        match chessmove.kind() {
-            MoveKind::Promote(promotion) => piece.promote(promotion),
-            MoveKind::EnPassantCapture => {
-                // In En Passant, we need to remove the piece from one rank behind
-                // Safe unwrap because the pawn is always guaranteed to be in front of this location
-                let captured = chessmove.to().backward_by(piece.color(), 1).unwrap();
-                self.state.board.clear(captured)
-            }
-            _ => {}
-        }
-
-        // Place the piece in it's new position
-        self.state.board.set(piece, chessmove.to());
-
-        // Record the move in history
+        self.state.make_move(chessmove);
         self.history.push(chessmove);
-
-        // Increment move counters
-        self.state.halfmove += 1;
-        self.state.fullmove = self.state.halfmove / 2;
-
-        // Next player's turn
-        self.state.toggle_current_player();
     }
 
     pub fn unmake_move(&mut self) {
@@ -80,28 +53,7 @@ impl Game {
             return;
         };
 
-        // Safe unwrap because there is guaranteed to be a piece at the destination of a move.
-        let piece = self.state.board.take(chessmove.to()).unwrap();
-
-        // Return the piece to it's original tile
-        self.state.board.set(piece, chessmove.from());
-
-        match chessmove.kind() {
-            MoveKind::Quiet => {}
-            MoveKind::Capture(kind) => {
-                // Put the captured piece back
-                let captured = Piece::new(piece.color().opponent(), kind);
-                self.state.board.set(captured, chessmove.to())
-            }
-            _ => todo!(),
-        }
-
-        // Decrement move counters
-        self.state.halfmove -= 1;
-        self.state.fullmove = self.state.halfmove / 2;
-
-        // Previous player's turn
-        self.state.toggle_current_player();
+        self.state.unmake_move(chessmove);
     }
 
     pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
@@ -112,41 +64,6 @@ impl Game {
 
     pub fn unmake_moves(&mut self, count: usize) {
         (0..count).for_each(|_| self.unmake_move());
-    }
-
-    pub fn get_legal_moves(&self) -> impl IntoIterator<Item = Move> {
-        let moves = self.legal_moves();
-
-        moves
-            .into_iter()
-            .enumerate()
-            .map(|(from_index, bitboard)| {
-                let from = Tile::from_index_unchecked(from_index);
-                bitboard
-                    .into_iter()
-                    .map(move |to| Move::new_quiet(from, to))
-            })
-            .flatten()
-    }
-
-    pub fn legal_moves(&self) -> [BitBoard; Tile::COUNT] {
-        let mut moves = [BitBoard::default(); Tile::COUNT];
-
-        let current_player_pieces = self.state.board().color(self.state.current_player());
-        for tile in current_player_pieces {
-            moves[tile] = self.legal_moves_at(tile);
-        }
-
-        moves
-    }
-
-    pub fn legal_moves_at(&self, tile: Tile) -> BitBoard {
-        let Some(piece) = self.state.board.piece_at(tile) else {
-            return BitBoard::default();
-        };
-
-        // TODO: I don't like this
-        moves_for(&piece, tile, &self.state)
     }
 }
 
@@ -190,6 +107,15 @@ pub struct CastlingRights {
 }
 
 impl CastlingRights {
+    const fn new() -> Self {
+        Self {
+            white_kingside: false,
+            white_queenside: false,
+            black_kingside: false,
+            black_queenside: false,
+        }
+    }
+
     fn from_uci(castling: &str) -> Result<Self, ChessError> {
         if castling.is_empty() {
             Err(ChessError::InvalidCastlingRights)
@@ -230,7 +156,7 @@ impl CastlingRights {
 /// Represents the current state of the game, including move counters
 ///
 /// Analogous to a FEN string.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Position {
     /// Mailbox representation of game board
     // pieces: [Option<Piece>; Tile::COUNT],
@@ -250,6 +176,9 @@ pub struct Position {
     /// Number of moves since the beginning of the game.
     /// A fullmove is a complete turn by white and then by black.
     fullmove: usize,
+
+    /// Every tile attacked by the piece at the respective index
+    attacks: [BitBoard; Tile::COUNT],
 }
 
 impl Position {
@@ -266,8 +195,17 @@ impl Position {
     /// let state = Position::new();
     /// assert_eq!(state.to_fen(), "8/8/8/8/8/8/8/8 w - - 0 0");
     /// ```
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            // pieces: [None; Tile::COUNT],
+            board: ChessBoard::new(),
+            current_player: Color::White,
+            castling_rights: CastlingRights::new(),
+            ep_tile: None,
+            halfmove: 0,
+            fullmove: 0,
+            attacks: [BitBoard::EMPTY_BOARD; Tile::COUNT],
+        }
     }
 
     /// Creates a new [`Position`] with the standard chess setup.
@@ -362,6 +300,8 @@ impl Position {
         });
         self.fullmove = fullmove.parse().or(Err(ChessError::InvalidFenString))?;
 
+        self.compute_attacks();
+
         Ok(self)
     }
 
@@ -383,42 +323,6 @@ impl Position {
         format!("{placements} {active_color} {castling} {en_passant_target} {halfmove} {fullmove}")
     }
 
-    /*
-    pub const fn get(&self, tile: Tile) -> Option<Piece> {
-        self.board.piece_at(tile)
-    }
-
-    /// Set the piece at the specified position.
-    pub fn set(&mut self, piece: Piece, tile: Tile) {
-        self.board.set(piece, tile); // Update the bitboards
-
-        // *self.piece_mut(tile) = Some(piece); // Update the state
-    }
-
-    /// Remove a piece from the specified position, returning it if it exists.
-    pub fn clear(&mut self, tile: Tile) -> Option<Piece> {
-        self.board.clear(tile); // Update the bitboards
-
-        // self.piece_mut(tile).take() // Update the state
-        // self.piece(tile).take();
-        None
-    }
-     */
-
-    /*
-    pub const fn piece(&self, tile: Tile) -> &Option<Piece> {
-        // &self.board.piece_at(tile)
-        self.board.piece_at(tile)
-    }
-     */
-
-    /*
-    pub fn piece_mut(&mut self, tile: Tile) -> &mut Option<Piece> {
-        &mut self.pieces[tile.index()]
-        self.board.piece_at(tile)
-    }
-     */
-
     pub const fn current_player(&self) -> Color {
         self.current_player
     }
@@ -435,24 +339,193 @@ impl Position {
         // println!("Current player is now {}", self.current_player.opponent());
         self.current_player = self.current_player.opponent();
     }
+
+    pub const fn attacks(&self, tile: Tile) -> BitBoard {
+        self.attacks[tile.index()]
+    }
+
+    fn compute_attacks(&mut self) {
+        self.compute_attacks_for(self.current_player());
+        self.compute_attacks_for(self.current_player().opponent());
+    }
+
+    fn compute_attacks_for(&mut self, color: Color) {
+        for tile in self.board().color(color) {
+            let piece = self.board().piece_at(tile).unwrap();
+            self.attacks[tile] = attacks_for(&piece, tile, self);
+        }
+    }
+
+    /// Applies the move. No enforcement of legality
+    pub fn make_move(&mut self, chessmove: Move) {
+        // Remove the piece from it's previous location, exiting early if there is no piece there
+        let Some(mut piece) = self.board.take(chessmove.from()) else {
+            return;
+        };
+
+        // Handle special cases like promotions, castling, and en passant
+        match chessmove.kind() {
+            MoveKind::Quiet => {}
+            // Remove captured piece from board
+            MoveKind::Capture(_captured) => self.board.clear(chessmove.to()),
+            MoveKind::KingsideCastle => {}
+            MoveKind::QueensideCastle => {}
+            // In En Passant, we need to remove the piece from one rank behind
+            // Safe unwrap because the pawn is always guaranteed to be in front of this location
+            MoveKind::EnPassantCapture(_captured) => {
+                let captured_tile = chessmove.to().backward_by(piece.color(), 1).unwrap();
+                self.board.clear(captured_tile);
+            }
+            MoveKind::Promote(promotion) => piece = piece.promoted(promotion),
+            MoveKind::PawnPushTwo => {}
+        }
+
+        // Place the piece in it's new position
+        self.board.set(piece, chessmove.to());
+
+        // Increment move counters
+        self.halfmove += 1;
+        self.fullmove = self.halfmove / 2;
+
+        // Next player's turn
+        self.toggle_current_player();
+        self.compute_attacks();
+    }
+
+    pub fn unmake_move(&mut self, chessmove: Move) {
+        // Safe unwrap because there is guaranteed to be a piece at the destination of a move.
+        let mut piece = self.board.take(chessmove.to()).unwrap();
+
+        // Undo any special cases, like castling and en passant
+        match chessmove.kind() {
+            MoveKind::Quiet => {}
+            // Put the captured piece back
+            MoveKind::Capture(captured) => self.board.set(captured, chessmove.to()),
+            MoveKind::KingsideCastle => {}
+            MoveKind::QueensideCastle => {}
+            // A piece was removed from directly behind the pawn
+            MoveKind::EnPassantCapture(captured) => {
+                // Safe unwrap because the pawn is always guaranteed to be in front of this location
+                let captured_tile = chessmove.to().backward_by(piece.color(), 1).unwrap();
+                self.board.set(captured, captured_tile);
+            }
+            MoveKind::Promote(_) => piece = piece.demoted(),
+            MoveKind::PawnPushTwo => {}
+        }
+
+        // Return the piece to it's original tile
+        self.board.set(piece, chessmove.from());
+
+        // Decrement move counters
+        self.halfmove -= 1;
+        self.fullmove = self.halfmove / 2;
+
+        // Previous player's turn
+        self.toggle_current_player();
+        self.compute_attacks();
+    }
+
+    pub fn get_legal_moves(&self) -> Vec<Move> {
+        let player = self.current_player();
+        let opponent = self.current_player().opponent();
+        let player_tiles = self.board().color(player);
+
+        println!("Generating legal moves for {player}");
+
+        let mut legal_moves = Vec::with_capacity(218);
+
+        for from in player_tiles {
+            // Break if there is no piece to move
+            let Some(piece) = self.board().piece_at(from) else {
+                break;
+            };
+
+            if piece.color() != player {
+                break;
+            }
+
+            // Loop over every possible move this piece can make
+            for to in self.legal_moves_for(from) {
+                // If the destination is on the enemy's home rank and this piece is a Pawn, promotions are possible
+                match piece.kind() {
+                    // Pawns require special cases for promotion and en passant
+                    PieceKind::Pawn => {
+                        // If the destination is the enemy's home rank, create moves for all possible promotions
+                        if to.rank().is_home_rank(opponent) {
+                            for promotion in PieceKind::promotions() {
+                                legal_moves.push(Move::new(from, to, MoveKind::Promote(promotion)));
+                            }
+                        } else if from.rank().is_pawn_rank(player) {
+                            // If a pawn is on it's first move, it can double push
+                            legal_moves.push(Move::new(from, to, MoveKind::PawnPushTwo));
+                        } else if to.file() != from.file() {
+                            // If changing files, this is a capture, so check for en passant
+                            if let Some(captured) = self.board().piece_at(to) {
+                                legal_moves.push(Move::new(from, to, MoveKind::Capture(captured)));
+                            } else {
+                                let captured =
+                                    self.board().piece_at(self.ep_tile().unwrap()).unwrap();
+                                // If there was no piece at the destination tile, then this was en passant
+                                legal_moves.push(Move::new(
+                                    from,
+                                    to,
+                                    MoveKind::EnPassantCapture(captured),
+                                ));
+                            }
+                        } else {
+                            // If nothing else, this is a quiet, single push
+                            legal_moves.push(Move::new_quiet(from, to));
+                        }
+                    }
+                    _ => {
+                        // For all other pieces, behavior is normal
+                        legal_moves.push(Move::new_quiet(from, to));
+                    }
+                }
+            }
+        }
+
+        legal_moves
+    }
+
+    fn legal_moves_for(&self, tile: Tile) -> BitBoard {
+        self.attacks(tile) & !self.board().color(self.current_player())
+    }
+
+    /*
+    fn legal_moves(&self) -> [BitBoard; Tile::COUNT] {
+        let mut moves = [BitBoard::default(); Tile::COUNT];
+
+        let current_player_pieces = self.board().color(self.current_player());
+        for tile in current_player_pieces {
+            let Some(piece) = self.board.piece_at(tile) else {
+                break;
+            };
+
+            // TODO: I don't like this
+            moves[tile] = generate_pseudo_legals_for(&piece, tile, self);
+            println!("{tile} has {} moves", moves[tile].population());
+        }
+
+        moves
+    }
+     */
 }
 
 impl Default for Position {
     fn default() -> Self {
-        Self {
-            // pieces: [None; Tile::COUNT],
-            board: ChessBoard::default(),
-            current_player: Color::White,
-            castling_rights: CastlingRights::default(),
-            ep_tile: None,
-            halfmove: 0,
-            fullmove: 0,
-        }
+        Self::new()
     }
 }
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_fen())
+    }
+}
+
+impl fmt::Debug for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.board())
     }
 }

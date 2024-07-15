@@ -1,4 +1,4 @@
-use dutchess_core::core::Game;
+use dutchess_core::core::Position;
 
 // https://www.chessprogramming.org/Perft_Results#Initial_Position
 /*
@@ -56,25 +56,28 @@ u64 Perft(int depth)
   return nodes;
 }
 */
-fn perft(game: &mut Game, depth: usize) -> usize {
+fn perft(position: Position, depth: usize) -> usize {
     if depth == 0 {
         return 1;
     }
 
     let mut nodes = 0;
 
-    for chessmove in game.get_legal_moves() {
-        game.make_move(chessmove);
-        nodes += perft(game, depth - 1);
-        game.unmake_move();
+    let moves = position.get_legal_moves();
+    // println!("Valid moves: {moves:#?}");
+    for chessmove in moves {
+        let mut pos = position.clone();
+        pos.make_move(chessmove);
+        nodes += perft(pos, depth - 1);
+        pos.unmake_move(chessmove);
     }
 
     nodes
 }
 
 fn test_perft(depth: usize) {
-    let mut game = Game::default_setup();
-    let nodes = perft(&mut game, depth);
+    let position = Position::new().with_default_setup();
+    let nodes = perft(position, depth);
     assert_eq!(nodes, NODES[depth]);
 }
 
@@ -93,9 +96,7 @@ fn perft_2() {
     test_perft(2);
 }
 
-/*
 #[test]
 fn perft_3() {
     test_perft(3);
 }
- */
