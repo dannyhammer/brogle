@@ -177,6 +177,17 @@ impl PieceKind {
     pub const fn char(&self) -> char {
         self.to_uci()
     }
+
+    pub const fn is_pawn(&self) -> bool {
+        matches!(self, Self::Pawn)
+    }
+
+    pub const fn is_slider(&self) -> bool {
+        match self {
+            Self::Queen | Self::Rook | Self::Bishop => true,
+            _ => false,
+        }
+    }
 }
 
 impl PartialOrd for PieceKind {
@@ -298,7 +309,11 @@ impl Piece {
     }
 
     pub const fn is_pawn(&self) -> bool {
-        matches!(self.kind(), PieceKind::Pawn)
+        self.kind().is_pawn()
+    }
+
+    pub const fn is_slider(&self) -> bool {
+        self.kind().is_slider()
     }
 
     pub const fn index(&self) -> usize {

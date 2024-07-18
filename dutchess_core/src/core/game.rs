@@ -1,15 +1,14 @@
 use std::fmt;
 
 use super::{
-    attacks_for, generate_pseudo_legals_for, utils::DEFAULT_FEN, BitBoard, ChessBoard, ChessError,
-    Color, Move, MoveKind, PieceKind, Tile,
+    attacks_for, bishop_moves, knight_moves, queen_moves, rook_moves, utils::DEFAULT_FEN, BitBoard,
+    ChessBoard, ChessError, Color, Move, MoveKind, Piece, PieceKind, Tile,
 };
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct Game {
     init: Position,
-    // TOOD: DONT MAKE PUB
-    pub state: Position,
+    state: Position,
     history: Vec<Move>,
 }
 
@@ -176,9 +175,8 @@ pub struct Position {
     /// Number of moves since the beginning of the game.
     /// A fullmove is a complete turn by white and then by black.
     fullmove: usize,
-
-    /// Every tile attacked by the piece at the respective index
-    attacks: [BitBoard; Tile::COUNT],
+    // /// Every tile attacked by the piece at the respective index
+    // attacks: [BitBoard; Tile::COUNT],
 }
 
 impl Position {
@@ -204,7 +202,7 @@ impl Position {
             ep_tile: None,
             halfmove: 0,
             fullmove: 0,
-            attacks: [BitBoard::EMPTY_BOARD; Tile::COUNT],
+            // attacks: [BitBoard::EMPTY_BOARD; Tile::COUNT],
         }
     }
 
@@ -300,7 +298,7 @@ impl Position {
         });
         self.fullmove = fullmove.parse().or(Err(ChessError::InvalidFenString))?;
 
-        self.compute_attacks();
+        // self.compute_attacks();
 
         Ok(self)
     }
@@ -340,20 +338,163 @@ impl Position {
         self.current_player = self.current_player.opponent();
     }
 
+    /*
     pub const fn attacks(&self, tile: Tile) -> BitBoard {
         self.attacks[tile.index()]
     }
+     */
 
+    /*
     fn compute_attacks(&mut self) {
         self.compute_attacks_for(self.current_player());
         self.compute_attacks_for(self.current_player().opponent());
     }
+     */
 
+    /*
     fn compute_attacks_for(&mut self, color: Color) {
         for tile in self.board().color(color) {
             let piece = self.board().piece_at(tile).unwrap();
             self.attacks[tile] = attacks_for(&piece, tile, self);
         }
+    }
+     */
+
+    /// Computes a [`BitBoard`] of all of the squares that can be attacked by [`Color`] pieces.
+    fn squares_attacked_by(&self, color: Color) -> BitBoard {
+        let mut attacks = BitBoard::EMPTY_BOARD;
+
+        for tile in self.board().color(color) {
+            let Some(piece) = self.board().piece_at(tile) else {
+                unreachable!()
+            };
+
+            attacks |= self.compute_pseudo_legal_for(&piece, tile);
+        }
+
+        attacks
+    }
+
+    // If `color` is WHITE, then this removes BLACK's king from the board and computes attacks
+    fn king_danger_squares(&self, color: Color) -> BitBoard {
+        let mut attacks = BitBoard::EMPTY_BOARD;
+        // Fetch a board without the opponent's king
+        let kingless = self.board().kingless(color.opponent());
+
+        for tile in kingless.color(color) {
+            let Some(piece) = self.board().piece_at(tile) else {
+                unreachable!()
+            };
+
+            attacks |= self.compute_pseudo_legal_for(&piece, tile);
+        }
+
+        attacks
+    }
+
+    const fn compute_pseudo_legal_for(&self, piece: &Piece, tile: Tile) -> BitBoard {
+        // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
+        let attacks = attacks_for(piece, tile, self);
+
+        let enemy_or_empty = self.board().enemy_or_empty(piece.color());
+
+        attacks.and(enemy_or_empty)
+    }
+
+    fn compute_legal_for(&self, piece: &Piece, tile: Tile) -> BitBoard {
+        let pseudo = self.compute_pseudo_legal_for(piece, tile);
+
+        let checkmask = if self.is_in_check(piece.color()) {
+            BitBoard::EMPTY_BOARD
+        } else {
+            BitBoard::FULL_BOARD
+        };
+
+        pseudo.and(checkmask)
+    }
+
+    /*
+    // https://www.chessprogramming.org/Square_Attacked_By#By_all_Pieces
+    const fn attacks_to(&self, tile: Tile) -> BitBoard {
+        let board = self.board();
+        let occupied = board.occupied();
+
+        let pawns = board.kind(PieceKind::Pawn);
+        let knights = board.kind(PieceKind::Knight);
+        let bishops = board.kind(PieceKind::Bishop);
+        let rooks = board.kind(PieceKind::Rook);
+        let queens = board.kind(PieceKind::Queen);
+
+        let mut attackers = BitBoard::EMPTY_BOARD;
+        // let pawn_moves = tile
+        //     .forward_by(color, 1)
+        //     .unwrap()
+        //     .east()
+        //     .or(tile.forward_by(color, 1).unwrap().west())
+        //     .unwrap();
+
+        // checkers = checkers.or(pawn_moves.and(pawns));
+        attackers = attackers.or(knight_moves(tile).and(knights));
+        attackers = attackers.or(bishop_moves(tile, occupied).and(bishops));
+        attackers = attackers.or(rook_moves(tile, occupied).and(rooks));
+        attackers = attackers.or(queen_moves(tile, occupied).and(queens));
+
+        attackers
+    }
+     */
+
+    const fn compute_checkers_for(&self, color: Color) -> BitBoard {
+        let king = self.board().king(color);
+        let tile = king.to_tile_unchecked();
+        let board = self.board();
+        let occupied = board.occupied();
+
+        let pawns = board.piece_parts(color.opponent(), PieceKind::Pawn);
+        let knights = board.piece_parts(color.opponent(), PieceKind::Knight);
+        let bishops = board.piece_parts(color.opponent(), PieceKind::Bishop);
+        let rooks = board.piece_parts(color.opponent(), PieceKind::Rook);
+        let queens = board.piece_parts(color.opponent(), PieceKind::Queen);
+
+        let mut checkers = BitBoard::EMPTY_BOARD;
+        let pawn_moves = king
+            .advance_by(color, 1)
+            .east()
+            .or(king.advance_by(color, 1).west());
+
+        checkers = checkers.or(pawn_moves.and(pawns));
+        checkers = checkers.or(knight_moves(tile).and(knights));
+        checkers = checkers.or(bishop_moves(tile, occupied).and(bishops));
+        checkers = checkers.or(rook_moves(tile, occupied).and(rooks));
+        checkers = checkers.or(queen_moves(tile, occupied).and(queens));
+
+        checkers
+    }
+
+    const fn is_in_check(&self, color: Color) -> bool {
+        !self.compute_checkers_for(color).is_empty()
+    }
+
+    const fn is_in_double_check(&self, color: Color) -> bool {
+        let checkers = self.compute_checkers_for(color);
+        checkers.population() > 1
+    }
+
+    pub fn mobility(&self, color: Color) -> [BitBoard; Tile::COUNT] {
+        let mut moves = [BitBoard::EMPTY_BOARD; Tile::COUNT];
+
+        for from in self.board().color(color) {
+            let Some(piece) = self.board().piece_at(from) else {
+                break;
+            };
+
+            if piece.color() != color {
+                break;
+            }
+
+            moves[from.index()] |= self.compute_legal_for(&piece, from);
+        }
+
+        moves
     }
 
     /// Applies the move. No enforcement of legality
@@ -389,7 +530,7 @@ impl Position {
 
         // Next player's turn
         self.toggle_current_player();
-        self.compute_attacks();
+        // self.compute_attacks();
     }
 
     pub fn unmake_move(&mut self, chessmove: Move) {
@@ -422,9 +563,10 @@ impl Position {
 
         // Previous player's turn
         self.toggle_current_player();
-        self.compute_attacks();
+        // self.compute_attacks();
     }
 
+    /*
     pub fn get_legal_moves(&self) -> Vec<Move> {
         let player = self.current_player();
         let opponent = self.current_player().opponent();
@@ -487,10 +629,13 @@ impl Position {
 
         legal_moves
     }
+     */
 
+    /*
     fn legal_moves_for(&self, tile: Tile) -> BitBoard {
         self.attacks(tile) & !self.board().color(self.current_player())
     }
+     */
 
     /*
     fn legal_moves(&self) -> [BitBoard; Tile::COUNT] {

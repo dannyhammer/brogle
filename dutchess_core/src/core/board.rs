@@ -8,7 +8,10 @@ use derive_more::{
     ShrAssign,
 };
 
-use super::{utils::DEFAULT_FEN, ChessError, Color, File, Piece, PieceKind, Rank, Tile};
+use super::{
+    utils::DEFAULT_FEN, ChessError, Color, File, Piece, PieceKind, Rank, Tile, NUM_COLORS,
+    NUM_PIECE_TYPES,
+};
 
 /// Represents a full chess board at any given state.
 ///
@@ -21,16 +24,10 @@ pub struct ChessBoard {
     empty: BitBoard,
 
     /// All tiles occupied by a specific color
-    white: BitBoard,
-    black: BitBoard,
+    colors: [BitBoard; NUM_COLORS],
 
     /// All tiles occupied by a specific piece kind
-    pawn: BitBoard,
-    knight: BitBoard,
-    bishop: BitBoard,
-    rook: BitBoard,
-    queen: BitBoard,
-    king: BitBoard,
+    pieces: [BitBoard; NUM_PIECE_TYPES],
 }
 
 impl ChessBoard {
@@ -46,14 +43,8 @@ impl ChessBoard {
         Self {
             occupied: BitBoard::EMPTY_BOARD,
             empty: BitBoard::FULL_BOARD,
-            white: BitBoard::EMPTY_BOARD,
-            black: BitBoard::EMPTY_BOARD,
-            pawn: BitBoard::EMPTY_BOARD,
-            knight: BitBoard::EMPTY_BOARD,
-            bishop: BitBoard::EMPTY_BOARD,
-            rook: BitBoard::EMPTY_BOARD,
-            queen: BitBoard::EMPTY_BOARD,
-            king: BitBoard::EMPTY_BOARD,
+            colors: [BitBoard::EMPTY_BOARD; NUM_COLORS],
+            pieces: [BitBoard::EMPTY_BOARD; NUM_PIECE_TYPES],
         }
     }
 
@@ -259,11 +250,14 @@ impl ChessBoard {
             return None;
         }
 
-        if self.white.get(tile) {
-            Some(Color::White)
+        use Color::*;
+        let color = if self.colors[White.index()].get(tile) {
+            White
         } else {
-            Some(Color::Black)
-        }
+            Black
+        };
+
+        Some(color)
     }
 
     /// Fetches the [`PieceKind`] of the piece at the provided [`Tile`], if there is one.
@@ -280,19 +274,22 @@ impl ChessBoard {
             return None;
         }
 
-        if self.pawn.get(tile) {
-            Some(PieceKind::Pawn)
-        } else if self.knight.get(tile) {
-            Some(PieceKind::Knight)
-        } else if self.bishop.get(tile) {
-            Some(PieceKind::Bishop)
-        } else if self.rook.get(tile) {
-            Some(PieceKind::Rook)
-        } else if self.queen.get(tile) {
-            Some(PieceKind::Queen)
+        use PieceKind::*;
+        let kind = if self.pieces[Pawn.index()].get(tile) {
+            Pawn
+        } else if self.pieces[Knight.index()].get(tile) {
+            Knight
+        } else if self.pieces[Bishop.index()].get(tile) {
+            Bishop
+        } else if self.pieces[Rook.index()].get(tile) {
+            Rook
+        } else if self.pieces[Queen.index()].get(tile) {
+            Queen
         } else {
-            Some(PieceKind::King)
-        }
+            King
+        };
+
+        Some(kind)
     }
 
     /// Fetches the [`Piece`] of the piece at the provided [`Tile`], if there is one.
@@ -325,14 +322,7 @@ impl ChessBoard {
     /// assert_eq!(pawns, BitBoard::RANK_2 | BitBoard::RANK_7);
     /// ```
     pub const fn kind(&self, kind: PieceKind) -> BitBoard {
-        match kind {
-            PieceKind::Pawn => self.pawn,
-            PieceKind::Knight => self.knight,
-            PieceKind::Bishop => self.bishop,
-            PieceKind::Rook => self.rook,
-            PieceKind::Queen => self.queen,
-            PieceKind::King => self.king,
-        }
+        self.pieces[kind.index()]
     }
 
     /// Fetches the [`BitBoard`] corresponding to the supplied [`Color`].
@@ -347,10 +337,7 @@ impl ChessBoard {
     /// assert_eq!(white_pieces, BitBoard::RANK_1 | BitBoard::RANK_2);
     /// ```
     pub const fn color(&self, color: Color) -> BitBoard {
-        match color {
-            Color::White => self.white,
-            Color::Black => self.black,
-        }
+        self.colors[color.index()]
     }
 
     /// Fetches the [`BitBoard`] corresponding to the supplied [`Piece`].
@@ -366,8 +353,12 @@ impl ChessBoard {
     /// assert_eq!(white_pawns, BitBoard::RANK_2);
     /// ```
     pub const fn piece(&self, piece: Piece) -> BitBoard {
-        let color = self.color(piece.color());
-        let kind = self.kind(piece.kind());
+        self.piece_parts(piece.color(), piece.kind())
+    }
+
+    pub const fn piece_parts(&self, color: Color, kind: PieceKind) -> BitBoard {
+        let color = self.color(color);
+        let kind = self.kind(kind);
         color.and(kind)
     }
 
@@ -378,10 +369,12 @@ impl ChessBoard {
         attacks.and(opponent)
     }
 
-    pub const fn in_check_by(&self, king_color: Color, attacks: BitBoard) -> bool {
-        let king = self.piece(Piece::new(king_color, PieceKind::King));
+    pub const fn king(&self, color: Color) -> BitBoard {
+        self.piece(Piece::new(color, PieceKind::King))
+    }
 
-        attacks.and(king).0 != 0
+    pub const fn in_check_by(&self, king_color: Color, attacks: BitBoard) -> bool {
+        attacks.and(self.king(king_color)).0 != 0
     }
 
     pub const fn blockers(&self, blocker_mask: BitBoard) -> BitBoard {
@@ -395,6 +388,32 @@ impl ChessBoard {
 
     pub const fn empty(&self) -> BitBoard {
         self.occupied().not()
+    }
+
+    pub const fn enemy_or_empty(&self, color: Color) -> BitBoard {
+        self.color(color).not()
+    }
+
+    pub const fn with_pieces_removed(&self, piece: Piece) -> Self {
+        let piece_board = self.piece(piece);
+
+        let occupied = self.occupied.xor(piece_board);
+        let mut colors = self.colors;
+        colors[piece.color().index()] = colors[piece.color().index()].xor(piece_board);
+
+        let mut pieces = self.pieces;
+        pieces[piece.kind().index()] = pieces[piece.kind().index()].xor(piece_board);
+
+        Self {
+            occupied,
+            empty: occupied.not(),
+            colors,
+            pieces,
+        }
+    }
+
+    pub const fn kingless(&self, color: Color) -> Self {
+        self.with_pieces_removed(Piece::new(color, PieceKind::King))
     }
 
     /*
@@ -510,46 +529,26 @@ impl From<[Option<Piece>; 64]> for ChessBoard {
 impl Index<PieceKind> for ChessBoard {
     type Output = BitBoard;
     fn index(&self, index: PieceKind) -> &Self::Output {
-        match index {
-            PieceKind::Pawn => &self.pawn,
-            PieceKind::Knight => &self.knight,
-            PieceKind::Bishop => &self.bishop,
-            PieceKind::Rook => &self.rook,
-            PieceKind::Queen => &self.queen,
-            PieceKind::King => &self.king,
-        }
+        &self.pieces[index]
     }
 }
 
 impl IndexMut<PieceKind> for ChessBoard {
     fn index_mut(&mut self, index: PieceKind) -> &mut Self::Output {
-        match index {
-            PieceKind::Pawn => &mut self.pawn,
-            PieceKind::Knight => &mut self.knight,
-            PieceKind::Bishop => &mut self.bishop,
-            PieceKind::Rook => &mut self.rook,
-            PieceKind::Queen => &mut self.queen,
-            PieceKind::King => &mut self.king,
-        }
+        &mut self.pieces[index]
     }
 }
 
 impl Index<Color> for ChessBoard {
     type Output = BitBoard;
     fn index(&self, index: Color) -> &Self::Output {
-        match index {
-            Color::White => &self.white,
-            Color::Black => &self.black,
-        }
+        &self.colors[index]
     }
 }
 
 impl IndexMut<Color> for ChessBoard {
     fn index_mut(&mut self, index: Color) -> &mut Self::Output {
-        match index {
-            Color::White => &mut self.white,
-            Color::Black => &mut self.black,
-        }
+        &mut self.colors[index]
     }
 }
 
@@ -608,19 +607,19 @@ impl fmt::Debug for ChessBoard {
         };
 
         let pieces = format(&[
-            (self.pawn, "Pawn"),
-            (self.knight, "Knight"),
-            (self.bishop, "Bishop"),
-            (self.rook, "Rook"),
-            (self.queen, "Queen"),
-            (self.king, "King"),
+            (self.pieces[0], "Pawn"),
+            (self.pieces[1], "Knight"),
+            (self.pieces[2], "Bishop"),
+            (self.pieces[3], "Rook"),
+            (self.pieces[4], "Queen"),
+            (self.pieces[5], "King"),
         ]);
 
         let metadata = format(&[
             (self.occupied, "Occupied"),
             (self.empty, "Empty"),
-            (self.white, "White"),
-            (self.black, "Black"),
+            (self.colors[0], "White"),
+            (self.colors[1], "Black"),
         ]);
 
         write!(f, "Game State:\n{pieces}\n\n{metadata}")
@@ -895,10 +894,14 @@ impl BitBoard {
     /// ```
     /// # use dutchess_core::core::{BitBoard, Tile};
     /// let board = BitBoard::from_index(14);
-    /// assert_eq!(board.to_tile(), Tile::G2);
+    /// assert_eq!(board.to_tile_unchecked(), Tile::G2);
     /// ```
-    pub const fn to_tile(&self) -> Tile {
-        Tile(self.0.trailing_zeros() as u8)
+    pub const fn to_tile_unchecked(&self) -> Tile {
+        Tile::from_index_unchecked(self.to_index())
+    }
+
+    pub const fn to_index(&self) -> usize {
+        self.0.trailing_zeros() as usize
     }
 
     /// Reverse this [`BitBoard`], viewing it from the opponent's perspective.

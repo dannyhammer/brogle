@@ -1,14 +1,6 @@
 use std::fmt;
 
-use super::{BitBoard, ChessError, Piece, PieceKind, Tile};
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-/// Represents all possible locations that can be moved to from a single [`Tile`], including whether the movement can result in a promotion.
-pub(crate) struct Mobility {
-    pub(crate) origin: Tile,
-    pub(crate) destinations: BitBoard,
-    pub(crate) possible_promotions: u8,
-}
+use super::{ChessError, Piece, PieceKind, Tile};
 
 /// Represents the different kinds of moves that can be made during a chess game.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]

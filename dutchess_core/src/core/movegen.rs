@@ -1,5 +1,6 @@
-use super::{BitBoard, Color, Move, Piece, PieceKind, Position, Tile};
+use super::{BitBoard, Color, Piece, PieceKind, Position, Tile};
 
+include!("rays.rs");
 include!("pregenerated_magics.rs");
 struct MagicEntry {
     mask: u64,
@@ -8,21 +9,101 @@ struct MagicEntry {
     offset: u32,
 }
 
-const KNIGHT_MASKS: [BitBoard; 64] =
+const KNIGHT_MOVES: [BitBoard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/knight_masks.blob")) };
 
-const KING_MASKS: [BitBoard; 64] =
+const KING_MOVES: [BitBoard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/king_masks.blob")) };
 
-pub struct MoveGenerator {
-    //
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+/// Represents all possible locations that can be moved to from a single [`Tile`], including whether the movement can result in a promotion.
+pub(crate) struct Mobility {
+    pub(crate) origin: Tile,
+    pub(crate) destinations: BitBoard,
+    pub(crate) possible_promotions: u8,
 }
 
-impl Iterator for MoveGenerator {
-    type Item = Move;
-    fn next(&mut self) -> Option<Self::Item> {
-        None
+impl Mobility {
+    // const fn new(origin: Tile) -> Self {
+    //     Self {
+    //         origin,
+    //         destinations: BitBoard::EMPTY_BOARD,
+    //         possible_promotions: 0,
+    //     }
+    // }
+}
+
+pub struct MoveGenerator {
+    // moves: Vec<Move>,
+}
+
+impl MoveGenerator {
+    /*
+    pub fn compute_legal(position: &Position) -> [BitBoard; Tile::COUNT] {
+        let color = position.current_player();
+        let occupied_tiles = position.board().color(position.current_player());
+        let friendlies = position.board().color(color);
+        let mut capture_mask = BitBoard::FULL_BOARD;
+        let mut push_mask = BitBoard::FULL_BOARD;
+
+        let checkers = Self::compute_checkers_for(color, position);
+
+        let mut moves = [BitBoard::EMPTY_BOARD; Tile::COUNT];
+        // If there are multiple checkers, only the king can move
+        let num_checkers = checkers.population();
+        if num_checkers > 1 {
+            let king_tile = position.board().king(color).to_tile_unchecked();
+            moves[king_tile.index()] = king_moves(king_tile).and(friendlies.not());
+            return moves;
+        } else if num_checkers == 1 {
+            // If only one checker, we can capture it
+            capture_mask = checkers;
+
+            // If the checker is a sliding piece, we can block check
+            let checker_square = checkers.to_tile_unchecked();
+            let checker = position.board().piece_at(checker_square).unwrap();
+            if checker.is_slider() {
+                // push_mask = opponent_slider_rays_to_square(king_square, position.board());
+            } else {
+                // If it's not a sliding piece, we can only get out of check by capturing it
+                push_mask = BitBoard::EMPTY_BOARD;
+            }
+        } else {
+            todo!("No check; pseudo-legals are fine")
+        }
+
+        // for tile in occupied_tiles {}
+
+        moves
     }
+     */
+
+    /*
+    fn generate_pseudo_legals_for(piece: &Piece, tile: Tile, position: &Position) -> BitBoard {
+        let attacks = attacks_for(piece, tile, position);
+
+        // `default_moves` now holds all moves, with sliding moves stopping at the first blocker.
+        // However, `default_moves` can capture your own pieces
+        let friendlies = position.board().color(piece.color());
+
+        let checkmask = checkmask(piece.color(), position);
+
+        let pinmask = !pinmask(piece.color(), position);
+
+        attacks & !friendlies & checkmask & pinmask
+    }
+
+    const fn checkmask(color: Color, position: &Position) -> BitBoard {
+        // todo!()
+        BitBoard::FULL_BOARD
+    }
+
+    const fn pinmask(color: Color, position: &Position) -> BitBoard {
+        // Horizontal/Vertical and then both diags
+        // todo!()
+        BitBoard::EMPTY_BOARD
+    }
+     */
 }
 
 pub const fn attacks_for(piece: &Piece, tile: Tile, position: &Position) -> BitBoard {
@@ -31,27 +112,13 @@ pub const fn attacks_for(piece: &Piece, tile: Tile, position: &Position) -> BitB
 
     // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
     match piece.kind() {
-        PieceKind::Pawn => pawn_masks(tile, position, piece.color()),
-        PieceKind::Knight => KNIGHT_MASKS[tile.index()],
-        PieceKind::Bishop => bishop_masks(tile, blockers),
-        PieceKind::Rook => rook_masks(tile, blockers),
-        PieceKind::Queen => rook_masks(tile, blockers).and(bishop_masks(tile, blockers)),
-        PieceKind::King => KING_MASKS[tile.index()],
+        PieceKind::Pawn => pawn_moves(tile, position, piece.color()),
+        PieceKind::Knight => knight_moves(tile),
+        PieceKind::Bishop => bishop_moves(tile, blockers),
+        PieceKind::Rook => rook_moves(tile, blockers),
+        PieceKind::Queen => rook_moves(tile, blockers).and(bishop_moves(tile, blockers)),
+        PieceKind::King => king_moves(tile),
     }
-}
-
-pub fn generate_pseudo_legals_for(piece: &Piece, tile: Tile, position: &Position) -> BitBoard {
-    let attacks = attacks_for(piece, tile, position);
-
-    // `default_moves` now holds all moves, with sliding moves stopping at the first blocker.
-    // However, `default_moves` can capture your own pieces
-    let friendlies = position.board().color(piece.color());
-
-    let checkmask = checkmask(piece.color(), position);
-
-    let pinmask = !pinmask(piece.color(), position);
-
-    attacks & !friendlies & checkmask & pinmask
 }
 
 const fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
@@ -61,21 +128,14 @@ const fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
     entry.offset as usize + index
 }
 
-const fn checkmask(color: Color, position: &Position) -> BitBoard {
-    // todo!()
-    BitBoard::FULL_BOARD
-}
-
-const fn pinmask(color: Color, position: &Position) -> BitBoard {
-    // Horizontal/Vertical and then both diags
-    // todo!()
-    BitBoard::EMPTY_BOARD
+pub const fn ray_between(from: Tile, to: Tile) -> BitBoard {
+    RAYS[from.index()][to.index()]
 }
 
 /// Computes the possible moves for a Rook at a given [`Tile`] with the provided blockers.
 ///
 /// This will yield a [`BitBoard`] that allows the Rook to capture the first blocker.
-pub const fn rook_masks(tile: Tile, blockers: BitBoard) -> BitBoard {
+pub const fn rook_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
     let magic = &ROOK_MAGICS[tile.index()];
     BitBoard(ROOK_MOVES[magic_index(magic, blockers)])
 }
@@ -83,15 +143,30 @@ pub const fn rook_masks(tile: Tile, blockers: BitBoard) -> BitBoard {
 /// Computes the possible moves for a Bishop at a given [`Tile`] with the provided blockers.
 ///
 /// This will yield a [`BitBoard`] that allows the Bishop to capture the first blocker.
-pub const fn bishop_masks(tile: Tile, blockers: BitBoard) -> BitBoard {
+pub const fn bishop_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
     let magic = &BISHOP_MAGICS[tile.index()];
     BitBoard(BISHOP_MOVES[magic_index(magic, blockers)])
+}
+
+/// Computes the possible moves for a Queen at a given [`Tile`] with the provided blockers.
+///
+/// This will yield a [`BitBoard`] that allows the Queen to capture the first blocker.
+pub const fn queen_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
+    rook_moves(tile, blockers).or(bishop_moves(tile, blockers))
+}
+
+pub const fn knight_moves(tile: Tile) -> BitBoard {
+    KNIGHT_MOVES[tile.index()]
+}
+
+pub const fn king_moves(tile: Tile) -> BitBoard {
+    KING_MOVES[tile.index()]
 }
 
 /// Computes the attacks and pushes for a pawn at the provided [`Tile`].
 ///
 /// This serves as a "mask" of all the pawn's available moves, regardless of legality (check).
-const fn pawn_masks(tile: Tile, position: &Position, color: Color) -> BitBoard {
+pub const fn pawn_moves(tile: Tile, position: &Position, color: Color) -> BitBoard {
     let can_double_push = tile.rank().is_pawn_rank(color);
     let enemies = position.board().color(color.opponent());
 
@@ -200,7 +275,7 @@ mod test {
                     pawn_pos.forward_by(color, 1).unwrap(),
                     pawn_pos.forward_by(color, 2).unwrap(),
                 ];
-                let moves = pawn_masks(pawn_pos, &position, color);
+                let moves = pawn_moves(pawn_pos, &position, color);
 
                 lists_match(moves, &legal_moves);
             }
@@ -216,28 +291,28 @@ mod test {
         // Can push two and capture on both diagonals
         let position = setup_game("8/8/8/8/8/2r1n3/3P4/8 w - - 0 1");
         let legal_moves = [Tile::D3, Tile::D4, Tile::C3, Tile::E3];
-        let moves = pawn_masks(Tile::D2, &position, Color::White);
+        let moves = pawn_moves(Tile::D2, &position, Color::White);
         lists_match(moves, &legal_moves);
 
         // Black
         // Can push two and capture on both diagonals
         let position = setup_game("8/5p2/4Q1B1/8/8/8/8/8 b - - 0 1");
         let legal_moves = [Tile::F6, Tile::F5, Tile::E6, Tile::G6];
-        let moves = pawn_masks(Tile::F7, &position, Color::Black);
+        let moves = pawn_moves(Tile::F7, &position, Color::Black);
         lists_match(moves, &legal_moves);
 
         // Edge case
         // Black can move forward and capture one diagonal
         let position = setup_game("8/8/8/8/7p/n5B1/8/8 b - - 0 1");
         let legal_moves = [Tile::G3, Tile::H3];
-        let moves = pawn_masks(Tile::H4, &position, Color::Black);
+        let moves = pawn_moves(Tile::H4, &position, Color::Black);
         lists_match(moves, &legal_moves);
 
         // Impossible case
         // White pawn at enemy home rank and not promoted; cannot move
         let position = setup_game("3P4/8/8/8/8/8/8/8 w - - 0 1");
         let legal_moves = [];
-        let moves = pawn_masks(Tile::D8, &position, Color::White);
+        let moves = pawn_moves(Tile::D8, &position, Color::White);
         lists_match(moves, &legal_moves);
     }
 
@@ -246,13 +321,13 @@ mod test {
         // White pawn can move forward or en passant
         let position = setup_game("8/8/8/3pP3/8/8/8/8 w - d6 0 1");
         let legal_moves = [Tile::E6, Tile::D6];
-        let moves = pawn_masks(Tile::E5, &position, Color::White);
+        let moves = pawn_moves(Tile::E5, &position, Color::White);
         lists_match(moves, &legal_moves);
 
         // White pawn can move forward, but NOT en passant
         let position = setup_game("8/8/8/3p3P/8/8/8/8 w - d6 0 1");
         let legal_moves = [Tile::H6];
-        let moves = pawn_masks(Tile::H5, &position, Color::White);
+        let moves = pawn_moves(Tile::H5, &position, Color::White);
         lists_match(moves, &legal_moves);
     }
 
@@ -284,7 +359,7 @@ mod test {
         // . . . . . . . .
         let blockers =
             BitBoard::new(0b1000100000000000000010000000000010000000000001000010100000000000);
-        let moves = rook_masks(Tile::D4, blockers);
+        let moves = rook_moves(Tile::D4, blockers);
         lists_match(moves, &legal_moves);
     }
 }
