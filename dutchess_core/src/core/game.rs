@@ -277,42 +277,22 @@ impl Position {
         let placements = split.next().ok_or(ChessError::InvalidFenString)?;
         self.board = ChessBoard::from_fen(placements)?;
 
-        let active_color = split.next().unwrap_or_else(|| {
-            let x = "w";
-            eprintln!("Warning: No active color specified; defaulting to {x}");
-            x
-        });
+        let active_color = split.next().unwrap_or_else(|| "w");
         self.current_player = Color::from_str(active_color)?;
 
-        let castling = split.next().unwrap_or_else(|| {
-            let x = "KQkq";
-            eprintln!("Warning: No castling availability specified; defaulting to {x}");
-            x
-        });
+        let castling = split.next().unwrap_or_else(|| "KQkq");
         self.castling_rights = CastlingRights::from_uci(castling)?;
 
-        let en_passant_target = split.next().unwrap_or_else(|| {
-            let x = "-";
-            eprintln!("Warning: No castling availability specified; defaulting to {x}");
-            x
-        });
+        let en_passant_target = split.next().unwrap_or_else(|| "-");
         self.ep_tile = match en_passant_target {
             "-" => None,
             tile => Some(Tile::from_uci(tile)?),
         };
 
-        let halfmove = split.next().unwrap_or_else(|| {
-            let x = "0";
-            eprintln!("Warning: No castling availability specified; defaulting to {x}");
-            x
-        });
+        let halfmove = split.next().unwrap_or_else(|| "0");
         self.halfmove = halfmove.parse().or(Err(ChessError::InvalidFenString))?;
 
-        let fullmove = split.next().unwrap_or_else(|| {
-            let x = "1";
-            eprintln!("Warning: No castling availability specified; defaulting to {x}");
-            x
-        });
+        let fullmove = split.next().unwrap_or_else(|| "1");
         self.fullmove = fullmove.parse().or(Err(ChessError::InvalidFenString))?;
 
         // self.compute_attacks();
@@ -427,9 +407,13 @@ impl Position {
     }
 
     pub fn legal_moves(&self) -> Vec<Move> {
+        self.legal_moves_for(self.current_player())
+    }
+
+    pub fn legal_moves_for(&self, color: Color) -> Vec<Move> {
         let mut moves = Vec::with_capacity(218);
 
-        let mobility = self.compute_legal();
+        let mobility = self.compute_legal_for(color);
         for (i, moves_bb) in mobility.into_iter().enumerate() {
             if !moves_bb.is_empty() {
                 let from = Tile::from_index_unchecked(i);
@@ -437,6 +421,15 @@ impl Position {
 
                 for to in moves_bb {
                     let chessmove = Move::new_quiet(from, to);
+
+                    match piece.kind() {
+                        PieceKind::Pawn => {}
+                        PieceKind::Knight => {}
+                        PieceKind::Bishop => {}
+                        PieceKind::Rook => {}
+                        PieceKind::Queen => {}
+                        PieceKind::King => {}
+                    }
 
                     moves.push(chessmove);
                 }
@@ -446,10 +439,8 @@ impl Position {
         moves
     }
 
-    pub fn compute_legal(&self) -> [BitBoard; Tile::COUNT] {
+    pub fn compute_legal_for(&self, color: Color) -> [BitBoard; Tile::COUNT] {
         let mut moves = [BitBoard::EMPTY_BOARD; Tile::COUNT];
-
-        let color = self.current_player();
 
         // If the king is in check, move generation is much more strict
         let checkers = self.compute_checkers_for(color);
@@ -518,10 +509,10 @@ impl Position {
         // println!("EN PASSANT:\n{ep_bb}\n---------------");
 
         // Assign legal moves to each piece
-        for tile in self.board().color(self.current_player()) {
+        for tile in self.board().color(color) {
             let piece = self.board().get(tile).unwrap();
 
-            moves[tile.index()] = self.compute_legal_for(
+            moves[tile.index()] = self.compute_legal_at(
                 &piece,
                 tile,
                 checkmask,
@@ -535,7 +526,7 @@ impl Position {
         moves
     }
 
-    fn compute_legal_for(
+    fn compute_legal_at(
         &self,
         piece: &Piece,
         tile: Tile,
@@ -567,6 +558,14 @@ impl Position {
         match kind {
             PieceKind::Pawn => {
                 let pushes = pawn_pushes(tile, color);
+
+                // If there is a friendly piece in front of this pawn, we cannot push two
+                let pushes = if (self.board().color(color) & pushes).is_empty() {
+                    pushes
+                } else {
+                    BitBoard::EMPTY_BOARD
+                };
+
                 let attacks = pawn_attacks(tile, color);
                 let empty = self.board().empty();
                 let enemy = self.board().color(color.opponent());
@@ -614,6 +613,9 @@ impl Position {
                 }
             }
             PieceKind::King => {
+                // All friendly pieces
+                let friendlies = self.board().color(color);
+
                 // A king can move anywhere that isn't attacked by the enemy
                 let enemy_attacks = self.squares_attacked_by(color.opponent());
                 // println!("ENEMY ATTACKS:\n{enemy_attacks}");
@@ -622,7 +624,8 @@ impl Position {
                     & BitBoard::kingside_castle(color);
                 // println!("kingside:\n{kingside_castle}");
 
-                let kingside = if (enemy_attacks & kingside_castle).is_empty() {
+                // The king can only castle if no friendly pieces or enemy attacks are in the way
+                let kingside = if ((enemy_attacks | friendlies) & kingside_castle).is_empty() {
                     kingside_castle
                 } else {
                     BitBoard::EMPTY_BOARD
@@ -633,7 +636,7 @@ impl Position {
                         & BitBoard::queenside_castle(color);
                 // println!("queenside:\n{queenside_castle}");
 
-                let queenside = if (enemy_attacks & queenside_castle).is_empty() {
+                let queenside = if ((enemy_attacks | friendlies) & queenside_castle).is_empty() {
                     queenside_castle
                 } else {
                     BitBoard::EMPTY_BOARD
@@ -713,16 +716,26 @@ impl Position {
         checkers
     }
 
-    /*
-    const fn is_in_check(&self, color: Color) -> bool {
+    pub const fn is_in_check(&self, color: Color) -> bool {
         !self.compute_checkers_for(color).is_empty()
     }
 
-    const fn is_in_double_check(&self, color: Color) -> bool {
+    pub const fn is_check(&self) -> bool {
+        self.is_in_check(self.current_player())
+    }
+
+    pub fn is_in_checkmate(&self, color: Color) -> bool {
+        self.is_in_check(color) && self.legal_moves_for(color).is_empty()
+    }
+
+    pub fn is_checkmate(&self) -> bool {
+        self.is_in_checkmate(self.current_player())
+    }
+
+    pub const fn is_in_double_check(&self, color: Color) -> bool {
         let checkers = self.compute_checkers_for(color);
         checkers.population() > 1
     }
-     */
 
     /*
     fn mobility(&self, color: Color) -> [BitBoard; Tile::COUNT] {

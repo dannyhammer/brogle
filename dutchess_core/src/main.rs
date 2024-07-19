@@ -1,5 +1,7 @@
 // use chess::{BitBoard, Board, Color, Piece};
 
+use std::os::unix::process;
+
 use dutchess_core::core::*;
 
 fn main() {
@@ -27,20 +29,43 @@ fn main() {
     // let fen = "k4r2/8/8/8/8/8/8/R3K2R w KQka - 0 1"; /* King can queenside, not kingside */
     // let fen = "k2r1r2/8/8/8/8/8/8/R3K2R w KQka - 0 1"; /* King cannot castle */
     //
-    let game = Game::from_fen(fen).unwrap();
+
+    // let fen = "rnbqkbnr/1ppppppp/8/p7/8/N7/PPPPPPPP/R1BQKBNR w KQkq - 2 1";
+    let fen = "rnbqkbnr/1ppppppp/8/p7/8/7N/PPPPPPPP/RNBQKB1R w KQkq - 2 1";
+    let mut game = Game::from_fen(fen).unwrap();
     println!("{game}");
 
-    // let moves = game.state().compute_legal();
-    // for (i, chessmove) in moves.into_iter().enumerate() {
-    //     if !chessmove.is_empty() {
-    //         let tile = Tile::from_index_unchecked(i);
-    //         let piece = game.state().board().piece_at(tile).unwrap();
-    //         println!("------{piece}-{tile}-----\n{chessmove}");
-    //     }
-    // }
+    let moves = game.state().compute_legal_for(Color::White);
+    for (i, chessmove) in moves.into_iter().enumerate() {
+        if !chessmove.is_empty() {
+            let tile = Tile::from_index_unchecked(i);
+            if tile != Tile::E1 {
+                continue;
+            }
+            let piece = game.state().board().piece_at(tile).unwrap();
+            println!("------{piece}-{tile}-----\n{chessmove}");
+        }
+    }
+
+    std::process::exit(1);
 
     let moves = game.state().legal_moves();
-    println!("{moves:?}");
+    // println!("{moves:?}");
+    println!("PERFT: {}", moves.len());
+
+    // let moves_to_make = ["b1a3", "a7a5", "a2a4"];
+    let moves_to_make = ["g1h3", "a7a5", "e1g1"];
+
+    for mv in moves_to_make {
+        let mv = Move::from_uci(mv).unwrap();
+        println!("Making move: {mv}");
+        game.make_move(mv);
+        println!("{game}");
+
+        let moves = game.state().legal_moves();
+        // println!("{moves:?}");
+        println!("PERFT: {}", moves.len());
+    }
 
     // let board = ChessBoard::new().with_default_setup();
     // println!("{board}");
