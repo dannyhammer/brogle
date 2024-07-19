@@ -1,4 +1,4 @@
-use super::BitBoard;
+use super::{BitBoard, Color, Tile};
 
 pub fn generate_blobs() {
     let bishop: [u8; 512] = unsafe { std::mem::transmute(bishop_moves()) };
@@ -6,18 +6,50 @@ pub fn generate_blobs() {
     let knight: [u8; 512] = unsafe { std::mem::transmute(knight_moves()) };
     let king: [u8; 512] = unsafe { std::mem::transmute(king_moves()) };
     let queen: [u8; 512] = unsafe { std::mem::transmute(queen_moves()) };
+    let wpp: [u8; 512] = unsafe { std::mem::transmute(pawn_push(Color::White)) };
+    let bpp: [u8; 512] = unsafe { std::mem::transmute(pawn_push(Color::Black)) };
+    let wpa: [u8; 512] = unsafe { std::mem::transmute(pawn_attack(Color::White)) };
+    let bpa: [u8; 512] = unsafe { std::mem::transmute(pawn_attack(Color::Black)) };
 
-    std::fs::write("dutchess_engine/src/blobs/bishop_masks.blob", bishop).unwrap();
-    std::fs::write("dutchess_engine/src/blobs/rook_masks.blob", rook).unwrap();
-    std::fs::write("dutchess_engine/src/blobs/knight_masks.blob", knight).unwrap();
-    std::fs::write("dutchess_engine/src/blobs/king_masks.blob", king).unwrap();
-    std::fs::write("dutchess_engine/src/blobs/queen_masks.blob", queen).unwrap();
+    std::fs::write("src/core/blobs/bishop_masks.blob", bishop).unwrap();
+    std::fs::write("src/core/blobs/rook_masks.blob", rook).unwrap();
+    std::fs::write("src/core/blobs/knight_masks.blob", knight).unwrap();
+    std::fs::write("src/core/blobs/king_masks.blob", king).unwrap();
+    std::fs::write("src/core/blobs/queen_masks.blob", queen).unwrap();
+    std::fs::write("src/core/blobs/white_pawn_push.blob", wpp).unwrap();
+    std::fs::write("src/core/blobs/black_pawn_push.blob", bpp).unwrap();
+    std::fs::write("src/core/blobs/white_pawn_attack.blob", wpa).unwrap();
+    std::fs::write("src/core/blobs/black_pawn_attack.blob", bpa).unwrap();
+}
 
-    // let rook_attacks = rook_attacks();
-    // println!("{:?}", rook_attacks);
-    // let rook_attacks: [u8; 2097152] = unsafe { std::mem::transmute(rook_attacks()) };
-    // let bishop_attacks: [u8; 262144] = unsafe { std::mem::transmute(bishop_attacks()) };
-    // std::fs::write("dutchess_engine/src/masks/rook_attacks.blob", rook_attacks).unwrap();
+fn pawn_push(color: Color) -> [BitBoard; 64] {
+    let mut boards = [BitBoard::default(); 64];
+    for tile in Tile::iter() {
+        let bb = BitBoard::from_tile(tile);
+
+        if tile.rank().is_home_rank(color) {
+            continue;
+        } else if tile.rank().is_pawn_rank(color) {
+            boards[tile] = bb.advance_by(color, 1) | bb.advance_by(color, 2);
+        } else {
+            boards[tile] = bb.advance_by(color, 1);
+        }
+    }
+    boards
+}
+
+fn pawn_attack(color: Color) -> [BitBoard; 64] {
+    let mut boards = [BitBoard::default(); 64];
+    for tile in Tile::iter() {
+        let bb = BitBoard::from_tile(tile);
+
+        if tile.rank().is_home_rank(color) {
+            continue;
+        } else {
+            boards[tile] = bb.advance_by(color, 1).east() | bb.advance_by(color, 1).west();
+        }
+    }
+    boards
 }
 
 fn king_moves() -> [BitBoard; 64] {
@@ -120,88 +152,3 @@ fn queen_moves() -> [BitBoard; 64] {
 
     boards
 }
-
-/*
-// https://github.com/nkarve/surge/blob/master/src/tables.cpp#L138
-fn rook_attacks() -> [[BitBoard; 4096]; 64] {
-    let mut attacks = [[BitBoard::default(); 4096]; 64];
-    let mut attack_masks = [BitBoard::default(); 64];
-    let mut attack_shifts = [0; 64];
-
-    for tile in Tile::iter() {
-        // for i in 0..64 {
-        let rank_mask = BitBoard::from_rank(tile.rank());
-        let file_mask = BitBoard::from_file(tile.file());
-
-        // Exclude edges unless the piece is located on an edge
-        let edges = BitBoard::EDGES & !rank_mask & !file_mask;
-
-        attack_masks[tile] = (rank_mask ^ file_mask) & !edges;
-
-        attack_shifts[tile] = 64 - attack_masks[tile].population();
-
-        let mut subset = tile.index() as u64;
-        while subset != 0 {
-            let mut index = subset;
-            index = index * ROOK_MAGICS[tile];
-            index = index >> attack_shifts[tile];
-
-            attacks[tile][index as usize] = {
-                //
-                let occupancy = BitBoard::new(subset);
-                let mut atk = BitBoard::from_tile(tile);
-
-                let mut t = tile;
-                while let Some(next) = t.north() {
-                    t = next;
-                    atk &= BitBoard::from_tile(t);
-
-                    if occupancy.get(t) {
-                        break;
-                    }
-                }
-
-                let mut t = tile;
-                while let Some(next) = t.south() {
-                    t = next;
-                    atk &= BitBoard::from_tile(t);
-
-                    if occupancy.get(t) {
-                        break;
-                    }
-                }
-
-                let mut t = tile;
-                while let Some(next) = t.east() {
-                    t = next;
-                    atk &= BitBoard::from_tile(t);
-
-                    if occupancy.get(t) {
-                        break;
-                    }
-                }
-
-                let mut t = tile;
-                while let Some(next) = t.west() {
-                    t = next;
-                    atk &= BitBoard::from_tile(t);
-
-                    if occupancy.get(t) {
-                        break;
-                    }
-                }
-
-                atk
-            };
-            subset = (subset - attack_masks[tile].0) & attack_masks[tile].0;
-        }
-    }
-
-    attacks
-}
-
-fn bishop_attacks() -> [[BitBoard; 512]; 64] {
-    todo!()
-}
-
- */

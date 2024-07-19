@@ -182,9 +182,27 @@ impl PieceKind {
         matches!(self, Self::Pawn)
     }
 
+    pub const fn is_king(&self) -> bool {
+        matches!(self, Self::King)
+    }
+
     pub const fn is_slider(&self) -> bool {
         match self {
             Self::Queen | Self::Rook | Self::Bishop => true,
+            _ => false,
+        }
+    }
+
+    pub const fn is_orthogonal_slider(&self) -> bool {
+        match self {
+            Self::Queen | Self::Rook => true,
+            _ => false,
+        }
+    }
+
+    pub const fn is_diagonal_slider(&self) -> bool {
+        match self {
+            Self::Queen | Self::Bishop => true,
             _ => false,
         }
     }
@@ -312,8 +330,20 @@ impl Piece {
         self.kind().is_pawn()
     }
 
+    pub const fn is_king(&self) -> bool {
+        self.kind().is_king()
+    }
+
     pub const fn is_slider(&self) -> bool {
         self.kind().is_slider()
+    }
+
+    pub const fn is_orthogonal_slider(&self) -> bool {
+        self.kind().is_orthogonal_slider()
+    }
+
+    pub const fn is_diagonal_slider(&self) -> bool {
+        self.kind().is_diagonal_slider()
     }
 
     pub const fn index(&self) -> usize {

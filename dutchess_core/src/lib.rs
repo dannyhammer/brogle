@@ -4,6 +4,7 @@ pub mod core {
     pub mod error;
     pub mod game;
     pub mod magicgen;
+    pub mod maskgen;
     pub mod movegen;
     pub mod moves;
     pub mod piece;
@@ -15,6 +16,7 @@ pub mod core {
     pub use error::*;
     pub use game::*;
     pub use magicgen::*;
+    pub use maskgen::*;
     pub use movegen::*;
     pub use moves::*;
     pub use piece::*;

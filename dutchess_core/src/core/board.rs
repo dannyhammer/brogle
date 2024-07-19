@@ -362,6 +362,13 @@ impl ChessBoard {
         color.and(kind)
     }
 
+    pub const fn sliders(&self, color: Color) -> BitBoard {
+        (self.pieces[PieceKind::Rook.index()]
+            .or(self.pieces[PieceKind::Bishop.index()])
+            .or(self.pieces[PieceKind::Queen.index()]))
+        .and(self.color(color))
+    }
+
     /// Get a bitboard of all pieces that can be captured by `attacker`.
     pub const fn possible_captures(&self, attacker_color: Color, attacks: BitBoard) -> BitBoard {
         let opponent = self.color(attacker_color.opponent());
@@ -394,7 +401,7 @@ impl ChessBoard {
         self.color(color).not()
     }
 
-    pub const fn with_pieces_removed(&self, piece: Piece) -> Self {
+    pub const fn without(&self, piece: Piece) -> Self {
         let piece_board = self.piece(piece);
 
         let occupied = self.occupied.xor(piece_board);
@@ -413,8 +420,28 @@ impl ChessBoard {
     }
 
     pub const fn kingless(&self, color: Color) -> Self {
-        self.with_pieces_removed(Piece::new(color, PieceKind::King))
+        self.without(Piece::new(color, PieceKind::King))
     }
+
+    /*
+    pub const fn with_only(&self, piece: Piece) -> Self {
+        let piece_board = self.piece(piece);
+
+        let occupied = self.occupied.xor(piece_board);
+        let mut colors = self.colors;
+        colors[piece.color().index()] = colors[piece.color().index()].xor(piece_board);
+
+        let mut pieces = self.pieces;
+        pieces[piece.kind().index()] = pieces[piece.kind().index()].xor(piece_board);
+
+        Self {
+            occupied,
+            empty: occupied.not(),
+            colors,
+            pieces,
+        }
+    }
+     */
 
     /*
     /// Get all squares that are either empty or occupied by the enemy
@@ -761,6 +788,10 @@ impl BitBoard {
     pub const EDGES: Self = Self(0xFF818181818181FF);
     pub const NOT_EDGES: Self = Self(0x007E7E7E7E7E7E00);
     pub const CORNERS: Self = Self(0x8100000000000081);
+    pub const WHITE_KINGSIDE_CASTLE: Self = Self(0x0000000000000070);
+    pub const WHITE_QUEENSIDE_CASTLE: Self = Self(0x000000000000001c);
+    pub const BLACK_KINGSIDE_CASTLE: Self = Self(0x7000000000000000);
+    pub const BLACK_QUEENSIDE_CASTLE: Self = Self(0x1c00000000000000);
 
     const RANK_END_INDICES: [usize; 8] = [7, 15, 23, 31, 39, 47, 55, 63];
 
@@ -867,6 +898,27 @@ impl BitBoard {
         }
     }
 
+    pub const fn from_option_tile(tile: Option<Tile>) -> Self {
+        if let Some(tile) = tile {
+            tile.bitboard()
+        } else {
+            Self::EMPTY_BOARD
+        }
+    }
+
+    /// Returns [`BitBoard::FULL_BOARD`] if `true`, else [`BitBoard::EMPTY_BOARD`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::BitBoard;
+    ///
+    /// assert_eq!(BitBoard::from_bool(true), BitBoard::FULL_BOARD);
+    /// assert_eq!(BitBoard::from_bool(false), BitBoard::EMPTY_BOARD);
+    /// ```
+    pub const fn from_bool(value: bool) -> Self {
+        Self((value as u64).wrapping_neg() & u64::MAX)
+    }
+
     pub const fn home_rank(color: Color) -> Self {
         match color {
             Color::White => Self::RANK_1,
@@ -878,6 +930,20 @@ impl BitBoard {
         match color {
             Color::White => Self::RANK_2,
             Color::Black => Self::RANK_7,
+        }
+    }
+
+    pub const fn kingside_castle(color: Color) -> Self {
+        match color {
+            Color::White => Self::WHITE_KINGSIDE_CASTLE,
+            Color::Black => Self::BLACK_KINGSIDE_CASTLE,
+        }
+    }
+
+    pub const fn queenside_castle(color: Color) -> Self {
+        match color {
+            Color::White => Self::WHITE_QUEENSIDE_CASTLE,
+            Color::Black => Self::BLACK_QUEENSIDE_CASTLE,
         }
     }
 
@@ -1054,6 +1120,61 @@ impl BitBoard {
     pub const fn contains_any(&self, other: &Self) -> bool {
         self.0 & other.0 != Self::EMPTY_BOARD.0
         // *self & *other != Self::EMPTY_BOARD
+    }
+
+    /// If there are any bits set in `self`, returns [`BitBoard::FULL_BOARD`].
+    /// Otherwise, returns `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::BitBoard;
+    /// let a = BitBoard::RANK_3;
+    /// let b = BitBoard::FILE_H;
+    /// let empty = BitBoard::EMPTY_BOARD;
+    /// let full = BitBoard::FULL_BOARD;
+    ///
+    /// assert_eq!(a.full_if_empty_else_other(b), b);
+    /// assert_eq!(b.full_if_empty_else_other(a), a);
+    /// assert_eq!(empty.full_if_empty_else_other(a), full);
+    /// ```
+    pub const fn full_if_empty_else_other(&self, other: Self) -> Self {
+        Self::from_bool(self.is_empty()).or(other)
+    }
+
+    /// If there are any bits set in `self`, returns [`BitBoard::FULL_BOARD`].
+    /// Otherwise, returns `self`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::BitBoard;
+    /// let a = BitBoard::RANK_1;
+    /// let empty = BitBoard::EMPTY_BOARD;
+    /// let full = BitBoard::FULL_BOARD;
+    ///
+    /// assert_eq!(a.full_if_not_empty(), full);
+    /// assert_eq!(full.full_if_not_empty(), full);
+    /// assert_eq!(empty.full_if_not_empty(), empty);
+    /// ```
+    pub const fn full_if_not_empty(&self) -> Self {
+        Self::from_bool(!self.is_empty()).or(*self)
+    }
+
+    /// If there are any bits set in `self`, returns [`BitBoard::FULL_BOARD`].
+    /// Otherwise, returns `self`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::BitBoard;
+    /// let a = BitBoard::RANK_3;
+    /// let empty = BitBoard::EMPTY_BOARD;
+    /// let full = BitBoard::FULL_BOARD;
+    ///
+    /// assert_eq!(a.full_if_empty(), a);
+    /// assert_eq!(full.full_if_empty(), full);
+    /// assert_eq!(empty.full_if_empty(), full);
+    /// ```
+    pub const fn full_if_empty(&self) -> Self {
+        Self::from_bool(self.is_empty()).or(*self)
     }
 
     /// Shifts this [`BitBoard`] forward by `n`, according to `color`.
@@ -1334,7 +1455,7 @@ impl fmt::Display for BitBoard {
         // 46 = '.'
         // 88 - 46 = 42
 
-        // If `bit` is `1`, yields 'X', otherwise '.z'
+        // If `bit` is `1`, yields 'X', otherwise '.'
         let bit2char = |bit| (46 + (bit - 48) * 42) as char;
 
         let rank = |i: usize| {

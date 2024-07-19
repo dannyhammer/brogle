@@ -9,17 +9,41 @@ pub const NUM_PIECE_TYPES: usize = 6;
 
 pub const NUM_COLORS: usize = 2;
 
+pub const QUEEN_DELTAS: [(i8, i8); 8] = [
+    /* Rook */
+    (1, 0),
+    (0, -1),
+    (-1, 0),
+    (0, 1),
+    /* Bishop */
+    (1, 1),
+    (1, -1),
+    (-1, -1),
+    (-1, 1),
+];
+
+pub const ROOK_DELTAS: [(i8, i8); 4] = [
+    QUEEN_DELTAS[0],
+    QUEEN_DELTAS[1],
+    QUEEN_DELTAS[2],
+    QUEEN_DELTAS[3],
+];
+
+pub const BISHOP_DELTAS: [(i8, i8); 4] = [
+    QUEEN_DELTAS[4],
+    QUEEN_DELTAS[5],
+    QUEEN_DELTAS[6],
+    QUEEN_DELTAS[7],
+];
+
 #[allow(dead_code)]
 fn generate_ray_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
     let mut rays = [[BitBoard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
 
-    let rook_deltas = [(1, 0), (0, -1), (-1, 0), (0, 1)];
-    let bishop_deltas = [(1, 1), (1, -1), (-1, -1), (-1, 1)];
-
     // let mut orthogonal_count = 0;
     // let mut diagonal_count = 0;
     for from in Tile::iter() {
-        for (df, dr) in rook_deltas {
+        for (df, dr) in ROOK_DELTAS {
             let mut ray = from.bitboard();
             let mut to = from;
             while let Ok(shifted) = to.try_offset(df, dr) {
@@ -30,7 +54,7 @@ fn generate_ray_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
                 // println!("{from} -> {to}\n{ray}\n---------------");
             }
         }
-        for (df, dr) in bishop_deltas {
+        for (df, dr) in BISHOP_DELTAS {
             let mut ray = from.bitboard();
             let mut to = from;
             while let Ok(shifted) = to.try_offset(df, dr) {
