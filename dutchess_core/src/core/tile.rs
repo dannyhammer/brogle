@@ -100,6 +100,10 @@ impl Tile {
     pub const MAX: u8 = 63;
     pub const COUNT: usize = 64;
 
+    pub const KING_START_SQUARES: [Self; 2] = [Self::E1, Self::E8];
+    pub const KINGSIDE_CASTLE_SQUARES: [Self; 2] = [Self::G1, Self::G8];
+    pub const QUEENSIDE_CASTLE_SQUARES: [Self; 2] = [Self::C1, Self::C8];
+
     const FILE_MASK: u8 = 0b0000_0111;
     // const RANK_MASK: u8 = 0b0011_1000;
 
@@ -278,6 +282,30 @@ impl Tile {
     /// ```
     pub const fn is_dark(&self) -> bool {
         !self.is_light()
+    }
+
+    /// Returns the [`Color`] of this [`Tile`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::{Color, Tile};
+    /// assert_eq!(Tile::C5.color(), Color::Black);
+    /// assert_eq!(Tile::C4.color(), Color::White);
+    /// ```
+    pub const fn color(&self) -> Color {
+        if self.is_light() {
+            Color::White
+        } else {
+            Color::Black
+        }
+    }
+
+    pub const fn is_king_start_square(&self, color: Color) -> bool {
+        if color.is_white() {
+            self.0 == Self::E1.0
+        } else {
+            self.0 == Self::E8.0
+        }
     }
 
     /// Creates a [`Tile`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
@@ -678,12 +706,23 @@ impl Rank {
         }
     }
 
+    pub const fn pawn_double_push_rank(color: Color) -> Self {
+        match color {
+            Color::White => Self::FOUR,
+            Color::Black => Self::FIVE,
+        }
+    }
+
     pub const fn is_home_rank(&self, color: Color) -> bool {
         self.0 == Self::home_rank(color).0
     }
 
     pub const fn is_pawn_rank(&self, color: Color) -> bool {
         self.0 == Self::pawn_rank(color).0
+    }
+
+    pub const fn is_pawn_double_push_rank(&self, color: Color) -> bool {
+        self.0 == Self::pawn_double_push_rank(color).0
     }
 
     pub const fn from_char(rank: char) -> Result<Self, ChessError> {

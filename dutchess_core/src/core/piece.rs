@@ -6,7 +6,7 @@ use std::{
 use super::{ChessError, Color};
 
 /// Represents the kind (or "class") that a chess piece can be.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum PieceKind {
     Pawn,
@@ -242,6 +242,13 @@ impl fmt::Display for PieceKind {
     }
 }
 
+impl fmt::Debug for PieceKind {
+    /// By default, piece classes display as uppercase chars (white)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{self}\" ({})", self.index())
+    }
+}
+
 /// Represents a chess piece on the game board.
 ///
 /// Internally, this is represented as a `u8` with the following bit pattern:
@@ -253,7 +260,7 @@ impl fmt::Display for PieceKind {
 ///      |   +- Represents the Color. `0` for White, `1` for Black.
 ///      +- Unused.
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Piece(u8);
 
 impl Piece {
@@ -452,5 +459,11 @@ impl<T> IndexMut<Piece> for [T; 12] {
 impl fmt::Display for Piece {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_uci())
+    }
+}
+
+impl fmt::Debug for Piece {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{self}\" ({})", self.0)
     }
 }

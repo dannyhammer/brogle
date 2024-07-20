@@ -11,10 +11,10 @@ fn perft(position: Position, depth: usize) -> usize {
 
     let moves = position.legal_moves();
     for chessmove in moves {
-        let mut pos = position.clone();
-        pos.make_move(chessmove);
-        nodes += perft(pos, depth - 1);
-        pos.unmake_move(chessmove);
+        let mut position = position.clone();
+        position.make_move(chessmove);
+        nodes += perft(position.clone(), depth - 1);
+        position.unmake_move(chessmove);
     }
 
     nodes
@@ -34,7 +34,7 @@ fn main() {
 
     let mut position = Position::new().from_fen(fen).expect("Bad fen");
     for move_str in moves.split_ascii_whitespace() {
-        let parsed = Move::from_uci(move_str).unwrap();
+        let parsed = Move::from_san(&position, move_str).unwrap();
         position.make_move(parsed);
     }
 
@@ -42,10 +42,10 @@ fn main() {
     let moves = position.legal_moves();
 
     for chessmove in moves {
-        let mut pos = position.clone();
-        pos.make_move(chessmove);
-        let new_nodes = perft(pos, depth - 1);
-        pos.unmake_move(chessmove);
+        let mut position = position.clone();
+        position.make_move(chessmove);
+        let new_nodes = perft(position.clone(), depth - 1);
+        position.unmake_move(chessmove);
         nodes += new_nodes;
 
         println!("{chessmove} {new_nodes}");

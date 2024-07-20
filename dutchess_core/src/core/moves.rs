@@ -1,9 +1,9 @@
 use std::fmt;
 
-use super::{ChessError, Piece, PieceKind, Tile};
+use super::{ChessError, Color, Piece, PieceKind, Position, Tile};
 
 /// Represents the different kinds of moves that can be made during a chess game.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub enum MoveKind {
     /// Involves only a single piece moving from one location to another, and does not change the quantity or kind of any pieces on the board.
     Quiet,
@@ -37,7 +37,7 @@ pub enum MoveKind {
 ///      |     +- Target tile of the move.
 ///      +- Special flags for promotion, castling, etc.
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 // #[repr(transparent)]
 // pub struct Move(u16);
 pub struct Move {
@@ -105,7 +105,7 @@ impl Move {
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
     /// assert_eq!(e2e4.to_string(), "e2e4");
     /// ```
-    pub fn new(from: Tile, to: Tile, kind: MoveKind) -> Self {
+    pub const fn new(from: Tile, to: Tile, kind: MoveKind) -> Self {
         Self { from, to, kind }
     }
 
@@ -117,7 +117,7 @@ impl Move {
     /// let e2e3 = Move::new_quiet(Tile::E2, Tile::E3);
     /// assert_eq!(e2e3.to_string(), "e2e3");
     /// ```
-    pub fn new_quiet(from: Tile, to: Tile) -> Self {
+    pub const fn new_quiet(from: Tile, to: Tile) -> Self {
         Self::new(from, to, MoveKind::Quiet)
     }
 
@@ -129,9 +129,16 @@ impl Move {
     /// let illegal = Move::illegal();
     /// assert_eq!(illegal.to_string(), "a1a1");
     /// ```
-    pub fn illegal() -> Self {
+    pub const fn illegal() -> Self {
         // Self(0)
         Self::new_quiet(Tile::A1, Tile::A1)
+    }
+
+    pub const fn is_capture(&self) -> bool {
+        match self.kind() {
+            MoveKind::Capture(_) | MoveKind::EnPassantCapture(_) => true,
+            _ => false,
+        }
     }
 
     /*
@@ -160,7 +167,7 @@ impl Move {
     /// let from = e2e4.from();
     /// assert_eq!(from, Tile::E2);
     /// ```
-    pub fn from(&self) -> Tile {
+    pub const fn from(&self) -> Tile {
         // Tile(self.src_bits())
         self.from
     }
@@ -174,7 +181,7 @@ impl Move {
     /// let to = e2e4.to();
     /// assert_eq!(to, Tile::E4);
     /// ```
-    pub fn to(&self) -> Tile {
+    pub const fn to(&self) -> Tile {
         // Tile(self.dst_bits())
         self.to
     }
@@ -187,7 +194,7 @@ impl Move {
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8Q.kind(), MoveKind::Promote(PieceKind::Queen));
     /// ```
-    pub fn kind(&self) -> MoveKind {
+    pub const fn kind(&self) -> MoveKind {
         // let bits = self.flg_bits();
 
         // We subtract 1 here because we added 1 in `Self::new`
@@ -206,6 +213,7 @@ impl Move {
     }
      */
 
+    /*
     /// Creates a [`Move`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
     ///
     /// Will return a [`ChessError`] if the string is invalid in any way.
@@ -225,8 +233,60 @@ impl Move {
 
         let kind = if let Some(promote) = uci.get(4..5) {
             MoveKind::Promote(PieceKind::from_str(promote)?)
+        } else if uci == "e1g1" || uci == "e8g8" {
+            MoveKind::KingsideCastle
+        } else if uci == "e1c1" || uci == "e8c8" {
+            MoveKind::QueensideCastle
         } else {
             MoveKind::Quiet
+        };
+
+        Ok(Self::new(from, to, kind))
+    }
+      */
+
+    pub fn from_san(position: &Position, san: &str) -> Result<Self, ChessError> {
+        let from = san.get(0..2).ok_or(ChessError::InvalidTileNotation)?;
+        let to = san.get(2..4).ok_or(ChessError::InvalidTileNotation)?;
+
+        let from = Tile::from_uci(from)?;
+        let to = Tile::from_uci(to)?;
+
+        // Safe unwrap because there MUST be a piece here in order to move
+        let piece = position.bitboards().piece_at(from).unwrap();
+
+        let kind = if piece.kind().is_pawn() {
+            if let Some(promote) = san.get(4..5) {
+                MoveKind::Promote(PieceKind::from_str(promote)?)
+            } else if let Some(captured) = position.bitboards().piece_at(to) {
+                MoveKind::Capture(captured)
+            } else if Some(to) == position.ep_tile() && piece.is_pawn() {
+                let captured = position
+                    .bitboards()
+                    .piece_at(position.ep_tile().unwrap())
+                    .unwrap();
+                MoveKind::EnPassantCapture(captured)
+            } else if from.rank().is_pawn_rank(Color::White)
+                && to.rank().is_pawn_double_push_rank(Color::White)
+            {
+                MoveKind::PawnPushTwo
+            } else if from.rank().is_pawn_rank(Color::Black)
+                && to.rank().is_pawn_double_push_rank(Color::Black)
+            {
+                MoveKind::PawnPushTwo
+            } else {
+                MoveKind::Quiet
+            }
+        } else {
+            if san == "e1g1" || san == "e8g8" {
+                MoveKind::KingsideCastle
+            } else if san == "e1c1" || san == "e8c8" {
+                MoveKind::QueensideCastle
+            } else if let Some(captured) = position.bitboards().piece_at(to) {
+                MoveKind::Capture(captured)
+            } else {
+                MoveKind::Quiet
+            }
         };
 
         Ok(Self::new(from, to, kind))
@@ -240,9 +300,9 @@ impl Move {
     /// ```
     /// # use dutchess_core::core::{Move, Tile, MoveKind, PieceKind};
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
-    /// assert_eq!(e7e8Q.to_uci(), "e7e8Q");
+    /// assert_eq!(e7e8Q.to_san(), "e7e8Q");
     /// ```
-    pub fn to_uci(&self) -> String {
+    pub fn to_san(&self) -> String {
         match self.kind() {
             MoveKind::Promote(promote) => format!("{}{}{}", self.from(), self.to(), promote),
             _ => format!("{}{}", self.from(), self.to()),
@@ -252,12 +312,12 @@ impl Move {
 
 impl fmt::Display for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_uci())
+        write!(f, "{}", self.to_san())
     }
 }
 
 impl fmt::Debug for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({:?})", self.to_uci(), self.kind())
+        write!(f, "{} ({:?})", self.to_san(), self.kind())
     }
 }

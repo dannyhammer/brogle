@@ -1,6 +1,4 @@
-use std::collections::HashSet;
-
-use dutchess_core::core::{Move, Position, DEFAULT_FEN};
+use dutchess_core::core::{Move, Position};
 
 // Sets up a game from the provided FEN
 fn setup_game(fen: &str) -> Position {
@@ -13,7 +11,7 @@ fn lists_match<'a>(
     moves: impl IntoIterator<Item = &'a Move>,
     legal_moves: impl IntoIterator<Item = &'a str>,
 ) {
-    let board = pos.board();
+    let board = pos.bitboards();
     let fen = pos.to_fen();
 
     let mut moves = moves
@@ -49,7 +47,7 @@ fn lists_match<'a>(
     assert_eq!(
         moves.len(),
         legal_moves.len(),
-        "Moves: {moves:?}\nLegal: {legal_moves:?}\n{missing_or_extra}\nPosition: {fen}\n{board}"
+        "\nMoves: {moves:?}\nLegal: {legal_moves:?}\n{missing_or_extra}\nPosition: {fen}\n{board}"
     );
 
     for mv in moves {

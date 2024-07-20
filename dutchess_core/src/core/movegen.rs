@@ -122,7 +122,7 @@ pub const fn pawn_attacks(tile: Tile, color: Color) -> BitBoard {
 /// This serves as a "mask" of all the pawn's available moves, regardless of legality (check).
 pub const fn pseudo_legal_pawn_moves(tile: Tile, position: &Position, color: Color) -> BitBoard {
     let can_double_push = tile.rank().is_pawn_rank(color);
-    let enemies = position.board().color(color.opponent());
+    let enemies = position.bitboards().color(color.opponent());
 
     // If there is an en passant tile, add that to the pawn's movement options
     // let en_passant = BitBoard::from(position.ep_tile());

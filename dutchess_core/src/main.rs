@@ -45,23 +45,38 @@ fn main() {
 
     // std::process::exit(1);
 
-    let moves = game.state().legal_moves();
+    // let moves = game.state().legal_moves();
     // println!("{moves:?}");
-    println!("PERFT: {}", moves.len());
+    // println!("PERFT: {}", moves.len());
 
     // let moves_to_make = ["b1a3", "a7a5", "a2a4"];
     // let moves_to_make = ["g1h3", "a7a5", "e1g1"];
-    let moves_to_make = ["a2a4", "b7b5", "a4a5"];
+    // let moves_to_make = ["a2a4", "b7b5", "a4a5"];
+    // let moves_to_make = ["c2c3", "a7a5", "d1a4", "d7d5", "a4e8"]; // Captures black king
+    // let moves_to_make = ["c2c3", "a7a5", "d1a4", "d7d5"];
+    // let moves_to_make = ["c2c3", "a7a5", "d1a4"];
+    // let moves_to_make = ["b1a3", "a7a6", "a3b5", "a6b5", "b5b6"];
+    // let moves_to_make = ["b1a3", "a7a6", "a3b5", "a6b5"];
+    let moves_to_make = ["g2g4", "h7h6", "g4g5", "h6g5"];
 
     for mv in moves_to_make {
-        let mv = Move::from_uci(mv).unwrap();
-        println!("Making move: {mv}");
+        let mv = Move::from_san(&game.position(), mv).unwrap();
+        println!("\nMaking move: {mv:?}");
         game.make_move(mv);
-        println!("{game}");
+        println!("State after {mv}:\n{game}");
 
-        let moves = game.state().legal_moves();
-        // println!("{moves}");
-        println!("PERFT: {}", moves.len());
+        let mut moves: Vec<_> = game
+            .position()
+            .legal_moves()
+            .into_iter()
+            .map(|m| m.to_string())
+            .collect();
+        moves.sort();
+        print!("{} Legal Moves:\n\t", moves.len());
+        for mv in &moves {
+            print!("{mv}, ");
+        }
+        println!();
     }
 
     // let board = ChessBoard::new().with_default_setup();
