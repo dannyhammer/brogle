@@ -45,7 +45,7 @@ impl Mobility {
     // }
 }
 
-pub const fn attacks_for(piece: &Piece, tile: Tile, blockers: BitBoard) -> BitBoard {
+pub const fn default_movement_for(piece: &Piece, tile: Tile, blockers: BitBoard) -> BitBoard {
     // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
     match piece.kind() {
         PieceKind::Pawn => pawn_attacks(tile, piece.color()),

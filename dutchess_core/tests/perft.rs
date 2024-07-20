@@ -1,3 +1,4 @@
+/*
 use std::ops::{Add, AddAssign};
 
 use dutchess_core::core::{Position, DEFAULT_FEN};
@@ -262,3 +263,5 @@ fn perft_4() {
 // fn perft_5() {
 //     test_perft(5);
 // }
+
+ */

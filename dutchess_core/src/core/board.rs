@@ -9,8 +9,8 @@ use derive_more::{
 };
 
 use super::{
-    utils::DEFAULT_FEN, ChessError, Color, File, Piece, PieceKind, Rank, Tile, NUM_COLORS,
-    NUM_PIECE_TYPES,
+    default_movement_for, ray_between, utils::DEFAULT_FEN, ChessError, Color, File, Piece,
+    PieceKind, Rank, Tile, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
 /// Represents a full chess board at any given state.
@@ -401,15 +401,21 @@ impl ChessBoard {
         self.color(color).not()
     }
 
-    pub const fn without(&self, piece: Piece) -> Self {
-        let piece_board = self.piece(piece);
-
-        let occupied = self.occupied.xor(piece_board);
+    /// Returns an instance of this [`ChessBoard`] that has all bits specified by `mask` cleared.
+    pub const fn without(&self, mask: BitBoard) -> Self {
+        let not_mask = mask.not();
+        let occupied = self.occupied.and(not_mask);
         let mut colors = self.colors;
-        colors[piece.color().index()] = colors[piece.color().index()].xor(piece_board);
+        colors[0] = colors[0].and(not_mask);
+        colors[1] = colors[1].and(not_mask);
 
         let mut pieces = self.pieces;
-        pieces[piece.kind().index()] = pieces[piece.kind().index()].xor(piece_board);
+        pieces[0] = pieces[0].and(not_mask);
+        pieces[1] = pieces[1].and(not_mask);
+        pieces[2] = pieces[2].and(not_mask);
+        pieces[3] = pieces[3].and(not_mask);
+        pieces[4] = pieces[4].and(not_mask);
+        pieces[5] = pieces[5].and(not_mask);
 
         Self {
             occupied,
@@ -419,8 +425,34 @@ impl ChessBoard {
         }
     }
 
-    pub const fn kingless(&self, color: Color) -> Self {
-        self.without(Piece::new(color, PieceKind::King))
+    /*
+    const fn kingless(&self, color: Color) -> Self {
+        self.without_piece(Piece::new(color, PieceKind::King))
+    }
+     */
+
+    /*
+    const fn without_piece(&self, piece: Piece) -> Self {
+        let piece_board = self.piece(piece);
+        self.without(piece_board)
+    }
+     */
+
+    /// Computes a [`BitBoard`] of all of the squares that can be attacked by [`Color`] pieces.
+    pub fn squares_attacked_by(&self, color: Color) -> BitBoard {
+        let mut attacks = BitBoard::EMPTY_BOARD;
+
+        // All occupied spaces
+        let blockers = self.occupied();
+
+        // Get the attack tables for all pieces of this color
+        for tile in self.color(color) {
+            // Safe unwrap because we're iterating over all pieces of this color
+            let piece = self.piece_at(tile).unwrap();
+            attacks |= default_movement_for(&piece, tile, blockers);
+        }
+
+        attacks
     }
 
     /*
@@ -504,6 +536,7 @@ impl Default for ChessBoard {
 
 impl fmt::Display for ChessBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        /*
         // Allocate just enough capacity
         let mut board = String::with_capacity(646);
 
@@ -533,6 +566,38 @@ impl fmt::Display for ChessBoard {
         board += "+\n  ";
         for file in File::iter() {
             board += &format!("  {file} ");
+        }
+
+        write!(f, "{board}")
+         */
+
+        // Allocate just enough capacity
+        let mut board = String::with_capacity(198);
+
+        for rank in Rank::iter().rev() {
+            board += &format!("{rank}| ");
+
+            for file in File::iter() {
+                let tile = Tile::new(file, rank);
+                let occupant = if let Some(piece) = self.piece_at(tile) {
+                    piece.to_string()
+                } else {
+                    // String::from(if tile.is_light() { "#" } else { "-" })
+                    String::from(".")
+                };
+
+                board += &format!("{occupant} ");
+            }
+
+            board += "\n"
+        }
+        board += " +";
+        for _ in File::iter() {
+            board += &format!("--");
+        }
+        board += "\n   ";
+        for file in File::iter() {
+            board += &format!("{file} ");
         }
 
         write!(f, "{board}")
@@ -742,7 +807,6 @@ fn check_bit(bits: u8, n: u8) -> u8 {
     Copy,
     PartialEq,
     Eq,
-    Debug,
     Hash,
     Default,
     BitAnd,
@@ -788,10 +852,10 @@ impl BitBoard {
     pub const EDGES: Self = Self(0xFF818181818181FF);
     pub const NOT_EDGES: Self = Self(0x007E7E7E7E7E7E00);
     pub const CORNERS: Self = Self(0x8100000000000081);
-    pub const WHITE_KINGSIDE_CASTLE: Self = Self(0x0000000000000070);
-    pub const WHITE_QUEENSIDE_CASTLE: Self = Self(0x000000000000001c);
-    pub const BLACK_KINGSIDE_CASTLE: Self = Self(0x7000000000000000);
-    pub const BLACK_QUEENSIDE_CASTLE: Self = Self(0x1c00000000000000);
+    pub const WHITE_KINGSIDE_CASTLE: Self = ray_between(Tile::F1, Tile::G1);
+    pub const WHITE_QUEENSIDE_CASTLE: Self = ray_between(Tile::D1, Tile::C1);
+    pub const BLACK_KINGSIDE_CASTLE: Self = ray_between(Tile::D8, Tile::C8);
+    pub const BLACK_QUEENSIDE_CASTLE: Self = ray_between(Tile::F8, Tile::G8);
 
     const RANK_END_INDICES: [usize; 8] = [7, 15, 23, 31, 39, 47, 55, 63];
 
@@ -995,6 +1059,25 @@ impl BitBoard {
     /// ```
     pub const fn is_empty(&self) -> bool {
         self.0 == 0
+    }
+
+    pub const fn has_at_most(&self, n: u32) -> bool {
+        self.population() <= n
+    }
+
+    /// Checks if this [`BitBoard`] contains any of the bits within `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::BitBoard;
+    /// let rank_1 = BitBoard::RANK_1;
+    /// let rank_5 = BitBoard::RANK_5;
+    /// let file_a = BitBoard::FILE_A;
+    /// assert_eq!(rank_1.contains(file_a), true);
+    /// assert_eq!(rank_1.contains(rank_5), false);
+    /// ```
+    pub const fn contains(&self, other: Self) -> bool {
+        (self.0 & other.0) != 0
     }
 
     /// Toggles the bit corresponding to the location of the provided [`Tile`] to `1` (on).
@@ -1473,6 +1556,35 @@ impl fmt::Display for BitBoard {
         };
 
         write!(f, "{}", Self::RANK_END_INDICES.map(rank).join("\n"))
+    }
+}
+
+impl fmt::Debug for BitBoard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Allocate just enough capacity
+        let mut board = String::with_capacity(198);
+
+        for rank in Rank::iter().rev() {
+            board += &format!("{rank}| ");
+
+            for file in File::iter() {
+                let occupant = if self.get(file * rank) { 'X' } else { '.' };
+
+                board += &format!("{occupant} ");
+            }
+
+            board += "\n";
+        }
+        board += " +";
+        for _ in File::iter() {
+            board += &format!("--");
+        }
+        board += "\n   ";
+        for file in File::iter() {
+            board += &format!("{file} ");
+        }
+
+        write!(f, "{board}")
     }
 }
 
