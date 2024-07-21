@@ -362,6 +362,16 @@ impl ChessBoard {
         color.and(kind)
     }
 
+    pub const fn orthogonal_sliders(&self, color: Color) -> BitBoard {
+        (self.pieces[PieceKind::Rook.index()].or(self.pieces[PieceKind::Queen.index()]))
+            .and(self.color(color))
+    }
+
+    pub const fn diagonal_sliders(&self, color: Color) -> BitBoard {
+        (self.pieces[PieceKind::Bishop.index()].or(self.pieces[PieceKind::Queen.index()]))
+            .and(self.color(color))
+    }
+
     pub const fn sliders(&self, color: Color) -> BitBoard {
         (self.pieces[PieceKind::Rook.index()]
             .or(self.pieces[PieceKind::Bishop.index()])
@@ -496,8 +506,7 @@ impl ChessBoard {
      */
 
     /// Creates a [`BoardIter`] to iterate over all occupied [`Tile`]s in this [`GameBoard`].
-    // pub fn iter<'a>(&'a self) -> BoardIter<'a> {
-    pub const fn iter(&self) -> BoardIter<'_> {
+    pub const fn iter<'a>(&'a self) -> BoardIter<'a> {
         BoardIter {
             board: &self,
             occupancy: self.occupied,
@@ -610,7 +619,7 @@ impl fmt::Display for ChessBoard {
 
 impl From<[Option<Piece>; 64]> for ChessBoard {
     fn from(value: [Option<Piece>; 64]) -> Self {
-        let mut board = Self::default();
+        let mut board = Self::new();
 
         for (i, piece) in value.into_iter().enumerate() {
             if let Some(piece) = piece {
@@ -703,19 +712,19 @@ impl fmt::Debug for ChessBoard {
         };
 
         let pieces = format(&[
-            (self.pieces[0], "Pawn"),
-            (self.pieces[1], "Knight"),
-            (self.pieces[2], "Bishop"),
-            (self.pieces[3], "Rook"),
-            (self.pieces[4], "Queen"),
-            (self.pieces[5], "King"),
+            (self.pieces[PieceKind::Pawn], "Pawn"),
+            (self.pieces[PieceKind::Knight], "Knight"),
+            (self.pieces[PieceKind::Bishop], "Bishop"),
+            (self.pieces[PieceKind::Rook], "Rook"),
+            (self.pieces[PieceKind::Queen], "Queen"),
+            (self.pieces[PieceKind::King], "King"),
         ]);
 
         let metadata = format(&[
             (self.occupied, "Occupied"),
             (self.empty, "Empty"),
-            (self.colors[0], "White"),
-            (self.colors[1], "Black"),
+            (self.colors[Color::White], "White"),
+            (self.colors[Color::Black], "Black"),
         ]);
 
         write!(f, "Game State:\n{pieces}\n\n{metadata}")
@@ -856,10 +865,6 @@ impl BitBoard {
     pub const EDGES: Self = Self(0xFF818181818181FF);
     pub const NOT_EDGES: Self = Self(0x007E7E7E7E7E7E00);
     pub const CORNERS: Self = Self(0x8100000000000081);
-    pub const WHITE_KINGSIDE_CASTLE: Self = ray_between(Tile::E1, Tile::H1);
-    pub const WHITE_QUEENSIDE_CASTLE: Self = ray_between(Tile::E1, Tile::A1);
-    pub const BLACK_KINGSIDE_CASTLE: Self = ray_between(Tile::E8, Tile::H8);
-    pub const BLACK_QUEENSIDE_CASTLE: Self = ray_between(Tile::E8, Tile::A8);
 
     const RANK_END_INDICES: [usize; 8] = [7, 15, 23, 31, 39, 47, 55, 63];
 
@@ -988,31 +993,39 @@ impl BitBoard {
     }
 
     pub const fn home_rank(color: Color) -> Self {
-        match color {
-            Color::White => Self::RANK_1,
-            Color::Black => Self::RANK_8,
-        }
+        [Self::RANK_1, Self::RANK_8][color.index()]
     }
 
     pub const fn pawn_rank(color: Color) -> Self {
-        match color {
-            Color::White => Self::RANK_2,
-            Color::Black => Self::RANK_7,
-        }
+        [Self::RANK_2, Self::RANK_7][color.index()]
     }
 
     pub const fn kingside_castle(color: Color) -> Self {
-        match color {
-            Color::White => Self::WHITE_KINGSIDE_CASTLE,
-            Color::Black => Self::BLACK_KINGSIDE_CASTLE,
-        }
+        [
+            ray_between(Tile::E1, Tile::G1),
+            ray_between(Tile::E8, Tile::G8),
+        ][color.index()]
     }
 
     pub const fn queenside_castle(color: Color) -> Self {
-        match color {
-            Color::White => Self::WHITE_QUEENSIDE_CASTLE,
-            Color::Black => Self::BLACK_QUEENSIDE_CASTLE,
-        }
+        [
+            ray_between(Tile::E1, Tile::C1),
+            ray_between(Tile::E8, Tile::C8),
+        ][color.index()]
+    }
+
+    pub(crate) const fn queenside_castle_clearance(color: Color) -> Self {
+        [
+            ray_between(Tile::E1, Tile::B1),
+            ray_between(Tile::E8, Tile::B8),
+        ][color.index()]
+    }
+
+    pub(crate) const fn kingside_castle_clearance(color: Color) -> Self {
+        [
+            ray_between(Tile::E1, Tile::G1),
+            ray_between(Tile::E8, Tile::G8),
+        ][color.index()]
     }
 
     pub const fn inner(&self) -> u64 {
@@ -1032,6 +1045,14 @@ impl BitBoard {
     /// ```
     pub const fn to_tile_unchecked(&self) -> Tile {
         Tile::from_index_unchecked(self.to_index())
+    }
+
+    pub const fn to_tile(&self) -> Option<Tile> {
+        if self.is_only_one() {
+            Some(self.to_tile_unchecked())
+        } else {
+            None
+        }
     }
 
     pub const fn to_index(&self) -> usize {
@@ -1067,6 +1088,10 @@ impl BitBoard {
 
     pub const fn has_at_most(&self, n: u32) -> bool {
         self.population() <= n
+    }
+
+    pub const fn is_only_one(&self) -> bool {
+        self.population() == 1
     }
 
     /// Checks if this [`BitBoard`] contains any of the bits within `other`.
@@ -1148,15 +1173,6 @@ impl BitBoard {
     /// Clears the lowest non-zero bit from `self`, if there is a square to clear.
     pub fn clear_lsb(&mut self) {
         self.0 &= self.0.wrapping_sub(1);
-    }
-
-    const fn lsb_tile(&self) -> Option<Tile> {
-        // self.lsb().map(|lsb| Tile(lsb))
-        if let Some(lsb) = self.lsb() {
-            Some(Tile(lsb))
-        } else {
-            None
-        }
     }
 
     // https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set
@@ -1623,9 +1639,9 @@ pub struct BitBoardIter {
 impl Iterator for BitBoardIter {
     type Item = Tile;
     fn next(&mut self) -> Option<Self::Item> {
-        let next = self.bb.lsb_tile()?;
+        let next = self.bb.lsb()?;
         self.bb.clear_lsb();
-        Some(next)
+        Some(Tile(next))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

@@ -53,7 +53,10 @@ fn main() {
     // let fen = "1k6/8/8/8/8/8/8/R3K2R w Qha - 0 1"; /* King can queenside castle */
     // let fen = "1k1r4/8/8/8/8/8/8/R3K2R w KQka - 0 1"; /* King can kingside, not queenside */
     // let fen = "1k3r2/8/8/8/8/8/8/R3K2R w KQka - 0 1"; /* King can queenside, not kingside */
-    // let fen = "1k1r1r2/8/8/8/8/8/8/R3K2R w KQka - 0 1"; /* King cannot castle */
+    // let fen = "1k3r2/8/8/8/8/8/8/R3K2R w KQka - 0 1"; /* King can queenside, not kingside */
+    // let fen = "1k6/8/8/8/8/8/8/RN2K1NR w KQka - 0 1"; /* King blocked by Knight; cannot castle */
+    // let fen = "1k6/8/8/8/8/8/8/Rr2K1NR w KQka - 0 1"; /* King checked by rook; cannot castle */
+    // let fen = "1k1r1r2/8/8/8/8/8/8/R3K2R w KQka - 0 1"; /* King under attack; cannot castle */
     //
     // let fen = "k7/2K5/8/8/8/8/8/R7 w - - 0 1"; /* White should NOT be able to *actually capture* Black's King */
     // let fen = "rnbqkbnr/1ppppppp/p7/1N6/8/8/PPPPPPPP/R1BQKBNR b KQkq - 3 2";
@@ -64,7 +67,6 @@ fn main() {
     // let fen = "rnbq1bnr/pppppkpp/5p2/8/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQ - 3 3"; /* f6f5 isn't legal */
     let mut game = Game::from_fen(fen).unwrap();
     // println!("{game}\n\n");
-    // // // // println!("{:?}", game.position().bitboards().color(Color::White));
 
     // let moves = game
     //     .position()
@@ -103,7 +105,11 @@ fn main() {
     // let moves_to_make = ["e2e4", "f7f6", "d1f3", "e8f7", "f1c4"];
     // let moves_to_make = ["d2d3", "a7a5", "c1e3", "a5a4", "d1d2", "a4a3", "e1c1"];
     // let moves_to_make = ["d2d3", "a7a5", "c1e3", "a5a4", "d1d2", "a4a3"]; // e1c1 isn't legal
-    let moves_to_make = ["d2d4", "a7a5", "e1d2", "c7c5", "d4c5", "d7d5", "c5d6"]; // c5d6 isn't legal
+    // let moves_to_make = ["d2d4", "a7a5", "e1d2", "c7c5", "d4c5", "d7d5", "c5d6"]; // c5d6 isn't legal
+    // let moves_to_make = ["c2c3", "b7b5", "d1a4", "b5b4"];
+    // let moves_to_make = ["c2c3", "b7b5", "d1a4"]; // Missing b5b4
+    let moves_to_make = ["d2d4", "a7a5", "e1d2", "c7c5", "d4c5", "d7d5"]; // Missing c5c6
+                                                                          // let moves_to_make = ["d2d4", "a7a5", "e1d2", "c7c5", "d4c5", "d7d5", "c5c6"];
 
     for mv in moves_to_make {
         let mv = Move::from_san(&game.position(), mv).unwrap();

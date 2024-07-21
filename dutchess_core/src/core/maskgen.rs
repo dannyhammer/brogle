@@ -27,9 +27,7 @@ fn pawn_push(color: Color) -> [BitBoard; 64] {
     for tile in Tile::iter() {
         let bb = BitBoard::from_tile(tile);
 
-        if tile.rank().is_home_rank(color) {
-            continue;
-        } else if tile.rank().is_pawn_rank(color) {
+        if tile.rank().is_pawn_rank(color) {
             boards[tile] = bb.advance_by(color, 1) | bb.advance_by(color, 2);
         } else {
             boards[tile] = bb.advance_by(color, 1);
@@ -43,11 +41,7 @@ fn pawn_attack(color: Color) -> [BitBoard; 64] {
     for tile in Tile::iter() {
         let bb = BitBoard::from_tile(tile);
 
-        if tile.rank().is_home_rank(color) {
-            continue;
-        } else {
-            boards[tile] = bb.advance_by(color, 1).east() | bb.advance_by(color, 1).west();
-        }
+        boards[tile] = bb.advance_by(color, 1).east() | bb.advance_by(color, 1).west();
     }
     boards
 }

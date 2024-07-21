@@ -173,6 +173,27 @@ impl PieceKind {
         }
     }
 
+    /// Converts this [`PieceKind`] to a character, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// Will always be a capital letter.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::PieceKind;
+    /// let queen = PieceKind::Queen;
+    /// assert_eq!(queen.to_lowercase_uci(), 'q');
+    /// ```
+    pub const fn to_lowercase_uci(&self) -> char {
+        match self {
+            Self::Pawn => 'p',
+            Self::Knight => 'n',
+            Self::Bishop => 'b',
+            Self::Rook => 'r',
+            Self::Queen => 'q',
+            Self::King => 'k',
+        }
+    }
+
     /// Alias for [`PieceKind::to_uci`].
     pub const fn char(&self) -> char {
         self.to_uci()
@@ -184,6 +205,10 @@ impl PieceKind {
 
     pub const fn is_king(&self) -> bool {
         matches!(self, Self::King)
+    }
+
+    pub const fn is_rook(&self) -> bool {
+        matches!(self, Self::Rook)
     }
 
     pub const fn is_slider(&self) -> bool {
@@ -238,7 +263,7 @@ impl<T> IndexMut<PieceKind> for [T; 6] {
 impl fmt::Display for PieceKind {
     /// By default, piece classes display as uppercase chars (white)
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_uci())
+        write!(f, "{}", self.to_lowercase_uci())
     }
 }
 
@@ -339,6 +364,10 @@ impl Piece {
 
     pub const fn is_king(&self) -> bool {
         self.kind().is_king()
+    }
+
+    pub const fn is_rook(&self) -> bool {
+        self.kind().is_rook()
     }
 
     pub const fn is_slider(&self) -> bool {

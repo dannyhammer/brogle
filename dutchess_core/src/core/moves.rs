@@ -25,6 +25,9 @@ pub enum MoveKind {
 
     /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming another kind of piece, such as a Knight or Queen.
     Promote(PieceKind),
+
+    CaptureAndPromote(Piece, PieceKind),
+    EnPassantCaptureAndPromote(Piece, PieceKind),
 }
 
 /// Represents a move made on a chess board, including whether a piece is to be promoted.
@@ -136,8 +139,21 @@ impl Move {
 
     pub const fn is_capture(&self) -> bool {
         match self.kind() {
-            MoveKind::Capture(_) | MoveKind::EnPassantCapture(_) => true,
+            MoveKind::Capture(_)
+            | MoveKind::EnPassantCapture(_)
+            | MoveKind::CaptureAndPromote(_, _)
+            | MoveKind::EnPassantCaptureAndPromote(_, _) => true,
             _ => false,
+        }
+    }
+
+    pub const fn captured(&self) -> Option<Piece> {
+        match self.kind() {
+            MoveKind::Capture(captured)
+            | MoveKind::EnPassantCapture(captured)
+            | MoveKind::CaptureAndPromote(captured, _)
+            | MoveKind::EnPassantCaptureAndPromote(captured, _) => Some(captured),
+            _ => None,
         }
     }
 
@@ -298,11 +314,15 @@ impl Move {
     /// ```
     /// # use dutchess_core::core::{Move, Tile, MoveKind, PieceKind};
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
-    /// assert_eq!(e7e8Q.to_san(), "e7e8Q");
+    /// assert_eq!(e7e8Q.to_uci(), "e7e8q");
     /// ```
-    pub fn to_san(&self) -> String {
+    pub fn to_uci(&self) -> String {
         match self.kind() {
-            MoveKind::Promote(promote) => format!("{}{}{}", self.from(), self.to(), promote),
+            MoveKind::Promote(promote)
+            | MoveKind::CaptureAndPromote(_, promote)
+            | MoveKind::EnPassantCaptureAndPromote(_, promote) => {
+                format!("{}{}{}", self.from(), self.to(), promote)
+            }
             _ => format!("{}{}", self.from(), self.to()),
         }
     }
@@ -310,12 +330,12 @@ impl Move {
 
 impl fmt::Display for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_san())
+        write!(f, "{}", self.to_uci())
     }
 }
 
 impl fmt::Debug for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({:?})", self.to_san(), self.kind())
+        write!(f, "{} ({:?})", self.to_uci(), self.kind())
     }
 }
