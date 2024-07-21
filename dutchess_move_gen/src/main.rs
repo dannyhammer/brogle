@@ -33,7 +33,6 @@ fn print_to_code(fen: &str) {
         "
 #[test]
 #[allow(non_snake_case)]
-#[rustfmt::skip]
 fn test_moves_from_{pos_str}() {{
     let pos = setup_game(\"{fen}\");
     let moves = pos.legal_moves();

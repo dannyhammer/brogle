@@ -1,4 +1,3 @@
-/*
 use std::ops::{Add, AddAssign};
 
 use dutchess_core::core::{Position, DEFAULT_FEN};
@@ -179,9 +178,9 @@ fn perft(position: Position, depth: usize) -> PerftResult {
     if depth == 0 {
         return PerftResult {
             nodes: 1,
-            captures: 32 - position.board().occupied().population() as usize,
+            captures: 32 - position.bitboards().occupied().population() as usize,
             checks: position.is_check() as usize,
-            castles: 0,
+            castles: position.has_castled() as usize,
             checkmates: position.is_checkmate() as usize,
         };
     }
@@ -191,10 +190,10 @@ fn perft(position: Position, depth: usize) -> PerftResult {
     let moves = position.legal_moves();
     // println!("Valid moves: {moves:#?}");
     for chessmove in moves {
-        let mut pos = position.clone();
-        pos.make_move(chessmove);
-        res += perft(pos, depth - 1);
-        pos.unmake_move(chessmove);
+        let mut cloned = position.clone();
+        cloned.make_move(chessmove);
+        res += perft(cloned, depth - 1);
+        // position.unmake_move(chessmove);
     }
 
     res
@@ -263,5 +262,3 @@ fn perft_4() {
 // fn perft_5() {
 //     test_perft(5);
 // }
-
- */

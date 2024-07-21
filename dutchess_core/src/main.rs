@@ -2,6 +2,32 @@
 
 use dutchess_core::core::*;
 
+#[allow(dead_code)]
+fn perft(position: &mut Position, depth: usize) -> usize {
+    if depth == 0 {
+        return 1;
+    }
+
+    // println!("PERFT({depth}): {position}\n{position:?}");
+
+    let mut nodes = 0;
+    // let tab = " ".repeat(depth);
+
+    let moves = position.legal_moves();
+    for chessmove in moves {
+        let mut cloned = position.clone();
+        // println!("{tab}Making  : {chessmove}");
+        cloned.make_move(chessmove);
+        // println!("{tab}{cloned}");
+        nodes += perft(&mut cloned, depth - 1);
+        // println!("{tab}Unmaking: {chessmove}");
+        // cloned.unmake_move(chessmove);
+        // println!("{tab}{cloned}");
+    }
+
+    nodes
+}
+
 fn main() {
     let fen = DEFAULT_FEN;
     // let fen = "1r4b1/8/4R3/pP6/8/1K1N3q/8/3k4 w - a6 0 1"; /* Pinmask */
@@ -29,23 +55,31 @@ fn main() {
     // let fen = "1k3r2/8/8/8/8/8/8/R3K2R w KQka - 0 1"; /* King can queenside, not kingside */
     // let fen = "1k1r1r2/8/8/8/8/8/8/R3K2R w KQka - 0 1"; /* King cannot castle */
     //
-
+    // let fen = "k7/2K5/8/8/8/8/8/R7 w - - 0 1"; /* White should NOT be able to *actually capture* Black's King */
+    // let fen = "rnbqkbnr/1ppppppp/p7/1N6/8/8/PPPPPPPP/R1BQKBNR b KQkq - 3 2";
+    // let fen = "rnbq1bnr/pppkpppp/3N4/3p4/8/8/PPPPPPPP/R1BQKBNR b KQ - 5 3";
+    // let fen = "rnb1kbnr/pp1ppppp/8/q1p5/8/3P4/PPPKPPPP/RNBQ1BNR w kq - 4 3"; /* White king in check */
+    // let fen = "rnbqkb1r/pppppppp/8/8/4n3/3P4/PPPKPPPP/RNBQ1BNR w kq - 4 3"; /* Should be able to d3e4 */
+    // let fen = "rnB1kbnr/ppp1pppp/3q4/3p4/8/6P1/PPPPPP1P/RNBQK1NR b KQkq - 5 3"; /* b queenside castling isn't legal! */
+    let fen = "rnbq1bnr/pppppkpp/5p2/8/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQ - 3 3"; /* f6f5 isn't legal */
     let mut game = Game::from_fen(fen).unwrap();
-    // println!("{game}\n\n");
-    // println!("{:?}", game.state().board().color(Color::White));
+    println!("{game}\n\n");
+    // // // println!("{:?}", game.position().bitboards().color(Color::White));
 
-    // let moves = game.state().compute_legal_for(Color::White);
-    // for (i, chessmove) in moves.into_iter().enumerate() {
-    //     if !chessmove.is_empty() {
-    //         let tile = Tile::from_index_unchecked(i);
-    //         let piece = game.state().board().piece_at(tile).unwrap();
-    //         println!("\n +------{piece}-{tile}------\n{chessmove:?}");
-    //     }
-    // }
+    let moves = game
+        .position()
+        .compute_legal_for(game.position().current_player());
+    for (i, chessmove) in moves.into_iter().enumerate() {
+        if !chessmove.is_empty() {
+            let tile = Tile::from_index_unchecked(i);
+            let piece = game.position().bitboards().piece_at(tile).unwrap();
+            println!("\n +------{piece}-{tile}------\n{chessmove:?}");
+        }
+    }
 
-    // std::process::exit(1);
+    std::process::exit(1);
 
-    // let moves = game.state().legal_moves();
+    // let moves = game.position().legal_moves();
     // println!("{moves:?}");
     // println!("PERFT: {}", moves.len());
 
@@ -57,7 +91,16 @@ fn main() {
     // let moves_to_make = ["c2c3", "a7a5", "d1a4"];
     // let moves_to_make = ["b1a3", "a7a6", "a3b5", "a6b5", "b5b6"];
     // let moves_to_make = ["b1a3", "a7a6", "a3b5", "a6b5"];
-    let moves_to_make = ["g2g4", "h7h6", "g4g5", "h6g5"];
+    // let moves_to_make = ["g2g4", "f7f6", "g4g5", "f6g5", "g5g6"];
+    // let moves_to_make = ["b1a3", "a7a5", "a1b1", "c7c6", "a3b5", "c6b5"];
+    // let moves_to_make = ["b1a3", "a7a6", "a3b5", "a6b5"];
+    // let moves_to_make = ["d2d3", "c7c5", "e1d2", "d8a5"];
+    // let moves_to_make = ["d2d3", "c7c5", "e1d2", "d8a5", "d2e1"];
+    // let moves_to_make = ["d2d3", "g8f6", "e1d2", "f6e4"]; // Missing d3e4
+    // let moves_to_make = ["g2g3", "d7d5", "f1h3", "d8d6", "h3c8", "e8c8"]; // e8c8 isn't legal
+    // let moves_to_make = ["g2g3", "d7d5", "f1h3", "d8d6", "h3c8"];
+    // let moves_to_make = ["e2e4", "f7f6", "d1f3", "e8f7", "f1c4", "f6f5"]; // f6f5 isn't legal
+    let moves_to_make = ["e2e4", "f7f6", "d1f3", "e8f7", "f1c4"];
 
     for mv in moves_to_make {
         let mv = Move::from_san(&game.position(), mv).unwrap();
@@ -76,7 +119,7 @@ fn main() {
         for mv in &moves {
             print!("{mv}, ");
         }
-        println!();
+        println!("\n");
     }
 
     // let board = ChessBoard::new().with_default_setup();

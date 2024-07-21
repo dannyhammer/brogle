@@ -429,14 +429,12 @@ impl ChessBoard {
     const fn kingless(&self, color: Color) -> Self {
         self.without_piece(Piece::new(color, PieceKind::King))
     }
-     */
 
-    /*
     const fn without_piece(&self, piece: Piece) -> Self {
         let piece_board = self.piece(piece);
         self.without(piece_board)
     }
-     */
+    */
 
     /// Computes a [`BitBoard`] of all of the squares that can be attacked by [`Color`] pieces.
     pub fn squares_attacked_by(&self, color: Color) -> BitBoard {
@@ -453,6 +451,12 @@ impl ChessBoard {
         }
 
         attacks
+    }
+
+    pub fn king_danger_squares(&self, attacker_color: Color) -> BitBoard {
+        let king_bb = self.king(attacker_color.opponent());
+        let kingless = self.without(king_bb);
+        kingless.squares_attacked_by(attacker_color)
     }
 
     /*

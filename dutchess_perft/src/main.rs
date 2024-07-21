@@ -7,14 +7,22 @@ fn perft(position: Position, depth: usize) -> usize {
         return 1;
     }
 
+    // let tab = " ".repeat(depth);
+    // eprintln!("\n{tab}PERFT({depth}): {position}\n{position:?}");
+
     let mut nodes = 0;
 
     let moves = position.legal_moves();
+    // eprintln!("LEGAL MOVES: {moves:?}");
     for chessmove in moves {
-        let mut position = position.clone();
-        position.make_move(chessmove);
-        nodes += perft(position.clone(), depth - 1);
-        position.unmake_move(chessmove);
+        let mut cloned = position.clone();
+        // eprintln!("{tab}Making  : {chessmove}");
+        cloned.make_move(chessmove);
+        // eprintln!("{tab}{cloned}");
+        nodes += perft(cloned, depth - 1);
+        // eprintln!("{tab}Unmaking: {chessmove}");
+        // cloned.unmake_move(chessmove);
+        // eprintln!("{tab}{cloned}");
     }
 
     nodes
@@ -35,6 +43,8 @@ fn main() {
     let mut position = Position::new().from_fen(fen).expect("Bad fen");
     for move_str in moves.split_ascii_whitespace() {
         let parsed = Move::from_san(&position, move_str).unwrap();
+
+        eprintln!("Applying {parsed} to {position}");
         position.make_move(parsed);
     }
 
@@ -42,10 +52,10 @@ fn main() {
     let moves = position.legal_moves();
 
     for chessmove in moves {
-        let mut position = position.clone();
-        position.make_move(chessmove);
-        let new_nodes = perft(position.clone(), depth - 1);
-        position.unmake_move(chessmove);
+        let mut cloned = position.clone();
+        cloned.make_move(chessmove);
+        let new_nodes = perft(cloned, depth - 1);
+        // cloned.unmake_move(chessmove);
         nodes += new_nodes;
 
         println!("{chessmove} {new_nodes}");

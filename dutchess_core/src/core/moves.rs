@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::{ChessError, Color, Piece, PieceKind, Position, Tile};
+use super::{ChessError, Piece, PieceKind, Position, Tile};
 
 /// Represents the different kinds of moves that can be made during a chess game.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
@@ -246,6 +246,7 @@ impl Move {
       */
 
     pub fn from_san(position: &Position, san: &str) -> Result<Self, ChessError> {
+        // println!("Parsing SAN: {san}\nPosition: {position}");
         let from = san.get(0..2).ok_or(ChessError::InvalidTileNotation)?;
         let to = san.get(2..4).ok_or(ChessError::InvalidTileNotation)?;
 
@@ -266,12 +267,8 @@ impl Move {
                     .piece_at(position.ep_tile().unwrap())
                     .unwrap();
                 MoveKind::EnPassantCapture(captured)
-            } else if from.rank().is_pawn_rank(Color::White)
-                && to.rank().is_pawn_double_push_rank(Color::White)
-            {
-                MoveKind::PawnPushTwo
-            } else if from.rank().is_pawn_rank(Color::Black)
-                && to.rank().is_pawn_double_push_rank(Color::Black)
+            } else if from.rank().is_pawn_rank(piece.color())
+                && to.rank().is_pawn_double_push_rank(piece.color())
             {
                 MoveKind::PawnPushTwo
             } else {
@@ -288,6 +285,8 @@ impl Move {
                 MoveKind::Quiet
             }
         };
+
+        // println!("SAN parsed:\n\tfrom: {from:?}\n\tto: {to:?}\n\tkind: {kind:?}");
 
         Ok(Self::new(from, to, kind))
     }

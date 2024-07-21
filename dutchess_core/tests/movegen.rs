@@ -312,3 +312,25 @@ fn test_moves_from_rnbqkbnr_1ppppppp_8_p7_8_7N_PPPPPPPP_RNBQKB1R_w_KQkq_X_2_1() 
 
     lists_match(&pos, &moves, legal_moves);
 }
+
+#[test]
+#[allow(non_snake_case)]
+#[rustfmt::skip]
+fn test_moves_from_8_8_8_8_8_r7_2k5_K7_w_X_X_0_1() {
+    let pos = setup_game("8/8/8/8/8/r7/2k5/K7 w - - 0 1");
+    let moves = pos.legal_moves();
+    let legal_moves = [  ];
+
+    lists_match(&pos, &moves, legal_moves);
+}
+
+#[test]
+#[allow(non_snake_case)]
+#[rustfmt::skip]
+fn test_moves_from_8_8_8_8_8_1r6_2k5_K7_b_X_X_0_1() {
+    let pos = setup_game("8/8/8/8/8/1r6/2k5/K7 b - - 0 1");
+    let moves = pos.legal_moves();
+    let legal_moves = [ "b3b1", "b3b2", "b3a3", "b3c3", "b3d3", "b3e3", "b3f3", "b3g3", "b3h3", "b3b4", "b3b5", "b3b6", "b3b7", "b3b8", "c2c1", "c2d1", "c2d2", "c2c3", "c2d3" ];
+
+    lists_match(&pos, &moves, legal_moves);
+}
