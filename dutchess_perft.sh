@@ -1,2 +1,2 @@
 #!/bin/bash
-cargo r --bin dutchess_perft "$@"
+cargo r --release --bin dutchess_perft "$@"

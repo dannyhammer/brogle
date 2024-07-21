@@ -178,7 +178,7 @@ fn perft(position: Position, depth: usize) -> PerftResult {
     if depth == 0 {
         return PerftResult {
             nodes: 1,
-            captures: 32 - position.bitboards().occupied().population() as usize,
+            captures: 32 - position.bitboards().occupied().population() as usize, // TODO: Fetch original number of pieces
             checks: position.is_check() as usize,
             castles: position.has_castled() as usize,
             checkmates: position.is_checkmate() as usize,

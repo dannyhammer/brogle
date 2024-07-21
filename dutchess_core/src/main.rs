@@ -61,23 +61,23 @@ fn main() {
     // let fen = "rnb1kbnr/pp1ppppp/8/q1p5/8/3P4/PPPKPPPP/RNBQ1BNR w kq - 4 3"; /* White king in check */
     // let fen = "rnbqkb1r/pppppppp/8/8/4n3/3P4/PPPKPPPP/RNBQ1BNR w kq - 4 3"; /* Should be able to d3e4 */
     // let fen = "rnB1kbnr/ppp1pppp/3q4/3p4/8/6P1/PPPPPP1P/RNBQK1NR b KQkq - 5 3"; /* b queenside castling isn't legal! */
-    let fen = "rnbq1bnr/pppppkpp/5p2/8/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQ - 3 3"; /* f6f5 isn't legal */
+    // let fen = "rnbq1bnr/pppppkpp/5p2/8/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQ - 3 3"; /* f6f5 isn't legal */
     let mut game = Game::from_fen(fen).unwrap();
-    println!("{game}\n\n");
-    // // // println!("{:?}", game.position().bitboards().color(Color::White));
+    // println!("{game}\n\n");
+    // // // // println!("{:?}", game.position().bitboards().color(Color::White));
 
-    let moves = game
-        .position()
-        .compute_legal_for(game.position().current_player());
-    for (i, chessmove) in moves.into_iter().enumerate() {
-        if !chessmove.is_empty() {
-            let tile = Tile::from_index_unchecked(i);
-            let piece = game.position().bitboards().piece_at(tile).unwrap();
-            println!("\n +------{piece}-{tile}------\n{chessmove:?}");
-        }
-    }
+    // let moves = game
+    //     .position()
+    //     .compute_legal_for(game.position().current_player());
+    // for (i, chessmove) in moves.into_iter().enumerate() {
+    //     if !chessmove.is_empty() {
+    //         let tile = Tile::from_index_unchecked(i);
+    //         let piece = game.position().bitboards().piece_at(tile).unwrap();
+    //         println!("\n +------{piece}-{tile}------\n{chessmove:?}");
+    //     }
+    // }
 
-    std::process::exit(1);
+    // std::process::exit(1);
 
     // let moves = game.position().legal_moves();
     // println!("{moves:?}");
@@ -100,7 +100,10 @@ fn main() {
     // let moves_to_make = ["g2g3", "d7d5", "f1h3", "d8d6", "h3c8", "e8c8"]; // e8c8 isn't legal
     // let moves_to_make = ["g2g3", "d7d5", "f1h3", "d8d6", "h3c8"];
     // let moves_to_make = ["e2e4", "f7f6", "d1f3", "e8f7", "f1c4", "f6f5"]; // f6f5 isn't legal
-    let moves_to_make = ["e2e4", "f7f6", "d1f3", "e8f7", "f1c4"];
+    // let moves_to_make = ["e2e4", "f7f6", "d1f3", "e8f7", "f1c4"];
+    // let moves_to_make = ["d2d3", "a7a5", "c1e3", "a5a4", "d1d2", "a4a3", "e1c1"];
+    // let moves_to_make = ["d2d3", "a7a5", "c1e3", "a5a4", "d1d2", "a4a3"]; // e1c1 isn't legal
+    let moves_to_make = ["d2d4", "a7a5", "e1d2", "c7c5", "d4c5", "d7d5", "c5d6"]; // c5d6 isn't legal
 
     for mv in moves_to_make {
         let mv = Move::from_san(&game.position(), mv).unwrap();

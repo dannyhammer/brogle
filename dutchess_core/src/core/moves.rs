@@ -255,6 +255,7 @@ impl Move {
 
         // Safe unwrap because there MUST be a piece here in order to move
         let piece = position.bitboards().piece_at(from).unwrap();
+        let color = piece.color();
 
         let kind = if piece.kind().is_pawn() {
             if let Some(promote) = san.get(4..5) {
@@ -262,14 +263,12 @@ impl Move {
             } else if let Some(captured) = position.bitboards().piece_at(to) {
                 MoveKind::Capture(captured)
             } else if Some(to) == position.ep_tile() && piece.is_pawn() {
-                let captured = position
-                    .bitboards()
-                    .piece_at(position.ep_tile().unwrap())
-                    .unwrap();
+                println!("{position:?}\n{position}");
+                let ep_tile = position.ep_tile().unwrap();
+                let ep_target_tile = ep_tile.backward_by(color, 1).unwrap();
+                let captured = position.bitboards().piece_at(ep_target_tile).unwrap();
                 MoveKind::EnPassantCapture(captured)
-            } else if from.rank().is_pawn_rank(piece.color())
-                && to.rank().is_pawn_double_push_rank(piece.color())
-            {
+            } else if from.rank().is_pawn_rank(color) && to.rank().is_pawn_double_push_rank(color) {
                 MoveKind::PawnPushTwo
             } else {
                 MoveKind::Quiet

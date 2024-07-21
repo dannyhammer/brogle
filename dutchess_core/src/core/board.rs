@@ -856,10 +856,10 @@ impl BitBoard {
     pub const EDGES: Self = Self(0xFF818181818181FF);
     pub const NOT_EDGES: Self = Self(0x007E7E7E7E7E7E00);
     pub const CORNERS: Self = Self(0x8100000000000081);
-    pub const WHITE_KINGSIDE_CASTLE: Self = ray_between(Tile::F1, Tile::G1);
-    pub const WHITE_QUEENSIDE_CASTLE: Self = ray_between(Tile::D1, Tile::C1);
-    pub const BLACK_KINGSIDE_CASTLE: Self = ray_between(Tile::D8, Tile::C8);
-    pub const BLACK_QUEENSIDE_CASTLE: Self = ray_between(Tile::F8, Tile::G8);
+    pub const WHITE_KINGSIDE_CASTLE: Self = ray_between(Tile::E1, Tile::H1);
+    pub const WHITE_QUEENSIDE_CASTLE: Self = ray_between(Tile::E1, Tile::A1);
+    pub const BLACK_KINGSIDE_CASTLE: Self = ray_between(Tile::E8, Tile::H8);
+    pub const BLACK_QUEENSIDE_CASTLE: Self = ray_between(Tile::E8, Tile::A8);
 
     const RANK_END_INDICES: [usize; 8] = [7, 15, 23, 31, 39, 47, 55, 63];
 
