@@ -66,9 +66,24 @@ fn main() {
     // let fen = "rnB1kbnr/ppp1pppp/3q4/3p4/8/6P1/PPPPPP1P/RNBQK1NR b KQkq - 5 3"; /* b queenside castling isn't legal! */
     // let fen = "rnbq1bnr/pppppkpp/5p2/8/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQ - 3 3"; /* f6f5 isn't legal */
     // let fen = "rnbqkbnr/1p2pppp/8/p1Pp4/8/8/PPPKPPPP/RNBQ1BNR w kq d6 1 4"; /* Should be able to en passant c5d6 */
-    let fen = "rnb1k1nr/pppp1ppp/8/4p3/1b1P3q/2Q5/PPP1PPPP/RNB1KBNR w KQkq - 4 4"; /* Queen is pinned, cannot move from c3 */
-    let fen = "k7/8/8/7b/b7/5Q2/2Q5/3K4 w - - 0 1";
+    // let fen = "rnb1k1nr/pppp1ppp/8/4p3/1b1P3q/2Q5/PPP1PPPP/RNB1KBNR w KQkq - 4 4"; /* Queen is pinned, cannot move from c3 */
+    // let fen = "k7/8/8/7b/b7/5Q2/2Q5/3K4 w - - 0 1";
     // let fen = "k6b/r7/8/Q7/3Q4/8/8/K4Q1r w - - 0 1";
+    // let fen = "7k/8/8/r1pP1K2/8/8/8/8 w - c6 0 1";
+    // let fen = "8/1k6/8/2Pp3r/2K5/8/8/8 w - d6 4 4"; // Missing c5d6
+    // let fen = "8/8/1P2K3/8/2n5/1q6/8/5k2 b - - 0 1"; // Produces illegal d5e6 at depth 5
+    // let fen = "8/8/1n6/3K4/8/8/q7/5k2 w - - 2 3"; // d5e6 illegal
+    // let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    // let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"; // Kiwipete; fails at depth 5
+    // let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/P1N2Q2/1PPBBP1P/1R2K2b w Kkq - 1 3"; // e1g1 is illegal!
+
+    // let fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
+    // let fen = "r3k3/8/8/8/8/8/3K4/R7 b - - 3 3";
+    // let fen = "8/PPPk4/8/8/8/8/4Kppp/8 w - - 0 1 ";
+    // let fen = "Q2k4/2B5/8/8/8/8/4Kppp/8 b - - 4 3";
+    // let fen = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
+    let fen = "8/2p5/3p4/KP6/5pk1/7P/4P3/6R1 b - - 4 3";
+
     let mut game = Game::from_fen(fen).unwrap();
     println!("{game}\n\n");
 
@@ -78,7 +93,7 @@ fn main() {
     for (i, chessmove) in moves.into_iter().enumerate() {
         if !chessmove.is_empty() {
             let tile = Tile::from_index_unchecked(i);
-            if tile != Tile::C2 && tile != Tile::F3 {
+            if tile != Tile::G4 {
                 continue;
             }
             let piece = game.position().bitboards().piece_at(tile).unwrap();
@@ -116,7 +131,13 @@ fn main() {
     // let moves_to_make = ["c2c3", "b7b5", "d1a4", "b5b4"];
     // let moves_to_make = ["c2c3", "b7b5", "d1a4"]; // Missing b5b4
     // let moves_to_make = ["d2d4", "a7a5", "e1d2", "c7c5", "d4c5", "d7d5"]; // Missing c5d6
-    let moves_to_make = ["d2d4", "e7e5", "d1d2", "f8b4", "d2c3", "d8h4"]; // c3g3 is not legal!
+    // let moves_to_make = ["d2d4", "e7e5", "d1d2", "f8b4", "d2c3", "d8h4"]; // c3g3 is not legal!
+    // let moves_to_make = ["d8c7", "a5b4", "c7b7", "b4c4", "d7d5"]; // Illegal EP c5d6
+    // let moves_to_make = ["b3a2", "e6d5", "c4b6"]; // d5e6 is illegal!
+    // let moves_to_make = ["a1b1", "h3g2", "a2a3", "g2h1b"]; // kiwipete
+    // let moves_to_make = ["a1a2", "h8h1", "e1d2", "h1a1", "a2a1"]; // Missing e8c8
+    // let moves_to_make = ["a7a8q", "d7c7", "b7b8b", "c7d8", "b8c7"]; // Missing d8c7
+    let moves_to_make = ["b4b1", "h4g4", "b1g1", "h5h3", "g2h3"]; // Missing g4f5
 
     for mv in moves_to_make {
         let mv = Move::from_san(&game.position(), mv).unwrap();

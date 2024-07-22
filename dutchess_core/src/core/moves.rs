@@ -273,7 +273,12 @@ impl Move {
 
         let kind = if piece.kind().is_pawn() {
             if let Some(promote) = san.get(4..5) {
-                MoveKind::Promote(PieceKind::from_str(promote)?)
+                // If this move also captures, it's a capture-promote
+                if let Some(captured) = position.bitboards().piece_at(to) {
+                    MoveKind::CaptureAndPromote(captured, PieceKind::from_str(promote)?)
+                } else {
+                    MoveKind::Promote(PieceKind::from_str(promote)?)
+                }
             } else if let Some(captured) = position.bitboards().piece_at(to) {
                 MoveKind::Capture(captured)
             } else if Some(to) == position.ep_tile() && piece.is_pawn() {

@@ -407,10 +407,6 @@ impl ChessBoard {
         self.occupied().not()
     }
 
-    pub const fn enemy_or_empty(&self, color: Color) -> BitBoard {
-        self.color(color).not()
-    }
-
     /// Returns an instance of this [`ChessBoard`] that has all bits specified by `mask` cleared.
     pub const fn without(&self, mask: BitBoard) -> Self {
         let not_mask = mask.not();
@@ -434,17 +430,6 @@ impl ChessBoard {
             pieces,
         }
     }
-
-    /*
-    const fn kingless(&self, color: Color) -> Self {
-        self.without_piece(Piece::new(color, PieceKind::King))
-    }
-
-    const fn without_piece(&self, piece: Piece) -> Self {
-        let piece_board = self.piece(piece);
-        self.without(piece_board)
-    }
-    */
 
     /// Computes a [`BitBoard`] of all of the squares that can be attacked by [`Color`] pieces.
     pub fn squares_attacked_by(&self, color: Color) -> BitBoard {
@@ -489,7 +474,6 @@ impl ChessBoard {
     }
      */
 
-    /*
     /// Get all squares that are either empty or occupied by the enemy
     ///
     /// # Example
@@ -499,11 +483,9 @@ impl ChessBoard {
     /// let not_white = board.enemy_or_empty(Color::White);
     /// assert_eq!(not_white.to_hex_string(), "0xFFFFFFFFFFFF0000");
     /// ```
-    pub fn enemy_or_empty(&self, color: Color) -> BitBoard {
-        todo!("Remember that this causes issues with en passant!");
-        !self[color]
+    pub const fn enemy_or_empty(&self, color: Color) -> BitBoard {
+        self.color(color).not()
     }
-     */
 
     /// Creates a [`BoardIter`] to iterate over all occupied [`Tile`]s in this [`GameBoard`].
     pub const fn iter<'a>(&'a self) -> BoardIter<'a> {
