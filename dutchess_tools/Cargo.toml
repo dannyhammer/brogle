@@ -1,0 +1,30 @@
+[package]
+name = "dutchess_tools"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "bitboard_viewer"
+path = "src/bitboard_viewer.rs"
+
+[[bin]]
+name = "move_generator"
+path = "src/move_generator.rs"
+
+[[bin]]
+name = "perftree_script"
+path = "src/perftree_script.rs"
+
+[[bin]]
+name = "magic_generator"
+path = "src/magic_generator.rs"
+
+
+[dependencies]
+dutchess_engine = { path = "../dutchess_engine" }
+dutchess_core = { path = "../dutchess_core" }
+egui-macroquad = "0.15.0"
+macroquad = "0.4.8"
+chess = "3.2.0"
