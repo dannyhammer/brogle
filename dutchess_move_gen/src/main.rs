@@ -20,7 +20,10 @@ fn main() {
 }
 
 fn print_to_code(fen: &str) {
-    let board = Board::from_str(fen).expect("Invalid fen supplied");
+    let board = match Board::from_str(fen) {
+        Ok(board) => board,
+        Err(e) => panic!("{e}\nInvalid board: {fen}"),
+    };
 
     let legal_moves = MoveGen::new_legal(&board)
         .map(|m| format!("\"{m}\""))

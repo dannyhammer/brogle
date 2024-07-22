@@ -582,6 +582,32 @@ fn test_moves_from_k1r3b1_2P2P2_2p1p3_8_2K1pPq1_8_8_8_w_X_X_0_1() {
 
 #[test]
 #[allow(non_snake_case)]
+fn test_moves_from_1k1r4_8_8_7b_b2Q4_5Q2_2Q5_3K4_w_X_X_0_1() {
+    let pos = setup_game("1k1r4/8/8/7b/b2Q4/5Q2/2Q5/3K4 w - - 0 1");
+    let moves = pos.legal_moves();
+    let legal_moves = [
+        "c2b3", "c2a4", "f3e2", "f3g4", "f3h5", "d4d2", "d4d3", "d4d5", "d4d6", "d4d7", "d4d8",
+        "d1c1", "d1e1", "d1d2", "d1e2",
+    ];
+
+    lists_match(&pos, &moves, legal_moves);
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn test_moves_from_k6b_r7_8_Q7_3Q4_8_8_K4Q1r_w_X_X_0_1() {
+    let pos = setup_game("k6b/r7/8/Q7/3Q4/8/8/K4Q1r w - - 0 1");
+    let moves = pos.legal_moves();
+    let legal_moves = [
+        "f1b1", "f1c1", "f1d1", "f1e1", "f1g1", "f1h1", "d4b2", "d4c3", "d4e5", "d4f6", "d4g7",
+        "d4h8", "a5a2", "a5a3", "a5a4", "a5a6", "a5a7", "a1b1", "a1a2", "a1b2",
+    ];
+
+    lists_match(&pos, &moves, legal_moves);
+}
+
+#[test]
+#[allow(non_snake_case)]
 fn test_moves_from_1k6_8_8_8_8_8_8_R3K2R_w_KQ_X_0_1() {
     let pos = setup_game("1k6/8/8/8/8/8/8/R3K2R w KQ - 0 1");
     let moves = pos.legal_moves();

@@ -199,6 +199,25 @@ fn perft(position: Position, depth: usize) -> PerftResult {
     res
 }
 
+fn perft_nodes_only(position: Position, depth: usize) -> usize {
+    if depth == 0 {
+        return 1;
+    }
+
+    let mut nodes = 0;
+
+    let moves = position.legal_moves();
+    // println!("Valid moves: {moves:#?}");
+    for chessmove in moves {
+        let mut cloned = position.clone();
+        cloned.make_move(chessmove);
+        nodes += perft_nodes_only(cloned, depth - 1);
+        // position.unmake_move(chessmove);
+    }
+
+    nodes
+}
+
 fn test_starting_pos_perft(depth: usize) {
     test_perft_fen(depth, DEFAULT_FEN, &STARTING_PERFT_RESULTS);
 }
@@ -219,6 +238,12 @@ fn test_perft_fen(depth: usize, fen: &str, expected: &[PerftResult]) {
     assert_eq!(res.checks, expected[depth].checks);
     // assert_eq!(res.castles, expected[depth].castles);
     assert_eq!(res.checkmates, expected[depth].checkmates);
+}
+
+fn test_perft_fen_nodes(depth: usize, fen: &str, expected: usize) {
+    let position = Position::new().from_fen(fen).unwrap();
+    let res = perft_nodes_only(position, depth);
+    assert_eq!(res, expected);
 }
 
 #[test]
@@ -256,9 +281,52 @@ fn perft_3() {
 fn perft_4() {
     test_starting_pos_perft(4);
 }
+
+#[test]
+fn perft_5() {
+    test_starting_pos_perft(5);
+}
+
  */
 
-// #[test]
-// fn perft_5() {
-//     test_perft(5);
-// }
+#[cfg(test)]
+mod nonspecial_perfts {
+    use super::*;
+
+    #[test]
+    fn test_nonspecial_perft_1() {
+        test_perft_fen_nodes(
+            6,
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            119060324,
+        );
+    }
+
+    #[test]
+    fn test_nonspecial_perft_2() {
+        test_perft_fen_nodes(
+            5,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -",
+            193690690,
+        );
+    }
+
+    #[test]
+    fn test_nonspecial_perft_3() {
+        test_perft_fen_nodes(7, "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -", 178633661);
+    }
+
+    #[test]
+    fn test_nonspecial_perft_4() {
+        test_perft_fen_nodes(
+            6,
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            706045033,
+        );
+    }
+
+    #[test]
+    fn test_nonspecial_perft_5() {
+        test_perft_fen_nodes(5, "1k6/1b6/8/8/7R/8/8/4K2R b K - 0 1", 1063513);
+    }
+}

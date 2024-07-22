@@ -516,8 +516,8 @@ impl Position {
         // Some pieces may be pinned, preventing them from moving freely without endangering the king
         let (pinmask_hv, pinmask_diag) = self.pinmasks(color);
 
-        // println!("PINMASK_HV  :\n{pinmask_hv:?}");
-        // println!("PINMASK_DIAG:\n{pinmask_diag:?}");
+        // eprintln!("PINMASK_HV  :\n{pinmask_hv:?}");
+        // eprintln!("PINMASK_DIAG:\n{pinmask_diag:?}");
         // println!("PINMASK:\n{:?}", pinmask_file | pinmask_rank | pinmask_diag);
 
         // let ep_bb = BitBoard::from_option_tile(self.ep_tile());
@@ -590,13 +590,26 @@ impl Position {
                 let enemy = self.bitboards().color(color.opponent());
 
                 let ep_bb = if let Some(ep_tile) = self.ep_tile() {
+                    // let ep_rank = tile.forward_by(color, 1).unwrap().rank();
+                    // if ep_tile.rank() == ep_rank
+                    //     && (Some(ep_tile.file()) == tile.file().increase()
+                    //         || Some(ep_tile.file()) == tile.file().decrease())
+                    // {
+                    // println!("{piece} at {tile} CAN capture EP at {ep_tile}. Should it?");
                     // Construct a board without the EP target and EP capturer
                     let ep_bb = ep_tile.bitboard();
+                    // println!("EP BB:\n{ep_bb}");
                     let ep_pawn = ep_bb.advance_by(color.opponent(), 1);
-                    let board_without_ep = self.bitboards().without(piece_bb | ep_pawn);
+                    // println!("EP PAWN:\n{ep_pawn}");
+                    let board_after_ep = self
+                        .bitboards()
+                        .without(piece_bb | ep_pawn)
+                        .with_piece(*piece, ep_tile.backward_by(color, 1).unwrap());
+                    // println!("AFTER EP:\n{board_after_ep}");
 
                     // Get all enemy attacks on the board without these pieces
-                    let enemy_attacks = board_without_ep.squares_attacked_by(color.opponent());
+                    let enemy_attacks = board_after_ep.squares_attacked_by(color.opponent());
+                    // println!("Enemy attacks:\n{enemy_attacks}");
 
                     // If the enemy could now attack our King, en passant is not legal
                     if enemy_attacks.contains(king_bb) {
@@ -607,6 +620,10 @@ impl Position {
                         // Otherwise, en passant is safe
                         ep_bb
                     }
+                    // } else {
+                    // println!("{piece} at {tile} cannot capture EP at {ep_tile}");
+                    // BitBoard::EMPTY_BOARD
+                    // }
                 } else {
                     BitBoard::EMPTY_BOARD
                 };
@@ -952,16 +969,6 @@ impl Position {
                 if captured.is_king() {
                     todo!("{color:?} King ({captured}) was captured by {piece} by {chessmove}!")
                 }
-                piece = piece.promoted(promotion);
-            }
-            MoveKind::EnPassantCaptureAndPromote(captured, promotion) => {
-                let captured_tile = chessmove.to().backward_by(color, 1).unwrap();
-                self.bitboards.clear(captured_tile);
-
-                if captured.is_king() {
-                    todo!("{color:?} King ({captured}) was captured by {piece} by {chessmove}!")
-                }
-
                 piece = piece.promoted(promotion);
             }
             MoveKind::PawnPushTwo => self.ep_tile = chessmove.from().forward_by(color, 1),

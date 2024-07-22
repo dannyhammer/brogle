@@ -26,8 +26,8 @@ pub enum MoveKind {
     /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming another kind of piece, such as a Knight or Queen.
     Promote(PieceKind),
 
+    /// Involves a Pawn moving onto a square on the opponent's side of the board that is occupied by an opponent's piece, removing it from the board, and promoting this Pawn to something else.
     CaptureAndPromote(Piece, PieceKind),
-    EnPassantCaptureAndPromote(Piece, PieceKind),
 }
 
 /// Represents a move made on a chess board, including whether a piece is to be promoted.
@@ -141,8 +141,7 @@ impl Move {
         match self.kind() {
             MoveKind::Capture(_)
             | MoveKind::EnPassantCapture(_)
-            | MoveKind::CaptureAndPromote(_, _)
-            | MoveKind::EnPassantCaptureAndPromote(_, _) => true,
+            | MoveKind::CaptureAndPromote(_, _) => true,
             _ => false,
         }
     }
@@ -151,8 +150,7 @@ impl Move {
         match self.kind() {
             MoveKind::Capture(captured)
             | MoveKind::EnPassantCapture(captured)
-            | MoveKind::CaptureAndPromote(captured, _)
-            | MoveKind::EnPassantCaptureAndPromote(captured, _) => Some(captured),
+            | MoveKind::CaptureAndPromote(captured, _) => Some(captured),
             _ => None,
         }
     }
@@ -318,9 +316,7 @@ impl Move {
     /// ```
     pub fn to_uci(&self) -> String {
         match self.kind() {
-            MoveKind::Promote(promote)
-            | MoveKind::CaptureAndPromote(_, promote)
-            | MoveKind::EnPassantCaptureAndPromote(_, promote) => {
+            MoveKind::Promote(promote) | MoveKind::CaptureAndPromote(_, promote) => {
                 format!("{}{}{}", self.from(), self.to(), promote)
             }
             _ => format!("{}{}", self.from(), self.to()),

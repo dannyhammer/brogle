@@ -1,5 +1,6 @@
 use super::{BitBoard, Color, Piece, PieceKind, Position, Tile};
 
+include!("rays_between.rs");
 include!("rays.rs");
 include!("pregenerated_magics.rs");
 struct MagicEntry {
@@ -27,24 +28,6 @@ const WHITE_PAWN_ATTACKS: [BitBoard; 64] =
 const BLACK_PAWN_ATTACKS: [BitBoard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/black_pawn_attack.blob")) };
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-/// Represents all possible locations that can be moved to from a single [`Tile`], including whether the movement can result in a promotion.
-pub(crate) struct Mobility {
-    pub(crate) origin: Tile,
-    pub(crate) destinations: BitBoard,
-    pub(crate) possible_promotions: u8,
-}
-
-impl Mobility {
-    // const fn new(origin: Tile) -> Self {
-    //     Self {
-    //         origin,
-    //         destinations: BitBoard::EMPTY_BOARD,
-    //         possible_promotions: 0,
-    //     }
-    // }
-}
-
 pub const fn default_movement_for(piece: &Piece, tile: Tile, blockers: BitBoard) -> BitBoard {
     // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
     match piece.kind() {
@@ -65,6 +48,10 @@ const fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
 }
 
 pub const fn ray_between(from: Tile, to: Tile) -> BitBoard {
+    RAY_BETWEEN[from.index()][to.index()]
+}
+
+pub const fn ray_containing(from: Tile, to: Tile) -> BitBoard {
     RAYS[from.index()][to.index()]
 }
 

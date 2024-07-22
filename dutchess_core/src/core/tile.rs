@@ -284,6 +284,28 @@ impl Tile {
         !self.is_light()
     }
 
+    /// Returns `true` if `self` and `other` lie on the same diagonal.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::core::Tile;
+    /// assert_eq!(Tile::C5.is_diagonal_to(Tile::A3), true);
+    /// assert_eq!(Tile::H1.is_diagonal_to(Tile::A8), true);
+    /// assert_eq!(Tile::F7.is_diagonal_to(Tile::F7), true);
+    /// assert_eq!(Tile::A1.is_diagonal_to(Tile::B3), false);
+    /// assert_eq!(Tile::A4.is_diagonal_to(Tile::H3), false);
+    /// assert_eq!(Tile::A4.is_diagonal_to(Tile::H4), false);
+    /// ```
+    pub const fn is_diagonal_to(&self, other: Self) -> bool {
+        if self.0 == other.0 {
+            return true;
+        }
+
+        (self.0 % 9 == other.0 % 9 || self.0 % 7 == other.0 % 7) // On same diag
+            && self.rank().0 != other.rank().0 // Not on same rank
+            && self.file().0 != other.file().0 // Not on same file
+    }
+
     /// Returns the [`Color`] of this [`Tile`].
     ///
     /// # Example
