@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::MAX_NUM_MOVES;
+
 use super::{
     bishop_moves, default_movement_for, king_moves, knight_moves, pawn_attacks, pawn_pushes,
     queen_moves, ray_between, ray_containing, rook_moves, utils::FEN_STARTPOS, BitBoard,
@@ -308,7 +310,7 @@ impl Position {
 
     /// Generates a FEN string from this [`Position`].
     pub fn to_fen(&self) -> String {
-        let placements = self.bitboards.fen();
+        let placements = self.bitboards().fen();
         let active_color = self.current_player;
         let castling = self.castling_rights.to_uci();
 
@@ -332,6 +334,10 @@ impl Position {
         &self.bitboards
     }
 
+    pub fn bitboards_mut(&mut self) -> &mut ChessBoard {
+        &mut self.bitboards
+    }
+
     pub const fn ep_tile(&self) -> Option<Tile> {
         self.ep_tile
     }
@@ -345,7 +351,7 @@ impl Position {
     }
 
     pub fn legal_moves_for(&self, color: Color) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(218);
+        let mut moves = Vec::with_capacity(MAX_NUM_MOVES);
 
         let mobility = self.compute_legal_for(color);
         for (i, moves_bb) in mobility.into_iter().enumerate() {
@@ -385,11 +391,6 @@ impl Position {
                         // A capture is occurring, so check if it's en passant
                         if self.bitboards().piece_at(to).is_none() {
                             // A piece was NOT at the captured spot, so this was en passant
-                            // let ep_tile = self.ep_tile().unwrap();
-                            // let ep_target = ep_tile.backward_by(color, 1).unwrap();
-                            // let captured = self.bitboards().piece_at(ep_target).unwrap();
-
-                            // The pawn captured on an empty square; this is en passant
                             kind = MoveKind::EnPassantCapture;
                         }
                     }
@@ -878,123 +879,67 @@ impl Position {
         // }
 
         // Remove the piece from it's previous location, exiting early if there is no piece there
-        let Some(mut piece) = self.bitboards.take(chessmove.from()) else {
+        let Some(mut piece) = self.bitboards_mut().take(chessmove.from()) else {
             return;
         };
 
-        if piece.is_pawn() {
-            self.halfmove = 0;
-        }
-
         let color = piece.color();
+        let to = chessmove.to();
+        let from = chessmove.from();
 
         // Clear the EP tile from the last move
         self.ep_tile = None;
+        // Increment move counters
+        self.halfmove += 1; // This is reset if a capture occurs or a pawn moves
+        self.fullmove += self.current_player().index();
 
-        // Handle special cases like promotions, castling, and en passant
-        match chessmove.kind() {
-            MoveKind::Quiet => {}
-            // Remove captured piece from board
-            MoveKind::Capture => {
-                let captured = self.bitboards.take(chessmove.to()).unwrap();
-
-                // Disable castling, if necessary
-                if captured.is_rook() && chessmove.to().rank().is_home_rank(captured.color()) {
-                    match chessmove.to() {
-                        Tile::H1 | Tile::H8 => {
-                            self.castling_rights.kingside[captured.color()] = false;
-                        }
-                        Tile::A1 | Tile::A8 => {
-                            self.castling_rights.queenside[captured.color()] = false;
-                        }
-                        _ => {}
-                    }
-                }
-
-                self.halfmove = 0;
-            }
-            MoveKind::KingsideCastle => {
-                let (old_rook_tile, new_rook_tile) = if color.is_white() {
-                    (Tile::H1, Tile::F1)
-                } else {
-                    (Tile::H8, Tile::F8)
-                };
-
-                // Move the rook. The King is already handled before and after this match statement.
-                let rook = self.bitboards.take(old_rook_tile).unwrap_or_else(|| {
-                    panic!(
-                        "Tried to get {color} rook at {old_rook_tile}. State: {self}\nBoard:\n{self:?}\nHistory: {:?}\n{:?}",
-                        self.history,
-                        self.bitboards(),
-                    )
-                });
-                self.bitboards.set(rook, new_rook_tile);
-
-                self.castling_rights.kingside[color] = false;
-                self.castling_rights.queenside[color] = false;
-            }
-            MoveKind::QueensideCastle => {
-                let (old_rook_tile, new_rook_tile) = if color.is_white() {
-                    (Tile::A1, Tile::D1)
-                } else {
-                    (Tile::A8, Tile::D8)
-                };
-
-                // Move the rook. The King is already handled before and after this match statement.
-                let rook = self.bitboards.take(old_rook_tile).unwrap();
-                self.bitboards.set(rook, new_rook_tile);
-
-                // Disable castling
-                self.castling_rights.kingside[color] = false;
-                self.castling_rights.queenside[color] = false;
-            }
-            // In En Passant, we need to remove the piece from one rank behind
-            // Safe unwrap because the pawn is always guaranteed to be in front of this location
-            MoveKind::EnPassantCapture => {
-                let captured_tile = chessmove.to().backward_by(color, 1).unwrap();
-                self.bitboards.clear(captured_tile);
-
-                // There is no need to check if the captured piece was a Rook here because En Passant can never capture a Rook
-            }
-            MoveKind::Promote(promotion) => piece = piece.promoted(promotion),
-            MoveKind::CaptureAndPromote(promotion) => {
-                let captured = self.bitboards.take(chessmove.to()).unwrap();
+        if chessmove.is_capture() {
+            if chessmove.is_en_passant() {
+                let captured_tile = to.backward_by(color, 1).unwrap();
+                self.bitboards_mut().clear(captured_tile);
+            } else {
+                let captured = self.bitboards_mut().take(to).unwrap();
 
                 // Disable castling, if necessary
-                if captured.is_rook() && chessmove.to().rank().is_home_rank(captured.color()) {
-                    match chessmove.to() {
-                        Tile::H8 | Tile::H1 => {
-                            self.castling_rights.kingside[captured.color()] = false;
-                        }
-                        Tile::A1 | Tile::A8 => {
-                            self.castling_rights.queenside[captured.color()] = false;
-                        }
-                        _ => {}
-                    }
+                if captured.is_rook() && to.rank().is_home_rank(captured.color()) {
+                    // Disable castling if an unmoved rook was captured
+                    let can_queenside = to != [Tile::A1, Tile::A8][captured.color()];
+                    let can_kingside = to != [Tile::H1, Tile::H8][captured.color()];
+
+                    self.castling_rights.queenside[captured.color()] &= can_queenside;
+                    self.castling_rights.kingside[captured.color()] &= can_kingside;
                 }
-                self.halfmove = 0;
-                piece = piece.promoted(promotion);
-            }
-            MoveKind::PawnPushTwo => self.ep_tile = chessmove.from().forward_by(color, 1),
+            };
+
+            // Reset halfmove counter, since a capture occurred
+            self.halfmove = 0;
+        } else if chessmove.is_pawn_double_push() {
+            self.ep_tile = from.forward_by(color, 1);
+        } else if chessmove.is_castle() {
+            let castle_index = chessmove.is_short_castle() as usize;
+            let old_rook_tile = [[Tile::A1, Tile::A8], [Tile::H1, Tile::H8]][castle_index][color];
+            let new_rook_tile = [[Tile::D1, Tile::D8], [Tile::F1, Tile::F8]][castle_index][color];
+
+            // Move the rook. The King is already handled before and after this match statement.
+            let rook = self.bitboards_mut().take(old_rook_tile).unwrap();
+            self.bitboards_mut().set(rook, new_rook_tile);
+
+            // Disable castling
+            self.castling_rights.kingside[color] = false;
+            self.castling_rights.queenside[color] = false;
         }
 
         match piece.kind() {
+            PieceKind::Pawn => self.halfmove = 0,
             PieceKind::Rook => {
-                // Disable this side's castling
-                let (queenside_rook_tile, kingside_rook_tile) = if color.is_white() {
-                    (Tile::A1, Tile::H1)
-                } else {
-                    (Tile::A8, Tile::H8)
-                };
+                // Disable castling if a rook moved
+                let queenside_rook_tile = [Tile::A1, Tile::A8][color];
+                let kingside_rook_tile = [Tile::H1, Tile::H8][color];
 
-                if chessmove.from() == queenside_rook_tile {
-                    self.castling_rights.queenside[color] = false;
-                } else if chessmove.from() == kingside_rook_tile {
-                    self.castling_rights.kingside[color] = false;
-                }
+                self.castling_rights.queenside[color] &= from != queenside_rook_tile;
+                self.castling_rights.kingside[color] &= from != kingside_rook_tile;
             }
             PieceKind::King => {
-                // eprintln!("{chessmove} moves a King. Removing all rights from {color}");
                 // Disable all castling
                 self.castling_rights.kingside[color] = false;
                 self.castling_rights.queenside[color] = false;
@@ -1002,14 +947,13 @@ impl Position {
             _ => {}
         }
 
-        // Place the piece in it's new position
-        self.bitboards.set(piece, chessmove.to());
-
-        // Increment move counters
-        if !(chessmove.is_capture() || piece.is_pawn()) {
-            self.halfmove += 1;
+        // Now we check for promotions, since all special cases for Pawns and Rooks have been dealt with
+        if let Some(promotion) = chessmove.promotion() {
+            piece = piece.promoted(promotion);
         }
-        self.fullmove += self.current_player().index();
+
+        // Place the piece in it's new position
+        self.bitboards_mut().set(piece, to);
 
         // Next player's turn
         self.toggle_current_player();
@@ -1021,7 +965,7 @@ impl Position {
     /*
     pub fn unmake_move(&mut self, chessmove: Move) {
         // Safe unwrap because there is guaranteed to be a piece at the destination of a move.
-        let mut piece = self.bitboards.take(chessmove.to()).unwrap();
+        let mut piece = self.bitboards_mut().take(chessmove.to()).unwrap();
 
         let color = piece.color();
 
@@ -1057,7 +1001,7 @@ impl Position {
                 }
             }
             // Put the captured piece back
-            MoveKind::Capture => unimplemented!(), // self.bitboards.set(captured, chessmove.to()),
+            MoveKind::Capture => unimplemented!(), // self.bitboards_mut().set(captured, chessmove.to()),
             MoveKind::KingsideCastle => {
                 let (new_king_tile, old_king_tile, new_rook_tile, old_rook_tile) =
                     if piece.color().is_white() {
@@ -1067,10 +1011,10 @@ impl Position {
                     };
 
                 // Swap king and rook
-                let king = self.bitboards.take(old_king_tile).unwrap();
-                let rook = self.bitboards.take(old_rook_tile).unwrap();
-                self.bitboards.set(king, new_king_tile);
-                self.bitboards.set(rook, new_rook_tile);
+                let king = self.bitboards_mut().take(old_king_tile).unwrap();
+                let rook = self.bitboards_mut().take(old_rook_tile).unwrap();
+                self.bitboards_mut().set(king, new_king_tile);
+                self.bitboards_mut().set(rook, new_rook_tile);
 
                 // Re-enable castling
                 self.castling_rights.kingside[piece.color()] = true;
@@ -1084,10 +1028,10 @@ impl Position {
                     };
 
                 // Swap king and rook
-                let king = self.bitboards.take(old_king_tile).unwrap();
-                let rook = self.bitboards.take(old_rook_tile).unwrap();
-                self.bitboards.set(king, new_king_tile);
-                self.bitboards.set(rook, new_rook_tile);
+                let king = self.bitboards_mut().take(old_king_tile).unwrap();
+                let rook = self.bitboards_mut().take(old_rook_tile).unwrap();
+                self.bitboards_mut().set(king, new_king_tile);
+                self.bitboards_mut().set(rook, new_rook_tile);
 
                 // Re-enable castling
                 self.castling_rights.queenside[piece.color()] = true;
@@ -1097,7 +1041,7 @@ impl Position {
                 // Safe unwrap because the pawn is always guaranteed to be in front of this location
                 let ep_tile = chessmove.to();
                 let captured_tile = ep_tile.backward_by(piece.color(), 1).unwrap();
-                self.bitboards.set(
+                self.bitboards_mut().set(
                     Piece::new(piece.color().opponent(), PieceKind::Pawn),
                     captured_tile,
                 );
@@ -1109,7 +1053,7 @@ impl Position {
         }
 
         // Return the piece to it's original tile
-        self.bitboards.set(piece, chessmove.from());
+        self.bitboards_mut().set(piece, chessmove.from());
 
         // Decrement move counters
         self.halfmove -= 1;

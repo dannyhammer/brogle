@@ -186,8 +186,8 @@ impl Move {
     /// # Example
     /// ```
     /// # use dutchess_core::{Move, MoveKind, PieceKind, Tile};
-    /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
-    /// assert_eq!(e7e8Q.kind(), MoveKind::Promote(PieceKind::Queen));
+    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
+    /// assert_eq!(e7e8q.kind(), MoveKind::Promote(PieceKind::Queen));
     /// ```
     pub const fn kind(&self) -> MoveKind {
         let bits = self.0 & Self::FLG_MASK;
@@ -223,6 +223,55 @@ impl Move {
         self.0 & Self::FLAG_CAPTURE != 0
     }
 
+    /// Returns `true` if this [`Move`] is en passant.
+    pub const fn is_en_passant(&self) -> bool {
+        (self.0 & Self::FLG_MASK) ^ Self::FLAG_EP_CAPTURE == 0
+    }
+
+    /// Returns `true` if this [`Move`] is a short (kingside) castle.
+    pub const fn is_short_castle(&self) -> bool {
+        (self.0 & Self::FLG_MASK) ^ Self::FLAG_CASTLE_SHORT == 0
+    }
+
+    /// Returns `true` if this [`Move`] is a long (queenside) castle.
+    pub const fn is_long_castle(&self) -> bool {
+        (self.0 & Self::FLG_MASK) ^ Self::FLAG_CASTLE_LONG == 0
+    }
+
+    /// Returns `true` if this [`Move`] is a short (kingside) or long (queenside) castle.
+    pub const fn is_castle(&self) -> bool {
+        self.is_short_castle() || self.is_long_castle()
+    }
+
+    /// Returns `true` if this [`Move`] is a long (queenside) castle.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Move, Tile, MoveKind};
+    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
+    /// assert_eq!(e2e4.is_pawn_double_push(), true);
+    /// ```
+    pub const fn is_pawn_double_push(&self) -> bool {
+        (self.0 & Self::FLG_MASK) ^ Self::FLAG_PAWN_DOUBLE == 0
+    }
+
+    /// Returns `true` if this [`Move`] is a promotion of any kind.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Move, MoveKind, PieceKind, Tile};
+    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
+    /// assert_eq!(e7e8q.is_promotion(), true);
+    ///
+    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::CaptureAndPromote(PieceKind::Queen));
+    /// assert_eq!(e7e8q.is_promotion(), true);
+    /// ```
+    pub const fn is_promotion(&self) -> bool {
+        // The flag bit for "promotion" is the most-significant bit.
+        // Internally, FLAG_PROMO_KNIGHT has flag bits `1000`, so we can use it as a mask for promotions.
+        self.0 & Self::FLAG_PROMO_KNIGHT != 0
+    }
+
     /// Returns `true` if this [`Move`] is a capture of any kind.
     ///
     /// # Example
@@ -235,10 +284,10 @@ impl Move {
     /// ```
     pub const fn promotion(&self) -> Option<PieceKind> {
         match self.0 & Self::FLG_MASK {
-            Self::FLAG_CAPTURE_PROMO_QUEEN => Some(PieceKind::Queen),
-            Self::FLAG_CAPTURE_PROMO_KNIGHT => Some(PieceKind::Knight),
-            Self::FLAG_CAPTURE_PROMO_ROOK => Some(PieceKind::Rook),
-            Self::FLAG_CAPTURE_PROMO_BISHOP => Some(PieceKind::Bishop),
+            Self::FLAG_PROMO_QUEEN | Self::FLAG_CAPTURE_PROMO_QUEEN => Some(PieceKind::Queen),
+            Self::FLAG_PROMO_KNIGHT | Self::FLAG_CAPTURE_PROMO_KNIGHT => Some(PieceKind::Knight),
+            Self::FLAG_PROMO_ROOK | Self::FLAG_CAPTURE_PROMO_ROOK => Some(PieceKind::Rook),
+            Self::FLAG_PROMO_BISHOP | Self::FLAG_CAPTURE_PROMO_BISHOP => Some(PieceKind::Bishop),
             _ => None,
         }
     }
@@ -344,5 +393,110 @@ impl fmt::Display for Move {
 impl fmt::Debug for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} ({:?})", self.to_uci(), self.kind())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_move_is_capture() {
+        let (from, to) = (Tile::A1, Tile::H8);
+        assert!(!Move::new(from, to, MoveKind::Quiet).is_capture());
+        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_capture());
+        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_capture());
+        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_capture());
+        assert!(Move::new(from, to, MoveKind::Capture).is_capture());
+        assert!(Move::new(from, to, MoveKind::EnPassantCapture).is_capture());
+        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_capture());
+        assert!(Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Queen)).is_capture());
+    }
+
+    #[test]
+    fn test_move_is_en_passant() {
+        let (from, to) = (Tile::A1, Tile::H8);
+        assert!(!Move::new(from, to, MoveKind::Quiet).is_en_passant());
+        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_en_passant());
+        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_en_passant());
+        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_en_passant());
+        assert!(!Move::new(from, to, MoveKind::Capture).is_en_passant());
+        assert!(Move::new(from, to, MoveKind::EnPassantCapture).is_en_passant());
+        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_en_passant());
+        assert!(
+            !Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Queen)).is_en_passant()
+        );
+    }
+
+    #[test]
+    fn test_move_is_short_castle() {
+        let (from, to) = (Tile::A1, Tile::H8);
+        assert!(!Move::new(from, to, MoveKind::Quiet).is_short_castle());
+        assert!(Move::new(from, to, MoveKind::KingsideCastle).is_short_castle());
+        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_short_castle());
+        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_short_castle());
+        assert!(!Move::new(from, to, MoveKind::Capture).is_short_castle());
+        assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_short_castle());
+        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_short_castle());
+        assert!(
+            !Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Queen)).is_short_castle()
+        );
+    }
+
+    #[test]
+    fn test_move_is_long_castle() {
+        let (from, to) = (Tile::A1, Tile::H8);
+        assert!(!Move::new(from, to, MoveKind::Quiet).is_long_castle());
+        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_long_castle());
+        assert!(Move::new(from, to, MoveKind::QueensideCastle).is_long_castle());
+        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_long_castle());
+        assert!(!Move::new(from, to, MoveKind::Capture).is_long_castle());
+        assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_long_castle());
+        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_long_castle());
+        assert!(
+            !Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Queen)).is_long_castle()
+        );
+    }
+
+    #[test]
+    fn test_move_is_castle() {
+        let (from, to) = (Tile::A1, Tile::H8);
+        assert!(!Move::new(from, to, MoveKind::Quiet).is_castle());
+        assert!(Move::new(from, to, MoveKind::KingsideCastle).is_castle());
+        assert!(Move::new(from, to, MoveKind::QueensideCastle).is_castle());
+        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_castle());
+        assert!(!Move::new(from, to, MoveKind::Capture).is_castle());
+        assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_castle());
+        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_castle());
+        assert!(!Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Queen)).is_castle());
+    }
+
+    #[test]
+    fn test_move_is_pawn_double_push() {
+        let (from, to) = (Tile::A1, Tile::H8);
+        assert!(!Move::new(from, to, MoveKind::Quiet).is_pawn_double_push());
+        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_pawn_double_push());
+        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_pawn_double_push());
+        assert!(Move::new(from, to, MoveKind::PawnPushTwo).is_pawn_double_push());
+        assert!(!Move::new(from, to, MoveKind::Capture).is_pawn_double_push());
+        assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_pawn_double_push());
+        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_pawn_double_push());
+        assert!(
+            !Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Queen))
+                .is_pawn_double_push()
+        );
+    }
+
+    #[test]
+    fn test_move_is_promotion() {
+        let (from, to) = (Tile::A1, Tile::H8);
+        assert!(!Move::new(from, to, MoveKind::Quiet).is_promotion());
+        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_promotion());
+        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_promotion());
+        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_promotion());
+        assert!(!Move::new(from, to, MoveKind::Capture).is_promotion());
+        assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_promotion());
+        assert!(Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_promotion());
+        assert!(Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Queen)).is_promotion());
     }
 }
