@@ -3,7 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use super::{ChessError, Color};
+use super::{ChessError, Color, NUM_PIECE_TYPES};
 
 /// Represents the kind (or "class") that a chess piece can be.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -138,22 +138,20 @@ impl PieceKind {
 
     /// Fetches a human-readable name for this [`PieceKind`].
     ///
-    /// Will always be capitalized.
-    ///
     /// # Example
     /// ```
     /// # use dutchess_core::PieceKind;
-    /// let queen = PieceKind::Queen.name();
-    /// assert_eq!(queen, "Queen");
+    /// let queen = PieceKind::Queen;
+    /// assert_eq!(queen.name(), "queen");
     /// ```
     pub const fn name(&self) -> &'static str {
         match self {
-            Self::Pawn => "Pawn",
-            Self::Knight => "Knight",
-            Self::Bishop => "Bishop",
-            Self::Rook => "Rook",
-            Self::Queen => "Queen",
-            Self::King => "King",
+            Self::Pawn => "pawn",
+            Self::Knight => "knight",
+            Self::Bishop => "bishop",
+            Self::Rook => "rook",
+            Self::Queen => "queen",
+            Self::King => "king",
         }
     }
 
@@ -194,6 +192,13 @@ impl<T> Index<PieceKind> for [T; 6] {
 impl<T> IndexMut<PieceKind> for [T; 6] {
     fn index_mut(&mut self, index: PieceKind) -> &mut Self::Output {
         &mut self[index.index()]
+    }
+}
+
+impl AsRef<str> for PieceKind {
+    /// Alias for [`PieceKind::name`].
+    fn as_ref(&self) -> &str {
+        self.name()
     }
 }
 
@@ -272,6 +277,16 @@ impl Piece {
         }
     }
 
+    /// Returns `true` if this [`Piece`]'s [`Color`] is `White`.
+    pub const fn is_white(&self) -> bool {
+        self.0 & 8 == 0
+    }
+
+    /// Returns `true` if this [`Piece`]'s [`Color`] is `Black`.
+    pub const fn is_black(&self) -> bool {
+        self.0 & 8 == 0
+    }
+
     /// Fetches the [`PieceKind`] of this [`Piece`].
     ///
     /// # Example
@@ -283,16 +298,6 @@ impl Piece {
     pub const fn kind(&self) -> PieceKind {
         // Clear the color bit
         PieceKind::from_bits_unchecked(self.0 & !8)
-    }
-
-    /// Returns `true` if this [`Piece`]'s [`Color`] is `White`.
-    pub const fn is_white(&self) -> bool {
-        self.color().is_white()
-    }
-
-    /// Returns `true` if this [`Piece`]'s [`Color`] is `Black`.
-    pub const fn is_black(&self) -> bool {
-        self.color().is_black()
     }
 
     /// Returns `true` if this [`Piece`] is a Pawn.
@@ -438,27 +443,31 @@ impl Piece {
     }
 }
 
-impl<T> Index<Piece> for [T; 6] {
+impl<T> Index<Piece> for [T; NUM_PIECE_TYPES] {
     type Output = T;
+    /// [`Piece`] can be used to index into a list of six elements.
     fn index(&self, index: Piece) -> &Self::Output {
         &self[index.kind().index()]
     }
 }
 
-impl<T> IndexMut<Piece> for [T; 6] {
+impl<T> IndexMut<Piece> for [T; NUM_PIECE_TYPES] {
+    /// [`Piece`] can be used to index into a list of six elements.
     fn index_mut(&mut self, index: Piece) -> &mut Self::Output {
         &mut self[index.kind().index()]
     }
 }
 
-impl<T> Index<Piece> for [T; 12] {
+impl<T> Index<Piece> for [T; 2 * NUM_PIECE_TYPES] {
     type Output = T;
+    /// [`Piece`] can be used to index into a list of twelve elements.
     fn index(&self, index: Piece) -> &Self::Output {
         &self[index.index()]
     }
 }
 
-impl<T> IndexMut<Piece> for [T; 12] {
+impl<T> IndexMut<Piece> for [T; 2 * NUM_PIECE_TYPES] {
+    /// [`Piece`] can be used to index into a list of twelve elements.
     fn index_mut(&mut self, index: Piece) -> &mut Self::Output {
         &mut self[index.index()]
     }

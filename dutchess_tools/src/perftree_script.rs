@@ -42,7 +42,7 @@ fn main() {
 
     let mut position = Position::new().from_fen(fen).expect("Bad fen");
     for move_str in moves.split_ascii_whitespace() {
-        let parsed = Move::from_san(&position, move_str).unwrap();
+        let parsed = Move::from_uci(&position, move_str).unwrap();
 
         eprintln!("Applying {parsed} to {position}");
         position.make_move(parsed);

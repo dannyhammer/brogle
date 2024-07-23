@@ -3,10 +3,10 @@ use std::{
     ops::{Index, IndexMut, Not},
 };
 
-use super::ChessError;
+use super::{ChessError, NUM_COLORS};
 
 /// Represents the color of a player, piece, tile, etc. within a chess board.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Color {
     White,
@@ -16,7 +16,6 @@ pub enum Color {
 impl Color {
     /// Returns `true` if this [`Color`] is White.
     pub const fn is_white(&self) -> bool {
-        // *self == Self::White
         matches!(self, Self::White)
     }
 
@@ -137,6 +136,21 @@ impl Color {
             Self::Black => 'b',
         }
     }
+
+    /// Fetches a human-readable name for this [`Color`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Color;
+    /// let white = Color::White;
+    /// assert_eq!(white.name(), "white");
+    /// ```
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::White => "white",
+            Self::Black => "black",
+        }
+    }
 }
 
 impl Default for Color {
@@ -148,25 +162,47 @@ impl Default for Color {
 
 impl Not for Color {
     type Output = Self;
+    /// Negating [`Color::White`] yields [`Color::Black`] and vice versa.
     fn not(self) -> Self::Output {
         self.opponent()
     }
 }
 
-impl<T> Index<Color> for [T; 2] {
+impl<T> Index<Color> for [T; NUM_COLORS] {
     type Output = T;
+    /// [`Color`] can be used to index into a list of two elements.
     fn index(&self, index: Color) -> &Self::Output {
         &self[index.index()]
     }
 }
 
-impl<T> IndexMut<Color> for [T; 2] {
+impl<T> IndexMut<Color> for [T; NUM_COLORS] {
+    /// [`Color`] can be used to index into a list of two elements.
     fn index_mut(&mut self, index: Color) -> &mut Self::Output {
         &mut self[index.index()]
     }
 }
 
+impl AsRef<str> for Color {
+    /// Alias for [`Color::name`].
+    fn as_ref(&self) -> &str {
+        self.name()
+    }
+}
+
 impl fmt::Display for Color {
+    /// [`Color`]s are displayed in UCI format.
+    ///
+    /// See [`Color::to_uci`] for more detail.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_uci())
+    }
+}
+
+impl fmt::Debug for Color {
+    /// [`Color`]s are displayed in UCI format.
+    ///
+    /// See [`Color::to_uci`] for more detail.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_uci())
     }

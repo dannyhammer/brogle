@@ -750,33 +750,6 @@ impl<'a> IntoIterator for BitBoards {
 }
  */
 
-// impl Index<Piece> for BitBoards {
-//     type Output = BitBoard;
-//     fn index(&self, index: Piece) -> &Self::Output {
-//         let color = self[index.color()];
-//         let kind = self[index.kind()];
-//         color & kind
-//     }
-// }
-
-/*
-fn set_bit(bits: u8, n: u8) -> u8 {
-    bits | (1 << n)
-}
-
-fn clear_bit(bits: u8, n: u8) -> u8 {
-    bits & !(1 << n)
-}
-
-fn flip_bit(bits: u8, n: u8) -> u8 {
-    bits ^ (1 << n)
-}
-
-fn check_bit(bits: u8, n: u8) -> u8 {
-    bits & (1 << n)
-}
- */
-
 /// A [`BitBoard`] represents the game board as a set of bits.
 /// They are used for various computations, such as fetching valid moves or computing move costs.
 ///

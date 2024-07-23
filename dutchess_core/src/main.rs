@@ -139,7 +139,7 @@ fn main() {
     let moves_to_make = ["b4b1", "h4g4", "b1g1", "h5h3", "g2h3"]; // Missing g4f5
 
     for mv in moves_to_make {
-        let mv = Move::from_san(&game.position(), mv).unwrap();
+        let mv = Move::from_uci(&game.position(), mv).unwrap();
         println!("\nMaking move: {mv:?}");
         game.make_move(mv);
         println!("State after {mv}:\n{game}");

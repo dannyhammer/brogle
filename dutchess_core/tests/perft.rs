@@ -3,15 +3,33 @@ use std::ops::{Add, AddAssign};
 use dutchess_core::Position;
 
 #[derive(Default, Debug, Clone, Copy)]
+#[allow(dead_code)]
 struct PerftResult {
+    /// Number of game states reachable.
     nodes: usize,
+
+    /// Number of captures possible.
     captures: usize,
-    // eps: usize,
+
+    /// Number of times en passant can be performed.
+    eps: usize,
+
+    /// Number of times castling can occur.
     castles: usize,
-    // promotions: usize,
+
+    /// Number of times a pawn can be promoted. A single move counts as one promotion, not the four possible promotions.
+    promotions: usize,
+
+    /// Number of checks that can occur.
     checks: usize,
-    // discovery_checks: usize,
-    // double_checks: usize,
+
+    /// Number of discovery checks possible.
+    discovery_checks: usize,
+
+    /// Number of double checks that can occur.
+    double_checks: usize,
+
+    /// Number of checkmates that can occur.
     checkmates: usize,
 }
 
@@ -21,13 +39,13 @@ impl Add for PerftResult {
         Self {
             nodes: self.nodes + rhs.nodes,
             captures: self.captures + rhs.captures,
-            checks: self.checks + rhs.checks,
-            checkmates: self.checkmates + rhs.checkmates,
+            eps: self.eps + rhs.eps,
             castles: self.castles + rhs.castles,
-            // nodes: self.nodes + rhs.nodes,
-            // nodes: self.nodes + rhs.nodes,
-            // nodes: self.nodes + rhs.nodes,
-            // nodes: self.nodes + rhs.nodes,
+            promotions: self.promotions + rhs.promotions,
+            checks: self.checks + rhs.checks,
+            discovery_checks: self.discovery_checks + rhs.discovery_checks,
+            double_checks: self.double_checks + rhs.double_checks,
+            checkmates: self.checkmates + rhs.checkmates,
         }
     }
 }
@@ -161,13 +179,18 @@ const POS3_PERFT_RESULTS: [PerftResult; 2] = [
 ];
 */
 
+#[allow(dead_code)]
 fn perft(position: Position, depth: usize) -> PerftResult {
     if depth == 0 {
         return PerftResult {
             nodes: 1,
             captures: 32 - position.bitboards().occupied().population() as usize, // TODO: Fetch original number of pieces
-            checks: position.is_check() as usize,
+            eps: 0,
             castles: position.times_castled(),
+            promotions: 0,
+            checks: position.is_check() as usize,
+            discovery_checks: 0,
+            double_checks: 0,
             checkmates: position.is_checkmate() as usize,
         };
     }
@@ -185,6 +208,8 @@ fn perft(position: Position, depth: usize) -> PerftResult {
 
     res
 }
+
+/*
 
 fn perft_nodes_only(position: Position, depth: usize) -> usize {
     if depth == 0 {
@@ -488,3 +513,5 @@ mod special_perfts {
         test_perft_fen_nodes(4, "8/8/2k5/5q2/5n2/8/5K2/8 b - - 0 1", 23527);
     }
 }
+
+ */

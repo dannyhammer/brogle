@@ -259,7 +259,7 @@ impl Move {
     }
       */
 
-    pub fn from_san(position: &Position, san: &str) -> Result<Self, ChessError> {
+    pub fn from_uci(position: &Position, san: &str) -> Result<Self, ChessError> {
         // println!("Parsing SAN: {san}\nPosition: {position}");
         let from = san.get(0..2).ok_or(ChessError::InvalidTileNotation)?;
         let to = san.get(2..4).ok_or(ChessError::InvalidTileNotation)?;
@@ -304,7 +304,7 @@ impl Move {
             }
         };
 
-        // println!("SAN parsed:\n\tfrom: {from:?}\n\tto: {to:?}\n\tkind: {kind:?}");
+        // println!("UCI parsed:\n\tfrom: {from:?}\n\tto: {to:?}\n\tkind: {kind:?}");
 
         Ok(Self::new(from, to, kind))
     }
@@ -330,6 +330,9 @@ impl Move {
 }
 
 impl fmt::Display for Move {
+    /// A [`Move`] is displayed in its UCI format.
+    ///
+    /// See [`Move::to_uci`] for more.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_uci())
     }
