@@ -27,7 +27,7 @@ fn perft(position: &mut Position, depth: usize) -> usize {
 }
 
 fn main() {
-    let fen = DEFAULT_FEN;
+    let fen = FEN_STARTPOS;
 
     // let fen = "1r4b1/8/4R3/pP6/8/1K1N3q/8/3k4 w - a6 0 1"; /* Pinmask */
     // let fen = "3r3b/8/5N2/3N4/1N1K2Nq/8/1N6/b7 w - - 0 1"; /* Pinmask; all knights */
@@ -74,33 +74,34 @@ fn main() {
     // let fen = "8/8/1n6/3K4/8/8/q7/5k2 w - - 2 3"; // d5e6 illegal
     // let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
     // let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"; // Kiwipete; fails at depth 5
+
     // let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/P1N2Q2/1PPBBP1P/1R2K2b w Kkq - 1 3"; // e1g1 is illegal!
+    // let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/P1N2Q2/1PPBBP1P/1R2K2B w Kkq - 1 3"; // e1g1 is illegal
+    // let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/P1N2Q2/1PPBBPpP/1R2K2R b Kkq - 0 2";
 
     // let fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
     // let fen = "r3k3/8/8/8/8/8/3K4/R7 b - - 3 3";
     // let fen = "8/PPPk4/8/8/8/8/4Kppp/8 w - - 0 1 ";
     // let fen = "Q2k4/2B5/8/8/8/8/4Kppp/8 b - - 4 3";
     // let fen = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
-    let fen = "8/2p5/3p4/KP6/5pk1/7P/4P3/6R1 b - - 4 3";
+    // let fen = "8/2p5/3p4/KP6/5pk1/7P/4P3/6R1 b - - 4 3";
 
     let mut game = Game::from_fen(fen).unwrap();
     println!("{game}\n\n");
 
-    let moves = game
-        .position()
-        .compute_legal_for(game.position().current_player());
-    for (i, chessmove) in moves.into_iter().enumerate() {
-        if !chessmove.is_empty() {
-            let tile = Tile::from_index_unchecked(i);
-            if tile != Tile::G4 {
-                continue;
-            }
-            let piece = game.position().bitboards().piece_at(tile).unwrap();
-            println!("\n +------{piece}-{tile}------\n{chessmove:?}");
-        }
-    }
-
-    std::process::exit(1);
+    // let moves = game
+    //     .position()
+    //     .compute_legal_for(game.position().current_player());
+    // for (i, chessmove) in moves.into_iter().enumerate() {
+    //     if !chessmove.is_empty() {
+    //         let tile = Tile::from_index_unchecked(i);
+    //         if tile != Tile::G2 {
+    //             continue;
+    //         }
+    //         let piece = game.position().bitboards().piece_at(tile).unwrap();
+    //         println!("\n +------{piece}-{tile}------\n{chessmove:?}");
+    //     }
+    // }
 
     // let moves = game.position().legal_moves();
     // println!("{moves:?}");
@@ -133,10 +134,11 @@ fn main() {
     // let moves_to_make = ["d2d4", "e7e5", "d1d2", "f8b4", "d2c3", "d8h4"]; // c3g3 is not legal!
     // let moves_to_make = ["d8c7", "a5b4", "c7b7", "b4c4", "d7d5"]; // Illegal EP c5d6
     // let moves_to_make = ["b3a2", "e6d5", "c4b6"]; // d5e6 is illegal!
-    // let moves_to_make = ["a1b1", "h3g2", "a2a3", "g2h1b"]; // kiwipete
+    let moves_to_make = ["g2h1b"]; // kiwipete
+
     // let moves_to_make = ["a1a2", "h8h1", "e1d2", "h1a1", "a2a1"]; // Missing e8c8
     // let moves_to_make = ["a7a8q", "d7c7", "b7b8b", "c7d8", "b8c7"]; // Missing d8c7
-    let moves_to_make = ["b4b1", "h4g4", "b1g1", "h5h3", "g2h3"]; // Missing g4f5
+    // let moves_to_make = ["b4b1", "h4g4", "b1g1", "h5h3", "g2h3"]; // Missing g4f5
 
     for mv in moves_to_make {
         let mv = Move::from_uci(&game.position(), mv).unwrap();

@@ -209,8 +209,6 @@ fn perft(position: Position, depth: usize) -> PerftResult {
     res
 }
 
-/*
-
 fn perft_nodes_only(position: Position, depth: usize) -> usize {
     if depth == 0 {
         return 1;
@@ -230,6 +228,7 @@ fn perft_nodes_only(position: Position, depth: usize) -> usize {
     nodes
 }
 
+/*
 fn test_perft_fen(depth: usize, fen: &str, expected: &[PerftResult]) {
     let position = Position::new().from_fen(fen).unwrap();
     let res = perft(position, depth);
@@ -239,6 +238,7 @@ fn test_perft_fen(depth: usize, fen: &str, expected: &[PerftResult]) {
     // assert_eq!(res.castles, expected[depth].castles);
     assert_eq!(res.checkmates, expected[depth].checkmates);
 }
+ */
 
 fn test_perft_fen_nodes(depth: usize, fen: &str, expected: usize) {
     let position = Position::new().from_fen(fen).unwrap();
@@ -513,5 +513,3 @@ mod special_perfts {
         test_perft_fen_nodes(4, "8/8/2k5/5q2/5n2/8/5K2/8 b - - 0 1", 23527);
     }
 }
-
- */

@@ -9,7 +9,7 @@ use derive_more::{
 };
 
 use super::{
-    default_movement_for, ray_between, utils::DEFAULT_FEN, ChessError, Color, File, Piece,
+    default_movement_for, ray_between, utils::FEN_STARTPOS, ChessError, Color, File, Piece,
     PieceKind, Rank, Tile, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
@@ -59,7 +59,7 @@ impl ChessBoard {
     /// ```
     pub fn with_default_setup(self) -> Self {
         // Safe unwrap because the DEFAULT_FEN is always valid
-        self.with_setup(DEFAULT_FEN).unwrap()
+        self.with_setup(FEN_STARTPOS).unwrap()
     }
 
     /// Places the supplied [`Piece`] at the provided [`Tile`], returning modified `self`.
@@ -152,6 +152,18 @@ impl ChessBoard {
     /// Alias for chaining [`ChessBoard::new`] with [`ChessBoard::with_setup`].
     pub fn from_fen(fen: &str) -> Result<Self, ChessError> {
         Self::new().with_setup(fen)
+    }
+
+    /// Returns `true` if there is a piece at the given [`Tile`], else `false`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{ChessBoard, Tile};
+    /// let board = ChessBoard::new().with_default_setup();
+    /// assert_eq!(board.has(Tile::B1), true);
+    /// ```
+    pub fn has(&self, tile: Tile) -> bool {
+        self.occupied().get(tile)
     }
 
     /// Gets the [`Piece`] at a given [`Tile`], if there is one present.

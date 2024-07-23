@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::{ChessError, Piece, PieceKind, Position, Tile};
+use super::{ChessError, PieceKind, Position, Tile};
 
 /// Represents the different kinds of moves that can be made during a chess game.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
@@ -18,16 +18,16 @@ pub enum MoveKind {
     PawnPushTwo,
 
     /// Involves a piece moving onto a square occupied by an opponent's piece, removing it from the board.
-    Capture(Piece),
+    Capture,
 
     /// A special variant of capturing that occurs when a Pawn executes En Passant.
-    EnPassantCapture(Piece),
+    EnPassantCapture,
 
     /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming another kind of piece, such as a Knight or Queen.
     Promote(PieceKind),
 
     /// Involves a Pawn moving onto a square on the opponent's side of the board that is occupied by an opponent's piece, removing it from the board, and promoting this Pawn to something else.
-    CaptureAndPromote(Piece, PieceKind),
+    CaptureAndPromote(PieceKind),
 }
 
 /// Represents a move made on a chess board, including whether a piece is to be promoted.
@@ -41,78 +41,80 @@ pub enum MoveKind {
 ///      +- Special flags for promotion, castling, etc.
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-// #[repr(transparent)]
-// pub struct Move(u16);
-pub struct Move {
-    from: Tile,
-    to: Tile,
-    kind: MoveKind,
-}
+#[repr(transparent)]
+pub struct Move(u16);
 
 impl Move {
-    /// Flags fetched from [here](https://www.chessprogramming.org/Encoding_Moves#From-To_Based)
-    // const PROMOTE_ROOK: u16 = 0b0001_0000_0000_0000;
-    // const PROMOTE_QUEEN: u16 = 0b0011_0000_0000_0000;
-    // const PROMOTE_BISHOP: u16 = 0b0111_0000_0000_0000;
-    // const PROMOTE_KNIGHT: u16 = 0b1111_0000_0000_0000;
-    /*
+    /// Mask for the source ("from") bits.
     const SRC_MASK: u16 = 0b0000_0000_0011_1111;
+    /// Mask for the destination ("to") bits.
     const DST_MASK: u16 = 0b0000_1111_1100_0000;
+    /// Mask for the flag (promotions, captures, etc.) bits.
     const FLG_MASK: u16 = 0b1111_0000_0000_0000;
+    /// Start index of destination bits.
+    const DST_BITS: u16 = 6;
+    /// Start index of flag bits.
+    const FLG_BITS: u16 = 12;
 
-    const FLAG_QUIET_M: u16 = 0 << 12;
-    const FLAG_PDOUBLE: u16 = 1 << 12;
-    const FLAG_KCASTLE: u16 = 2 << 12;
-    const FLAG_QCASTLE: u16 = 3 << 12;
-    const FLAG_CAPTURE: u16 = 4 << 12;
-    const FLAG_EP_CAPT: u16 = 5 << 12;
-    const FLAG_PROMO_N: u16 = 8 << 12;
-    const FLAG_PROMO_B: u16 = 9 << 12;
-    const FLAG_PROMO_R: u16 = 10 << 12;
-    const FLAG_PROMO_Q: u16 = 11 << 12;
-    const FLAG_PRO_N_C: u16 = 12 << 12;
-    const FLAG_PRO_B_C: u16 = 13 << 12;
-    const FLAG_PRO_R_C: u16 = 14 << 12;
-    const FLAG_PRO_Q_C: u16 = 15 << 12;
-     */
-
-    /*
-    /// Creates a new [`Move`] from the given [`Tile`]s and optional [`PieceKind`] for promotion.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::{Move, Tile, PieceKind};
-    /// let e7e8Q = Move::new(Tile::E7, Tile::E8, Some(PieceKind::Queen));
-    /// assert_eq!(e7e8Q.to_string(), "e7e8Q");
-    /// ```
-    pub fn new(from: Tile, to: Tile, promote: Option<PieceKind>) -> Self {
-        let from = from.inner() as u16;
-        let to = to.inner() as u16;
-
-        // If there is a promotion, fetch that PieceKind's bit value and add 1, because 0 represents no promotion
-        let flag = if let Some(kind) = promote {
-            kind.bits() as u16 + 1
-        } else {
-            0
-        };
-
-        Self(from | to << 6 | flag << 12)
-    }
-         */
+    /// Flags fetched from [here](https://www.chessprogramming.org/Encoding_Moves#From-To_Based)
+    const FLAG_QUIET: u16 = 00 << Self::FLG_BITS;
+    const FLAG_PAWN_DOUBLE: u16 = 01 << Self::FLG_BITS;
+    const FLAG_CASTLE_SHORT: u16 = 02 << Self::FLG_BITS;
+    const FLAG_CASTLE_LONG: u16 = 03 << Self::FLG_BITS;
+    const FLAG_CAPTURE: u16 = 04 << Self::FLG_BITS;
+    const FLAG_EP_CAPTURE: u16 = 05 << Self::FLG_BITS;
+    const FLAG_PROMO_KNIGHT: u16 = 08 << Self::FLG_BITS;
+    const FLAG_PROMO_BISHOP: u16 = 09 << Self::FLG_BITS;
+    const FLAG_PROMO_ROOK: u16 = 10 << Self::FLG_BITS;
+    const FLAG_PROMO_QUEEN: u16 = 11 << Self::FLG_BITS;
+    const FLAG_CAPTURE_PROMO_KNIGHT: u16 = 12 << Self::FLG_BITS;
+    const FLAG_CAPTURE_PROMO_BISHOP: u16 = 13 << Self::FLG_BITS;
+    const FLAG_CAPTURE_PROMO_ROOK: u16 = 14 << Self::FLG_BITS;
+    const FLAG_CAPTURE_PROMO_QUEEN: u16 = 15 << Self::FLG_BITS;
 
     /// Creates a new [`Move`] from the given [`Tile`]s and a [`MoveKind`].
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Move, Tile, MoveKind};
+    /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
     /// assert_eq!(e2e4.to_string(), "e2e4");
+    ///
+    /// let e7e8n = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Knight));
+    /// assert_eq!(e7e8n.to_string(), "e7e8n");
     /// ```
     pub const fn new(from: Tile, to: Tile, kind: MoveKind) -> Self {
-        Self { from, to, kind }
+        let from = from.inner() as u16;
+        let to = to.inner() as u16;
+
+        use MoveKind::*;
+        let flag = match kind {
+            Quiet => Self::FLAG_QUIET,
+            PawnPushTwo => Self::FLAG_PAWN_DOUBLE,
+            Capture => Self::FLAG_CAPTURE,
+            EnPassantCapture => Self::FLAG_EP_CAPTURE,
+            KingsideCastle => Self::FLAG_CASTLE_SHORT,
+            QueensideCastle => Self::FLAG_CASTLE_LONG,
+            CaptureAndPromote(promotion) => match promotion {
+                PieceKind::Queen => Self::FLAG_CAPTURE_PROMO_QUEEN,
+                PieceKind::Knight => Self::FLAG_CAPTURE_PROMO_KNIGHT,
+                PieceKind::Rook => Self::FLAG_CAPTURE_PROMO_ROOK,
+                PieceKind::Bishop => Self::FLAG_CAPTURE_PROMO_BISHOP,
+                _ => unreachable!(),
+            },
+            Promote(promotion) => match promotion {
+                PieceKind::Queen => Self::FLAG_PROMO_QUEEN,
+                PieceKind::Knight => Self::FLAG_PROMO_KNIGHT,
+                PieceKind::Rook => Self::FLAG_PROMO_ROOK,
+                PieceKind::Bishop => Self::FLAG_PROMO_BISHOP,
+                _ => unreachable!(),
+            },
+        };
+
+        Self(flag | to << Self::DST_BITS | from)
     }
 
-    /// Creates a new [`Move`] from the given [`Tile`]s that does promote a piece.
+    /// Creates a new [`Move`] from the given [`Tile`]s that does not promote a piece.
     ///
     /// # Example
     /// ```
@@ -133,42 +135,23 @@ impl Move {
     /// assert_eq!(illegal.to_string(), "a1a1");
     /// ```
     pub const fn illegal() -> Self {
-        // Self(0)
-        Self::new_quiet(Tile::A1, Tile::A1)
-    }
-
-    pub const fn is_capture(&self) -> bool {
-        match self.kind() {
-            MoveKind::Capture(_)
-            | MoveKind::EnPassantCapture(_)
-            | MoveKind::CaptureAndPromote(_, _) => true,
-            _ => false,
-        }
-    }
-
-    pub const fn captured(&self) -> Option<Piece> {
-        match self.kind() {
-            MoveKind::Capture(captured)
-            | MoveKind::EnPassantCapture(captured)
-            | MoveKind::CaptureAndPromote(captured, _) => Some(captured),
-            _ => None,
-        }
+        Self(0)
     }
 
     /*
     /// Internal function to fetch the bit pattern of the source (or "from") part of this [`Move`].
-    fn src_bits(&self) -> u8 {
+    const fn src_bits(&self) -> u8 {
         (self.0 & Self::SRC_MASK) as u8
     }
 
     /// Internal function to fetch the bit pattern of the destination (or "to") part of this [`Move`].
-    fn dst_bits(&self) -> u8 {
-        ((self.0 & Self::DST_MASK) >> 6) as u8
+    const fn dst_bits(&self) -> u8 {
+        ((self.0 & Self::DST_MASK) >> Self::DST_BITS) as u8
     }
 
-    /// Internal function to fetch the bit pattern of the special flag (piece promotions) of this [`Move`].
-    fn flg_bits(&self) -> u8 {
-        ((self.0 & Self::FLG_MASK) >> 12) as u8
+    /// Internal function to fetch the bit pattern of the special flag (promotions, capture, castle, etc.) of this [`Move`].
+    const fn flg_bits(&self) -> u8 {
+        ((self.0 & Self::FLG_MASK) >> Self::FLG_BITS) as u8
     }
      */
 
@@ -182,8 +165,7 @@ impl Move {
     /// assert_eq!(from, Tile::E2);
     /// ```
     pub const fn from(&self) -> Tile {
-        // Tile(self.src_bits())
-        self.from
+        Tile((self.0 & Self::SRC_MASK) as u8)
     }
 
     /// Fetches the destination (or "to") part of this [`Move`], as a [`Tile`].
@@ -196,8 +178,7 @@ impl Move {
     /// assert_eq!(to, Tile::E4);
     /// ```
     pub const fn to(&self) -> Tile {
-        // Tile(self.dst_bits())
-        self.to
+        Tile(((self.0 & Self::DST_MASK) >> Self::DST_BITS) as u8)
     }
 
     /// Fetches the [`MoveKind`] part of this [`Move`].
@@ -209,11 +190,57 @@ impl Move {
     /// assert_eq!(e7e8Q.kind(), MoveKind::Promote(PieceKind::Queen));
     /// ```
     pub const fn kind(&self) -> MoveKind {
-        // let bits = self.flg_bits();
+        let bits = self.0 & Self::FLG_MASK;
+        match bits {
+            Self::FLAG_QUIET => MoveKind::Quiet,
+            Self::FLAG_PAWN_DOUBLE => MoveKind::PawnPushTwo,
+            Self::FLAG_CASTLE_SHORT => MoveKind::KingsideCastle,
+            Self::FLAG_CASTLE_LONG => MoveKind::QueensideCastle,
+            Self::FLAG_CAPTURE => MoveKind::Capture,
+            Self::FLAG_EP_CAPTURE => MoveKind::EnPassantCapture,
+            Self::FLAG_PROMO_QUEEN => MoveKind::Promote(PieceKind::Queen),
+            Self::FLAG_PROMO_KNIGHT => MoveKind::Promote(PieceKind::Knight),
+            Self::FLAG_PROMO_ROOK => MoveKind::Promote(PieceKind::Rook),
+            Self::FLAG_PROMO_BISHOP => MoveKind::Promote(PieceKind::Bishop),
+            Self::FLAG_CAPTURE_PROMO_QUEEN => MoveKind::CaptureAndPromote(PieceKind::Queen),
+            Self::FLAG_CAPTURE_PROMO_KNIGHT => MoveKind::CaptureAndPromote(PieceKind::Knight),
+            Self::FLAG_CAPTURE_PROMO_ROOK => MoveKind::CaptureAndPromote(PieceKind::Rook),
+            Self::FLAG_CAPTURE_PROMO_BISHOP => MoveKind::CaptureAndPromote(PieceKind::Bishop),
+            _ => unimplemented!(),
+        }
+    }
 
-        // We subtract 1 here because we added 1 in `Self::new`
-        // (bits != 0).then(|| PieceKind::from_bits_unchecked(bits - 1))
-        self.kind
+    /// Returns `true` if this [`Move`] is a capture of any kind.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind, Position, FEN_KIWIPETE};
+    /// let position = Position::new().from_fen(FEN_KIWIPETE).unwrap();
+    /// let e5f7 = Move::from_uci(&position, "e5f7").unwrap();
+    /// assert_eq!(e5f7.is_capture(), true);
+    /// ```
+    pub const fn is_capture(&self) -> bool {
+        self.0 & Self::FLAG_CAPTURE != 0
+    }
+
+    /// Returns `true` if this [`Move`] is a capture of any kind.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind, Position};
+    /// // An sample test position for discovering promotion bugs.
+    /// let position = Position::new().from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
+    /// let b7c8b = Move::from_uci(&position, "b7c8b").unwrap();
+    /// assert_eq!(b7c8b.promotion(), Some(PieceKind::Bishop));
+    /// ```
+    pub const fn promotion(&self) -> Option<PieceKind> {
+        match self.0 & Self::FLG_MASK {
+            Self::FLAG_CAPTURE_PROMO_QUEEN => Some(PieceKind::Queen),
+            Self::FLAG_CAPTURE_PROMO_KNIGHT => Some(PieceKind::Knight),
+            Self::FLAG_CAPTURE_PROMO_ROOK => Some(PieceKind::Rook),
+            Self::FLAG_CAPTURE_PROMO_BISHOP => Some(PieceKind::Bishop),
+            _ => None,
+        }
     }
 
     /*
@@ -227,42 +254,22 @@ impl Move {
     }
      */
 
-    /*
-    /// Creates a [`Move`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    /// Creates a [`Move`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation, extracting extra info from the provided [`Position`]
     ///
     /// Will return a [`ChessError`] if the string is invalid in any way.
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind};
-    /// let e7e8Q = Move::from_uci("e7e8Q");
-    /// assert_eq!(e7e8Q, Ok(Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen))));
+    /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind, Position};
+    /// // An sample test position for discovering promotion bugs.
+    /// let position = Position::new().from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
+    /// let b7c8b = Move::from_uci(&position, "b7c8b");
+    /// assert_eq!(b7c8b, Ok(Move::new(Tile::B7, Tile::C8, MoveKind::CaptureAndPromote(PieceKind::Bishop))));
     /// ```
-    pub fn from_uci(uci: &str) -> Result<Self, ChessError> {
+    pub fn from_uci(position: &Position, uci: &str) -> Result<Self, ChessError> {
+        // println!("Parsing SAN: {uci}\nPosition: {position}");
         let from = uci.get(0..2).ok_or(ChessError::InvalidTileNotation)?;
         let to = uci.get(2..4).ok_or(ChessError::InvalidTileNotation)?;
-
-        let from = Tile::from_uci(from)?;
-        let to = Tile::from_uci(to)?;
-
-        let kind = if let Some(promote) = uci.get(4..5) {
-            MoveKind::Promote(PieceKind::from_str(promote)?)
-        } else if uci == "e1g1" || uci == "e8g8" {
-            MoveKind::KingsideCastle
-        } else if uci == "e1c1" || uci == "e8c8" {
-            MoveKind::QueensideCastle
-        } else {
-            MoveKind::Quiet
-        };
-
-        Ok(Self::new(from, to, kind))
-    }
-      */
-
-    pub fn from_uci(position: &Position, san: &str) -> Result<Self, ChessError> {
-        // println!("Parsing SAN: {san}\nPosition: {position}");
-        let from = san.get(0..2).ok_or(ChessError::InvalidTileNotation)?;
-        let to = san.get(2..4).ok_or(ChessError::InvalidTileNotation)?;
 
         let from = Tile::from_uci(from)?;
         let to = Tile::from_uci(to)?;
@@ -272,33 +279,29 @@ impl Move {
         let color = piece.color();
 
         let kind = if piece.is_pawn() {
-            if let Some(promote) = san.get(4..5) {
+            if let Some(promote) = uci.get(4..5) {
                 // If this move also captures, it's a capture-promote
-                if let Some(captured) = position.bitboards().piece_at(to) {
-                    MoveKind::CaptureAndPromote(captured, PieceKind::from_str(promote)?)
+                if position.bitboards().has(to) {
+                    MoveKind::CaptureAndPromote(PieceKind::from_str(promote)?)
                 } else {
                     MoveKind::Promote(PieceKind::from_str(promote)?)
                 }
-            } else if let Some(captured) = position.bitboards().piece_at(to) {
-                MoveKind::Capture(captured)
+            } else if position.bitboards().has(to) {
+                MoveKind::Capture
             } else if Some(to) == position.ep_tile() && piece.is_pawn() {
-                println!("{position:?}\n{position}");
-                let ep_tile = position.ep_tile().unwrap();
-                let ep_target_tile = ep_tile.backward_by(color, 1).unwrap();
-                let captured = position.bitboards().piece_at(ep_target_tile).unwrap();
-                MoveKind::EnPassantCapture(captured)
+                MoveKind::EnPassantCapture
             } else if from.rank().is_pawn_rank(color) && to.rank().is_pawn_double_push_rank(color) {
                 MoveKind::PawnPushTwo
             } else {
                 MoveKind::Quiet
             }
         } else {
-            if san == "e1g1" || san == "e8g8" {
+            if uci == "e1g1" || uci == "e8g8" {
                 MoveKind::KingsideCastle
-            } else if san == "e1c1" || san == "e8c8" {
+            } else if uci == "e1c1" || uci == "e8c8" {
                 MoveKind::QueensideCastle
-            } else if let Some(captured) = position.bitboards().piece_at(to) {
-                MoveKind::Capture(captured)
+            } else if position.bitboards().has(to) {
+                MoveKind::Capture
             } else {
                 MoveKind::Quiet
             }
@@ -321,7 +324,7 @@ impl Move {
     /// ```
     pub fn to_uci(&self) -> String {
         match self.kind() {
-            MoveKind::Promote(promote) | MoveKind::CaptureAndPromote(_, promote) => {
+            MoveKind::Promote(promote) | MoveKind::CaptureAndPromote(promote) => {
                 format!("{}{}{}", self.from(), self.to(), promote)
             }
             _ => format!("{}{}", self.from(), self.to()),

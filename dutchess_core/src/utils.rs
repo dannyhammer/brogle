@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use super::{BitBoard, Color, Tile};
 
-pub const DEFAULT_FEN: &'static str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+pub const FEN_STARTPOS: &'static str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+pub const FEN_KIWIPETE: &'static str =
+    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
 
 /// https://www.chessprogramming.org/Chess_Position#cite_note-4
 pub const MAX_NUM_MOVES: usize = 218;

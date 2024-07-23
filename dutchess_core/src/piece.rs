@@ -407,10 +407,13 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::{Piece, PieceKind};
-    /// let pawn = Piece::from_uci('P').unwrap();
+    /// # use dutchess_core::{Color, Piece, PieceKind};
+    /// let pawn = Piece::from_uci('p').unwrap();
+    /// assert_eq!(pawn.kind(), PieceKind::Pawn);
+    /// assert_eq!(pawn.color(), Color::Black);
     /// let queen = pawn.promoted(PieceKind::Queen);
     /// assert_eq!(queen.kind(), PieceKind::Queen);
+    /// assert_eq!(queen.color(), Color::Black);
     /// ```
     pub const fn promoted(self, promotion: PieceKind) -> Self {
         Self::new(self.color(), promotion)

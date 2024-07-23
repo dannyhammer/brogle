@@ -2,8 +2,8 @@ use std::fmt;
 
 use super::{
     bishop_moves, default_movement_for, king_moves, knight_moves, pawn_attacks, pawn_pushes,
-    queen_moves, ray_between, ray_containing, rook_moves, utils::DEFAULT_FEN, BitBoard, ChessBoard,
-    ChessError, Color, Move, MoveKind, Piece, PieceKind, Tile,
+    queen_moves, ray_between, ray_containing, rook_moves, utils::FEN_STARTPOS, BitBoard,
+    ChessBoard, ChessError, Color, Move, MoveKind, Piece, PieceKind, Tile,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -48,7 +48,7 @@ impl Game {
     }
 
     pub fn default_setup() -> Self {
-        Self::from_fen(DEFAULT_FEN).unwrap()
+        Self::from_fen(FEN_STARTPOS).unwrap()
     }
 
     pub fn from_fen(fen: &str) -> Result<Self, ChessError> {
@@ -73,6 +73,7 @@ impl Game {
         self.history.push(chessmove);
     }
 
+    /*
     pub fn unmake_move(&mut self) {
         let Some(chessmove) = self.history.pop() else {
             return;
@@ -80,6 +81,7 @@ impl Game {
 
         self.position.unmake_move(chessmove);
     }
+     */
 
     pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
         moves
@@ -87,9 +89,11 @@ impl Game {
             .for_each(|chessmove| self.make_move(chessmove))
     }
 
+    /*
     pub fn unmake_moves(&mut self, count: usize) {
         (0..count).for_each(|_| self.unmake_move());
     }
+     */
 }
 
 impl Default for Game {
@@ -241,7 +245,7 @@ impl Position {
     /// assert_eq!(state.to_fen(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     /// ```
     pub fn with_default_setup(self) -> Self {
-        self.from_fen(DEFAULT_FEN).unwrap()
+        self.from_fen(FEN_STARTPOS).unwrap()
     }
 
     // pub fn with_pieces(mut self, placements: impl IntoIterator<Item = (Tile, Piece)>) -> Self {
@@ -353,8 +357,8 @@ impl Position {
 
             for to in moves_bb {
                 // By default, this move is either quiet or a capture, depending on whether its destination contains a piece
-                let mut kind = if let Some(captured) = self.bitboards().piece_at(to) {
-                    MoveKind::Capture(captured)
+                let mut kind = if self.bitboards().has(to) {
+                    MoveKind::Capture
                 } else {
                     MoveKind::Quiet
                 };
@@ -381,36 +385,36 @@ impl Position {
                         // A capture is occurring, so check if it's en passant
                         if self.bitboards().piece_at(to).is_none() {
                             // A piece was NOT at the captured spot, so this was en passant
-                            let ep_tile = self.ep_tile().unwrap();
-                            let ep_target = ep_tile.backward_by(color, 1).unwrap();
-                            let captured = self.bitboards().piece_at(ep_target).unwrap();
+                            // let ep_tile = self.ep_tile().unwrap();
+                            // let ep_target = ep_tile.backward_by(color, 1).unwrap();
+                            // let captured = self.bitboards().piece_at(ep_target).unwrap();
 
                             // The pawn captured on an empty square; this is en passant
-                            kind = MoveKind::EnPassantCapture(captured);
+                            kind = MoveKind::EnPassantCapture;
                         }
                     }
 
                     // Regardless of whether this was a capture or quiet, it may be a promotion
                     if to.rank().is_home_rank(color.opponent()) {
-                        if let MoveKind::Capture(captured) = kind {
+                        if let MoveKind::Capture = kind {
                             // The pawn can reach the enemy's home rank and become promoted
                             moves.push(Move::new(
                                 from,
                                 to,
-                                MoveKind::CaptureAndPromote(captured, PieceKind::Knight),
+                                MoveKind::CaptureAndPromote(PieceKind::Knight),
                             ));
                             moves.push(Move::new(
                                 from,
                                 to,
-                                MoveKind::CaptureAndPromote(captured, PieceKind::Rook),
+                                MoveKind::CaptureAndPromote(PieceKind::Rook),
                             ));
                             moves.push(Move::new(
                                 from,
                                 to,
-                                MoveKind::CaptureAndPromote(captured, PieceKind::Bishop),
+                                MoveKind::CaptureAndPromote(PieceKind::Bishop),
                             ));
                             // This gets pushed to the move list after this if-else chain
-                            kind = MoveKind::CaptureAndPromote(captured, PieceKind::Queen);
+                            kind = MoveKind::CaptureAndPromote(PieceKind::Queen);
                         } else {
                             // The pawn can reach the enemy's home rank and become promoted
                             moves.push(Move::new(from, to, MoveKind::Promote(PieceKind::Knight)));
@@ -824,18 +828,22 @@ impl Position {
                 return (false, "Captured on a non-capture move");
             }
 
-            let Some(captured) = chessmove.captured() else {
-                panic!("{chessmove} captured {to_capture}, but isn't classified as a capture move internally")
+            /*
+            let Some(kind) = chessmove.captured() else {
+                panic!("{chessmove} captured {} {kind:?}, but isn't classified as a capture move internally", to_capture.color())
             };
+             */
 
-            if captured != to_capture {
+            /*
+            if kind != to_capture.kind() {
                 return (false, "Captured wrong piece");
             }
+             */
         }
 
         match kind {
             // If the move is pawn-specific, ensure it's a pawn moving
-            MoveKind::EnPassantCapture(_) | MoveKind::PawnPushTwo | MoveKind::Promote(_) => {
+            MoveKind::EnPassantCapture | MoveKind::PawnPushTwo | MoveKind::Promote(_) => {
                 if !piece.is_pawn() {
                     return (false, "Tried to do a pawn move (EP, Push 2, Promote) with a piece that isn't a pawn");
                 }
@@ -887,8 +895,8 @@ impl Position {
         match chessmove.kind() {
             MoveKind::Quiet => {}
             // Remove captured piece from board
-            MoveKind::Capture(captured) => {
-                self.bitboards.clear(chessmove.to());
+            MoveKind::Capture => {
+                let captured = self.bitboards.take(chessmove.to()).unwrap();
 
                 // Disable castling, if necessary
                 if captured.is_rook() && chessmove.to().rank().is_home_rank(captured.color()) {
@@ -942,15 +950,15 @@ impl Position {
             }
             // In En Passant, we need to remove the piece from one rank behind
             // Safe unwrap because the pawn is always guaranteed to be in front of this location
-            MoveKind::EnPassantCapture(_captured) => {
+            MoveKind::EnPassantCapture => {
                 let captured_tile = chessmove.to().backward_by(color, 1).unwrap();
                 self.bitboards.clear(captured_tile);
 
                 // There is no need to check if the captured piece was a Rook here because En Passant can never capture a Rook
             }
             MoveKind::Promote(promotion) => piece = piece.promoted(promotion),
-            MoveKind::CaptureAndPromote(captured, promotion) => {
-                self.bitboards.clear(chessmove.to());
+            MoveKind::CaptureAndPromote(promotion) => {
+                let captured = self.bitboards.take(chessmove.to()).unwrap();
 
                 // Disable castling, if necessary
                 if captured.is_rook() && chessmove.to().rank().is_home_rank(captured.color()) {
@@ -1010,6 +1018,7 @@ impl Position {
         self.history.push(chessmove);
     }
 
+    /*
     pub fn unmake_move(&mut self, chessmove: Move) {
         // Safe unwrap because there is guaranteed to be a piece at the destination of a move.
         let mut piece = self.bitboards.take(chessmove.to()).unwrap();
@@ -1048,7 +1057,7 @@ impl Position {
                 }
             }
             // Put the captured piece back
-            MoveKind::Capture(captured) => self.bitboards.set(captured, chessmove.to()),
+            MoveKind::Capture => unimplemented!(), // self.bitboards.set(captured, chessmove.to()),
             MoveKind::KingsideCastle => {
                 let (new_king_tile, old_king_tile, new_rook_tile, old_rook_tile) =
                     if piece.color().is_white() {
@@ -1084,11 +1093,14 @@ impl Position {
                 self.castling_rights.queenside[piece.color()] = true;
             }
             // A piece was removed from directly behind the pawn
-            MoveKind::EnPassantCapture(captured) => {
+            MoveKind::EnPassantCapture => {
                 // Safe unwrap because the pawn is always guaranteed to be in front of this location
                 let ep_tile = chessmove.to();
                 let captured_tile = ep_tile.backward_by(piece.color(), 1).unwrap();
-                self.bitboards.set(captured, captured_tile);
+                self.bitboards.set(
+                    Piece::new(piece.color().opponent(), PieceKind::Pawn),
+                    captured_tile,
+                );
                 self.ep_tile = Some(ep_tile);
             }
             MoveKind::Promote(_) => piece = piece.demoted(),
@@ -1108,6 +1120,7 @@ impl Position {
 
         self.history.pop();
     }
+     */
 
     // pub fn game_state(&self) -> GameState {
     //     if self.is_check() {
