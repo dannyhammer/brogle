@@ -1088,6 +1088,7 @@ impl fmt::Display for Position {
 }
 
 impl fmt::Debug for Position {
+    // TODO: Something like this: https://peterellisjones.com/generating-legal-chess-moves-efficiently/perft-results.png
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.bitboards())
     }
