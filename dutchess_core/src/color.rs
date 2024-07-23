@@ -29,7 +29,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Color;
+    /// # use dutchess_core::Color;
     /// assert_eq!(Color::White.opponent(), Color::Black);
     /// ```
     pub const fn opponent(&self) -> Self {
@@ -45,7 +45,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Color;
+    /// # use dutchess_core::Color;
     /// assert_eq!(Color::White.index(), 0);
     /// assert_eq!(Color::Black.index(), 1);
     /// ```
@@ -61,7 +61,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Color;
+    /// # use dutchess_core::Color;
     /// assert_eq!(Color::White.bits(), 0);
     /// assert_eq!(Color::Black.bits(), 1);
     /// ```
@@ -73,7 +73,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Color;
+    /// # use dutchess_core::Color;
     /// let white = Color::from_uci('w');
     /// assert_eq!(white, Ok(Color::White));
     ///
@@ -92,7 +92,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Color;
+    /// # use dutchess_core::Color;
     /// let white = Color::from_str("w");
     /// assert_eq!(white, Ok(Color::White));
     ///
@@ -113,7 +113,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Color;
+    /// # use dutchess_core::Color;
     /// assert_eq!(Color::from_case('k'), Color::Black);
     /// ```
     pub const fn from_case(c: char) -> Self {
@@ -128,7 +128,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Color;
+    /// # use dutchess_core::Color;
     /// assert_eq!(Color::White.to_uci(), 'w');
     /// ```
     pub const fn to_uci(&self) -> char {

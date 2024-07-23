@@ -209,7 +209,7 @@ impl Position {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Position;
+    /// # use dutchess_core::Position;
     /// let state = Position::new();
     /// assert_eq!(state.to_fen(), "8/8/8/8/8/8/8/8 w - - 0 1");
     /// ```
@@ -236,7 +236,7 @@ impl Position {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Position;
+    /// # use dutchess_core::Position;
     /// let state = Position::new().with_default_setup();
     /// assert_eq!(state.to_fen(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     /// ```
@@ -836,7 +836,7 @@ impl Position {
         match kind {
             // If the move is pawn-specific, ensure it's a pawn moving
             MoveKind::EnPassantCapture(_) | MoveKind::PawnPushTwo | MoveKind::Promote(_) => {
-                if !piece.kind().is_pawn() {
+                if !piece.is_pawn() {
                     return (false, "Tried to do a pawn move (EP, Push 2, Promote) with a piece that isn't a pawn");
                 }
             }

@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use dutchess_core::core::{BitBoard, File, Rank, Tile};
+use dutchess_core::{BitBoard, File, Rank, Tile};
 
 fn draw_centered_text(text: &str, x: f32, y: f32, font_size: f32, color: Color) {
     let center = get_text_center(text, None, font_size as u16, 1.0, 0.0);

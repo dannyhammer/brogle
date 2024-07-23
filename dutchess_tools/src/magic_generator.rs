@@ -3,7 +3,7 @@ use std::io::prelude::*;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use dutchess_core::core::{BitBoard, Tile};
+use dutchess_core::{BitBoard, Tile};
 mod magics;
 use crate::magics::*;
 

@@ -1,4 +1,4 @@
-use dutchess_core::core::{Move, Position};
+use dutchess_core::{Move, Position};
 
 // Sets up a game from the provided FEN
 fn setup_game(fen: &str) -> Position {

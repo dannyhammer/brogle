@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign};
 
-use dutchess_core::core::Position;
+use dutchess_core::Position;
 
 #[derive(Default, Debug, Clone, Copy)]
 struct PerftResult {

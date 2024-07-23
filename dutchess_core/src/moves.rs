@@ -81,7 +81,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile, PieceKind};
+    /// # use dutchess_core::{Move, Tile, PieceKind};
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, Some(PieceKind::Queen));
     /// assert_eq!(e7e8Q.to_string(), "e7e8Q");
     /// ```
@@ -104,7 +104,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile, MoveKind};
+    /// # use dutchess_core::{Move, Tile, MoveKind};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
     /// assert_eq!(e2e4.to_string(), "e2e4");
     /// ```
@@ -116,7 +116,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile};
+    /// # use dutchess_core::{Move, Tile};
     /// let e2e3 = Move::new_quiet(Tile::E2, Tile::E3);
     /// assert_eq!(e2e3.to_string(), "e2e3");
     /// ```
@@ -128,7 +128,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Move;
+    /// # use dutchess_core::Move;
     /// let illegal = Move::illegal();
     /// assert_eq!(illegal.to_string(), "a1a1");
     /// ```
@@ -176,7 +176,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile, MoveKind};
+    /// # use dutchess_core::{Move, Tile, MoveKind};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
     /// let from = e2e4.from();
     /// assert_eq!(from, Tile::E2);
@@ -190,7 +190,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile, MoveKind};
+    /// # use dutchess_core::{Move, Tile, MoveKind};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
     /// let to = e2e4.to();
     /// assert_eq!(to, Tile::E4);
@@ -204,7 +204,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, MoveKind, PieceKind, Tile};
+    /// # use dutchess_core::{Move, MoveKind, PieceKind, Tile};
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8Q.kind(), MoveKind::Promote(PieceKind::Queen));
     /// ```
@@ -234,7 +234,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile, MoveKind, PieceKind};
+    /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind};
     /// let e7e8Q = Move::from_uci("e7e8Q");
     /// assert_eq!(e7e8Q, Ok(Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen))));
     /// ```
@@ -271,7 +271,7 @@ impl Move {
         let piece = position.bitboards().piece_at(from).unwrap();
         let color = piece.color();
 
-        let kind = if piece.kind().is_pawn() {
+        let kind = if piece.is_pawn() {
             if let Some(promote) = san.get(4..5) {
                 // If this move also captures, it's a capture-promote
                 if let Some(captured) = position.bitboards().piece_at(to) {
@@ -315,7 +315,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Move, Tile, MoveKind, PieceKind};
+    /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind};
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8Q.to_uci(), "e7e8q");
     /// ```

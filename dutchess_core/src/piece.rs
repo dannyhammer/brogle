@@ -6,7 +6,7 @@ use std::{
 use super::{ChessError, Color};
 
 /// Represents the kind (or "class") that a chess piece can be.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum PieceKind {
     Pawn,
@@ -18,13 +18,36 @@ pub enum PieceKind {
 }
 
 impl PieceKind {
-    pub const fn promotions() -> [Self; 4] {
-        [
-            PieceKind::Queen,
-            PieceKind::Rook,
-            PieceKind::Knight,
-            PieceKind::Bishop,
-        ]
+    /// Creates a new [`PieceKind`] from a set of bits.
+    ///
+    /// `bits` must be `[0,5]`.
+    ///
+    /// # Panics
+    /// If `bits` is greater than `5`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::PieceKind;
+    /// let queen = PieceKind::from_bits(4);
+    /// assert_eq!(queen, Ok(PieceKind::Queen));
+    ///
+    /// let err = PieceKind::from_bits(42);
+    /// assert!(err.is_err());
+    /// ```
+    pub const fn from_bits(bits: u8) -> Result<Self, ChessError> {
+        match bits {
+            0 => Ok(Self::Pawn),
+            1 => Ok(Self::Knight),
+            2 => Ok(Self::Bishop),
+            3 => Ok(Self::Rook),
+            4 => Ok(Self::Queen),
+            5 => Ok(Self::King),
+            _ => Err(ChessError::OutOfBounds {
+                val: bits as usize,
+                min: 0,
+                max: 5,
+            }),
+        }
     }
 
     /// Creates a new [`PieceKind`] from a set of bits.
@@ -36,19 +59,14 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::PieceKind;
+    /// # use dutchess_core::PieceKind;
     /// let queen = PieceKind::from_bits_unchecked(4);
     /// assert_eq!(queen, PieceKind::Queen);
     /// ```
     pub const fn from_bits_unchecked(bits: u8) -> PieceKind {
-        match bits {
-            0 => Self::Pawn,
-            1 => Self::Knight,
-            2 => Self::Bishop,
-            3 => Self::Rook,
-            4 => Self::Queen,
-            5 => Self::King,
-            _ => panic!("Invalid bit pattern, must be [0,6)"),
+        match Self::from_bits(bits) {
+            Ok(kind) => kind,
+            Err(_) => panic!("Invalid bit pattern. Must be [0,5]"),
         }
     }
 
@@ -58,7 +76,7 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::PieceKind;
+    /// # use dutchess_core::PieceKind;
     /// let bits = PieceKind::Queen.bits();
     /// assert_eq!(bits, 4);
     /// ```
@@ -74,25 +92,12 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::PieceKind;
+    /// # use dutchess_core::PieceKind;
     /// let index = PieceKind::Queen.index();
     /// assert_eq!(index, 4);
     /// ```
     pub const fn index(&self) -> usize {
         *self as usize
-    }
-
-    /// Fetches the ["value"](https://en.wikipedia.org/wiki/Chess_piece_relative_value#Standard_valuations) of this [`PieceKind`].
-    const fn value(&self) -> u32 {
-        match self {
-            Self::Pawn => 1,
-            Self::Knight => 3,
-            Self::Bishop => 3,
-            Self::Rook => 5,
-            Self::Queen => 9,
-            // A King is invaluable, but we need some high number for computing move values.
-            Self::King => 30, // TODO: Better value for King
-        }
     }
 
     /// Creates a new [`PieceKind`] from a character, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
@@ -101,7 +106,7 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::PieceKind;
+    /// # use dutchess_core::PieceKind;
     /// let queen = PieceKind::from_uci('Q');
     /// assert_eq!(queen, Ok(PieceKind::Queen));
     /// ```
@@ -137,7 +142,7 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::PieceKind;
+    /// # use dutchess_core::PieceKind;
     /// let queen = PieceKind::Queen.name();
     /// assert_eq!(queen, "Queen");
     /// ```
@@ -158,32 +163,11 @@ impl PieceKind {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::PieceKind;
+    /// # use dutchess_core::PieceKind;
     /// let queen = PieceKind::Queen;
-    /// assert_eq!(queen.to_uci(), 'Q');
+    /// assert_eq!(queen.to_uci(), 'q');
     /// ```
     pub const fn to_uci(&self) -> char {
-        match self {
-            Self::Pawn => 'P',
-            Self::Knight => 'N',
-            Self::Bishop => 'B',
-            Self::Rook => 'R',
-            Self::Queen => 'Q',
-            Self::King => 'K',
-        }
-    }
-
-    /// Converts this [`PieceKind`] to a character, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
-    ///
-    /// Will always be a capital letter.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::core::PieceKind;
-    /// let queen = PieceKind::Queen;
-    /// assert_eq!(queen.to_lowercase_uci(), 'q');
-    /// ```
-    pub const fn to_lowercase_uci(&self) -> char {
         match self {
             Self::Pawn => 'p',
             Self::Knight => 'n',
@@ -197,53 +181,6 @@ impl PieceKind {
     /// Alias for [`PieceKind::to_uci`].
     pub const fn char(&self) -> char {
         self.to_uci()
-    }
-
-    pub const fn is_pawn(&self) -> bool {
-        matches!(self, Self::Pawn)
-    }
-
-    pub const fn is_king(&self) -> bool {
-        matches!(self, Self::King)
-    }
-
-    pub const fn is_rook(&self) -> bool {
-        matches!(self, Self::Rook)
-    }
-
-    pub const fn is_slider(&self) -> bool {
-        match self {
-            Self::Queen | Self::Rook | Self::Bishop => true,
-            _ => false,
-        }
-    }
-
-    pub const fn is_orthogonal_slider(&self) -> bool {
-        match self {
-            Self::Queen | Self::Rook => true,
-            _ => false,
-        }
-    }
-
-    pub const fn is_diagonal_slider(&self) -> bool {
-        match self {
-            Self::Queen | Self::Bishop => true,
-            _ => false,
-        }
-    }
-}
-
-impl PartialOrd for PieceKind {
-    /// Pieces are ordered on the [`PieceKind::value`] function.
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.value().partial_cmp(&other.value())
-    }
-}
-
-impl Ord for PieceKind {
-    /// Pieces are ordered on the [`PieceKind::value`] function.
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.value().cmp(&other.value())
     }
 }
 
@@ -263,7 +200,7 @@ impl<T> IndexMut<PieceKind> for [T; 6] {
 impl fmt::Display for PieceKind {
     /// By default, piece classes display as uppercase chars (white)
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_lowercase_uci())
+        write!(f, "{}", self.to_uci())
     }
 }
 
@@ -307,7 +244,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(white_knight.to_string(), "N");
     /// ```
@@ -322,7 +259,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(white_knight.color(), Color::White);
     /// ```
@@ -339,7 +276,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(white_knight.kind(), PieceKind::Knight);
     /// ```
@@ -358,30 +295,63 @@ impl Piece {
         self.color().is_black()
     }
 
+    /// Returns `true` if this [`Piece`] is a Pawn.
     pub const fn is_pawn(&self) -> bool {
-        self.kind().is_pawn()
+        matches!(self.kind(), PieceKind::Pawn)
     }
 
-    pub const fn is_king(&self) -> bool {
-        self.kind().is_king()
+    /// Returns `true` if this [`Piece`] is a Knight.
+    pub const fn is_knight(&self) -> bool {
+        matches!(self.kind(), PieceKind::Knight)
     }
 
+    /// Returns `true` if this [`Piece`] is a Bishop.
+    pub const fn is_bishop(&self) -> bool {
+        matches!(self.kind(), PieceKind::Bishop)
+    }
+
+    /// Returns `true` if this [`Piece`] is a Rook.
     pub const fn is_rook(&self) -> bool {
-        self.kind().is_rook()
+        matches!(self.kind(), PieceKind::Rook)
     }
 
+    /// Returns `true` if this [`Piece`] is a Queen.
+    pub const fn is_queen(&self) -> bool {
+        matches!(self.kind(), PieceKind::Queen)
+    }
+
+    /// Returns `true` if this [`Piece`] is a King.
+    pub const fn is_king(&self) -> bool {
+        matches!(self.kind(), PieceKind::King)
+    }
+
+    /// Returns `true` if this [`Piece`] is a slider (Rook, Bishop, Queen).
     pub const fn is_slider(&self) -> bool {
-        self.kind().is_slider()
+        match self.kind() {
+            PieceKind::Queen | PieceKind::Rook | PieceKind::Bishop => true,
+            _ => false,
+        }
     }
 
+    /// Returns `true` if this [`Piece`] is an orthogonal slider (Rook, Queen).
     pub const fn is_orthogonal_slider(&self) -> bool {
-        self.kind().is_orthogonal_slider()
+        match self.kind() {
+            PieceKind::Queen | PieceKind::Rook => true,
+            _ => false,
+        }
     }
 
+    /// Returns `true` if this [`Piece`] is a diagonal slider (Bishop, Queen).
     pub const fn is_diagonal_slider(&self) -> bool {
-        self.kind().is_diagonal_slider()
+        match self.kind() {
+            PieceKind::Queen | PieceKind::Bishop => true,
+            _ => false,
+        }
     }
 
+    /// Returns the index value of this [`Piece`], as a `usize`.
+    ///
+    /// Useful for indexing into lists.
     pub const fn index(&self) -> usize {
         let offset = if self.is_white() { 0 } else { 6 };
         (self.kind().bits() + offset) as usize
@@ -393,7 +363,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::from_uci('N').unwrap();
     /// assert_eq!(white_knight.color(), Color::White);
     /// assert_eq!(white_knight.kind(), PieceKind::Knight);
@@ -411,7 +381,7 @@ impl Piece {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Piece, Color, PieceKind};
+    /// # use dutchess_core::{Piece, Color, PieceKind};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(white_knight.to_uci(), 'N');
     /// ```
@@ -428,11 +398,11 @@ impl Piece {
         self.to_uci()
     }
 
-    /// Promotes (or, in a less likely scenario, demotes) this [`Piece`] to a new [`PieceKind`], based on the value of `promotion`, consuming `self` in the process.
+    /// Promotes (or, in a less likely scenario, demotes) this [`Piece`] to a new [`PieceKind`], based on the value of `promotion`, consuming `self` in the process and returning the promoted [`Piece`].
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Piece, PieceKind};
+    /// # use dutchess_core::{Piece, PieceKind};
     /// let pawn = Piece::from_uci('P').unwrap();
     /// let queen = pawn.promoted(PieceKind::Queen);
     /// assert_eq!(queen.kind(), PieceKind::Queen);
@@ -441,34 +411,43 @@ impl Piece {
         Self::new(self.color(), promotion)
     }
 
-    pub fn demoted(self) -> Self {
-        self.promoted(PieceKind::Pawn)
-    }
-
-    /// Changes the [`Color`] of this [`Piece`] to the opponent's color.
+    /// Demotes this [`Piece`] to a Pawn, consuming `self` in the process and returning the demoted [`Piece`].
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Piece, Color};
-    /// let mut michael_jackson = Piece::from_uci('k').unwrap();
-    /// michael_jackson.change_color();
+    /// # use dutchess_core::{Piece, PieceKind};
+    /// let queen = Piece::from_uci('Q').unwrap();
+    /// let pawn = queen.demoted();
+    /// assert_eq!(pawn.kind(), PieceKind::Pawn);
+    /// ```
+    pub const fn demoted(self) -> Self {
+        self.promoted(PieceKind::Pawn)
+    }
+
+    /// Inverts the [`Color`] of this [`Piece`] to the opponent's color, consuming `self` and returning the new [`Piece`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Piece, Color};
+    /// let mut king = Piece::from_uci('k').unwrap();
+    /// let michael_jackson = king.inverted();
     /// assert_eq!(michael_jackson.color(), Color::White);
     /// ```
-    pub fn change_color(&mut self) {
-        *self = Self::new(self.color().opponent(), self.kind());
+    pub fn inverted(self) -> Self {
+        Self::new(self.color().opponent(), self.kind())
     }
 }
 
 impl<T> Index<Piece> for [T; 6] {
     type Output = T;
     fn index(&self, index: Piece) -> &Self::Output {
-        &self[index.index()]
+        &self[index.kind().index()]
     }
 }
 
 impl<T> IndexMut<Piece> for [T; 6] {
     fn index_mut(&mut self, index: Piece) -> &mut Self::Output {
-        &mut self[index.index()]
+        &mut self[index.kind().index()]
     }
 }
 

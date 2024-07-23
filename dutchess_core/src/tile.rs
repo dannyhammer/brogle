@@ -111,7 +111,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// let mut iter = Tile::iter();
     /// assert_eq!(iter.len(), 64);
     /// assert_eq!(iter.next().unwrap(), Tile::A1);
@@ -125,7 +125,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Tile, File, Rank};
+    /// # use dutchess_core::{Tile, File, Rank};
     /// let c4 = Tile::new(File::C, Rank::FOUR);
     /// assert_eq!(c4, Tile::C4);
     /// ```
@@ -140,7 +140,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// let c4 = Tile::from_index(26);
     /// assert_eq!(c4, Ok(Tile::C4));
     /// ```
@@ -156,7 +156,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// let c4 = Tile::from_index_unchecked(26);
     /// assert_eq!(c4, Tile::C4);
     /// ```
@@ -171,7 +171,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// let c4 = Tile::from_int(26);
     /// assert_eq!(c4, Ok(Tile::C4));
     /// ```
@@ -190,7 +190,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert_eq!(Tile::C4.inner(), 26);
     /// ```
     pub const fn inner(&self) -> u8 {
@@ -201,7 +201,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Tile, File};
+    /// # use dutchess_core::{Tile, File};
     /// assert_eq!(Tile::C4.file(), File::C);
     /// ```
     pub const fn file(&self) -> File {
@@ -212,7 +212,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Tile, Rank};
+    /// # use dutchess_core::{Tile, Rank};
     /// assert_eq!(Tile::C4.rank(), Rank::FOUR);
     /// ```
     pub const fn rank(&self) -> Rank {
@@ -225,7 +225,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert_eq!(Tile::C4.index(), 26);
     /// ```
     pub const fn index(&self) -> usize {
@@ -236,7 +236,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert_eq!(Tile::C4.to_u64_mask(), 1 << 26); // 1 << 26 = 67108864
     /// ```
     pub const fn to_u64_mask(&self) -> u64 {
@@ -247,7 +247,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Tile, File, Rank};
+    /// # use dutchess_core::{Tile, File, Rank};
     /// assert_eq!(Tile::C4.parts(), (File::C, Rank::FOUR));
     /// ```
     pub const fn parts(&self) -> (File, Rank) {
@@ -266,7 +266,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert!(Tile::C4.is_light());
     /// ```
     pub const fn is_light(&self) -> bool {
@@ -277,7 +277,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert!(Tile::C5.is_dark());
     /// ```
     pub const fn is_dark(&self) -> bool {
@@ -288,7 +288,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert_eq!(Tile::C5.is_diagonal_to(Tile::A3), true);
     /// assert_eq!(Tile::H1.is_diagonal_to(Tile::A8), true);
     /// assert_eq!(Tile::F7.is_diagonal_to(Tile::F7), true);
@@ -310,7 +310,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Color, Tile};
+    /// # use dutchess_core::{Color, Tile};
     /// assert_eq!(Tile::C5.color(), Color::Black);
     /// assert_eq!(Tile::C4.color(), Color::White);
     /// ```
@@ -334,7 +334,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// let c4 = Tile::from_uci("c4");
     /// assert_eq!(c4, Ok(Tile::C4));
     ///
@@ -360,7 +360,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert_eq!("c4", Tile::C4.to_uci());
     /// ```
     pub fn to_uci(self) -> String {
@@ -395,7 +395,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert_eq!(Tile::C4.north_by(1), Some(Tile::C5));
     ///
     /// assert_eq!(Tile::C8.north_by(1), None);
@@ -414,7 +414,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert_eq!(Tile::C4.south_by(1), Some(Tile::C3));
     ///
     /// assert_eq!(Tile::C1.south_by(1), None);
@@ -433,7 +433,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert_eq!(Tile::C4.east(), Some(Tile::D4));
     ///
     /// assert_eq!(Tile::H4.east(), None);
@@ -452,7 +452,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Tile;
+    /// # use dutchess_core::Tile;
     /// assert_eq!(Tile::C4.west(), Some(Tile::B4));
     ///
     /// assert_eq!(Tile::A4.west(), None);
@@ -471,7 +471,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Tile, Color};
+    /// # use dutchess_core::{Tile, Color};
     /// assert_eq!(Tile::C4.forward_by(Color::White, 1), Some(Tile::C5));
     /// assert_eq!(Tile::C4.forward_by(Color::Black, 1), Some(Tile::C3));
     /// ```
@@ -488,7 +488,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Tile, Color};
+    /// # use dutchess_core::{Tile, Color};
     /// assert_eq!(Tile::C4.backward_by(Color::White, 1), Some(Tile::C3));
     /// assert_eq!(Tile::C4.backward_by(Color::Black, 1), Some(Tile::C5));
     /// ```
@@ -505,7 +505,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Tile, Color};
+    /// # use dutchess_core::{Tile, Color};
     /// assert_eq!(Tile::C4.right(Color::White), Some(Tile::D4));
     /// assert_eq!(Tile::C4.right(Color::Black), Some(Tile::B4));
     /// ```
@@ -522,7 +522,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::{Tile, Color};
+    /// # use dutchess_core::{Tile, Color};
     /// assert_eq!(Tile::C4.left(Color::White), Some(Tile::B4));
     /// assert_eq!(Tile::C4.left(Color::Black), Some(Tile::D4));
     /// ```
@@ -688,7 +688,7 @@ impl Rank {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::Rank;
+    /// # use dutchess_core::Rank;
     /// let mut iter = Rank::iter();
     /// assert_eq!(iter.len(), 8);
     /// assert_eq!(iter.next().unwrap(), Rank::ONE);
@@ -1049,7 +1049,7 @@ impl File {
     ///
     /// # Example
     /// ```
-    /// # use dutchess_core::core::File;
+    /// # use dutchess_core::File;
     /// let mut iter = File::iter();
     /// assert_eq!(iter.len(), 8);
     /// assert_eq!(iter.next().unwrap(), File::A);

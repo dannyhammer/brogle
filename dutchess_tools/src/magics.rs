@@ -1,4 +1,4 @@
-use dutchess_core::core::Tile;
+use dutchess_core::Tile;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct MagicEntry {

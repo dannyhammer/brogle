@@ -1,6 +1,6 @@
 use std::process;
 
-use dutchess_core::core::{Move, Position};
+use dutchess_core::{Move, Position};
 
 fn perft(position: Position, depth: usize) -> usize {
     if depth == 0 {

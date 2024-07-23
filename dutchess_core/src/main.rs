@@ -1,6 +1,4 @@
-// use chess::{BitBoard, Board, Color, Piece};
-
-use dutchess_core::core::*;
+use dutchess_core::*;
 
 #[allow(dead_code)]
 fn perft(position: &mut Position, depth: usize) -> usize {
@@ -30,6 +28,7 @@ fn perft(position: &mut Position, depth: usize) -> usize {
 
 fn main() {
     let fen = DEFAULT_FEN;
+
     // let fen = "1r4b1/8/4R3/pP6/8/1K1N3q/8/3k4 w - a6 0 1"; /* Pinmask */
     // let fen = "3r3b/8/5N2/3N4/1N1K2Nq/8/1N6/b7 w - - 0 1"; /* Pinmask; all knights */
     // let fen = "k2r4/5n1b/6P1/2pP4/8/P2KP2q/2P5/8 w - c6 0 1"; /* Pinmask; all pawn */
