@@ -1,6 +1,5 @@
 use std::{
     io,
-    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -11,15 +10,11 @@ use std::{
 
 use crate::{
     search::{search, SearchResult},
-    uci::{
-        SearchOptions, UciEngine, UciInfo, UciOption, UciOptionType, UciResponse, UciResult,
-        UciSearchMode,
-    },
+    uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
 };
-use chess::{Board, ChessMove, MoveGen};
-// use dutchess_core::{Game, Move};
+use dutchess_core::{Color, Move, Position};
 
-type TranspositionTable = ();
+// type TranspositionTable = ();
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
 pub enum EngineProtocol {
@@ -46,14 +41,13 @@ pub struct Engine {
     ///
     /// This is analogous to a FEN string.
     // game: Game,
-    game: Board,
+    game: Position,
 
     /// Transposition table for game states.
-    ttable: TranspositionTable,
+    // ttable: TranspositionTable,
 
     /// Communication protocol
-    protocol: EngineProtocol,
-
+    // protocol: EngineProtocol,
     debug: bool,
 
     searching: Arc<AtomicBool>,
@@ -71,7 +65,7 @@ impl Engine {
         }
     }
      */
-    pub fn new(game: Board) -> Self {
+    pub fn new(game: Position) -> Self {
         Self {
             game,
             ..Default::default()
@@ -79,7 +73,7 @@ impl Engine {
     }
 
     pub fn from_fen(fen: &str) -> Result<Self, String> {
-        let game = Board::from_str(fen).map_err(|e| e.to_string())?;
+        let game = Position::new().from_fen(fen).map_err(|e| e.to_string())?;
         Ok(Self::new(game))
     }
 
@@ -180,7 +174,7 @@ impl UciEngine for Engine {
 
     fn setoption(&mut self, name: &str, value: &str) -> io::Result<()> {
         match name {
-            _ => eprintln!("Unrecognized option `{name}`"),
+            _ => eprintln!("Unrecognized option `{name}` with value `{value}`"),
         }
         Ok(())
     }
@@ -206,15 +200,15 @@ impl UciEngine for Engine {
         // Apply the FEN to the game state
         // _ = self.setup(fen); // ignore any errors if they occur.
         // self.game = Game::from_fen(fen).unwrap();
-        self.game = Board::from_str(fen).unwrap();
+        self.game = Position::new().from_fen(fen).unwrap();
 
         // Now, if there are any moves, apply them as well.
         // self.game
         //     .apply_moves(moves.into_iter().map(|m| Move::from_uci(m).unwrap()));
 
         for mv in moves {
-            let mv = ChessMove::from_str(mv).unwrap();
-            self.game = self.game.make_move_new(mv);
+            let mv = Move::from_uci(&self.game, mv).unwrap();
+            self.game.make_move(mv);
         }
 
         Ok(())
@@ -248,7 +242,7 @@ impl UciEngine for Engine {
             UciSearchMode::Timed(search_opt) => {
                 if let (Some(wtime), Some(btime)) = (search_opt.w_time, search_opt.b_time) {
                     // if self.game.state().current_player().is_white() {
-                    if self.game.side_to_move() == chess::Color::White {
+                    if self.game.current_player() == Color::White {
                         wtime
                     } else {
                         btime
@@ -281,7 +275,7 @@ impl UciEngine for Engine {
             // }
 
             // Obtain a result from the search
-            let res = search(state, depth);
+            let res = search(&state, depth);
 
             // Construct a new message to be sent
             let info = UciInfo::new().depth(depth);

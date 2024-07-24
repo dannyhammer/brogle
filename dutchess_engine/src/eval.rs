@@ -1,26 +1,52 @@
-use chess::{Board, Color, Piece, EMPTY};
+use dutchess_core::{BitBoard, ChessBoard, Color, PieceKind};
 
-pub fn eval(state: &Board) -> i32 {
-    fn both(state: &Board, f: impl Fn(&Board, Color) -> usize) -> i32 {
-        f(state, Color::White) as i32 - f(state, Color::Black) as i32
-    }
+pub fn eval(board: &ChessBoard) -> i32 {
+    let white_material = count_material(board, Color::White) as i32;
+    let black_material = count_material(board, Color::White) as i32;
 
-    let material = both(state, count_material);
+    let center_control = both(&CENTER_CONTROL, board, None);
+    let pawn_advancement = both(&PAWN_PUSH, board, Some(PieceKind::Pawn));
 
-    let center_control = both(state, encourage_center_control);
-
-    material + center_control
+    (white_material - black_material) + pawn_advancement + center_control
 }
 
-fn count_material(state: &Board, color: Color) -> usize {
-    let color = state.color_combined(color);
+fn both(pst: &[usize], board: &ChessBoard, kind: Option<PieceKind>) -> i32 {
+    let (w, b) = if let Some(kind) = kind {
+        (
+            apply_piece_square_table(pst, board, board.color(Color::White) & board.kind(kind)),
+            apply_piece_square_table(pst, board, board.color(Color::Black) & board.kind(kind)),
+        )
+    } else {
+        (
+            apply_piece_square_table(pst, board, board.color(Color::White)),
+            apply_piece_square_table(pst, board, board.color(Color::Black)),
+        )
+    };
 
-    (color & state.pieces(Piece::Pawn)).count() * 1
-        + (color & state.pieces(Piece::Knight)).count() * 3
-        + (color & state.pieces(Piece::Bishop)).count() * 3
-        + (color & state.pieces(Piece::Rook)).count() * 5
-        + (color & state.pieces(Piece::Queen)).count() * 9
-        + (color & state.pieces(Piece::King)).count() * 20
+    w as i32 - b as i32
+}
+
+fn count_material(board: &ChessBoard, color: Color) -> usize {
+    let color = board.color(color);
+
+    ((color & board.kind(PieceKind::Pawn)).population() * 1
+        + (color & board.kind(PieceKind::Knight)).population() * 3
+        + (color & board.kind(PieceKind::Bishop)).population() * 3
+        + (color & board.kind(PieceKind::Rook)).population() * 5
+        + (color & board.kind(PieceKind::Queen)).population() * 9
+        + (color & board.kind(PieceKind::King)).population() * 20) as usize
+}
+
+fn apply_piece_square_table(pst: &[usize], board: &ChessBoard, pieces: BitBoard) -> usize {
+    let mut score = 0;
+
+    for square in pieces {
+        if board.has(square) {
+            score += pst[square.index()];
+        }
+    }
+
+    score
 }
 
 const CENTER_CONTROL: [usize; 64] = [
@@ -34,14 +60,13 @@ const CENTER_CONTROL: [usize; 64] = [
     0, 0, 0, 0, 0, 0, 0, 0, //
 ];
 
-fn encourage_center_control(state: &Board, color: Color) -> usize {
-    let mut score = 0;
-
-    for square in !EMPTY {
-        if let Some(_piece) = state.piece_on(square) {
-            score += CENTER_CONTROL[square.to_index()];
-        }
-    }
-
-    score
-}
+const PAWN_PUSH: [usize; 64] = [
+    6, 6, 6, 6, 6, 6, 6, 6, //
+    5, 5, 5, 5, 5, 5, 5, 5, //
+    4, 4, 4, 4, 4, 4, 4, 4, //
+    3, 3, 3, 3, 3, 3, 3, 3, //
+    2, 2, 2, 2, 2, 2, 2, 2, //
+    1, 1, 1, 1, 1, 1, 1, 1, //
+    0, 0, 0, 0, 0, 0, 0, 0, //
+    0, 0, 0, 0, 0, 0, 0, 0, //
+];

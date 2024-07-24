@@ -176,7 +176,7 @@ impl CastlingRights {
 /// Represents the current state of the game, including move counters
 ///
 /// Analogous to a FEN string.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Copy)]
 pub struct Position {
     /// BitBoard representation of the game board.
     bitboards: ChessBoard,
@@ -958,6 +958,12 @@ impl Position {
         // Next player's turn
         self.toggle_current_player();
         self.compute_legal_moves_for(self.current_player());
+    }
+
+    pub fn with_move_made(&self, chessmove: Move) -> Self {
+        let mut new_pos = *self;
+        new_pos.make_move(chessmove);
+        new_pos
     }
 
     /*

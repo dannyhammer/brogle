@@ -1,19 +1,17 @@
-use std::time::{Duration, Instant};
+use dutchess_core::{Move, Position};
 
-use chess::{Board, ChessMove, Color, MoveGen};
-use rand::{seq::IteratorRandom, thread_rng};
-// use dutchess_core::{GameState, Move, PieceKind, Tile};
+use rand::prelude::*;
 
 use crate::eval;
 
 #[derive(Debug, Clone, Default)]
 pub struct SearchResult {
-    pub bestmove: ChessMove,
+    pub bestmove: Move,
     pub value: i32,
 }
 
 impl SearchResult {
-    fn new(bestmove: ChessMove, value: i32) -> Self {
+    fn new(bestmove: Move, value: i32) -> Self {
         Self { bestmove, value }
     }
 }
@@ -36,61 +34,63 @@ impl Ord for SearchResult {
     }
 }
 
-pub fn search(state: Board, depth: u32) -> SearchResult {
+pub fn search(state: &Position, depth: u32) -> SearchResult {
     // Start with a default result, with a default (probably illegal) move.
-    let mut res = SearchResult::new(ChessMove::default(), i32::MIN);
+    let mut res = SearchResult::new(Move::default(), i32::MIN);
 
     if depth == 0 {
         return res;
     }
 
-    let root_moves = MoveGen::new_legal(&state);
+    let root_moves = state.legal_moves();
 
     // For every available move, make that move on a new board
     for root_move in root_moves {
-        let new_state = state.make_move_new(root_move);
+        let mut new_state = state.clone();
+        new_state.make_move(*root_move);
 
         // Call negamax to check the move's score.
-        let score = -negamax(new_state, depth - 1);
+        let score = -negamax(&new_state, depth - 1);
 
         // If the score is better than our current best, record it.
         if score > res.value {
             res.value = score;
-            res.bestmove = root_move;
+            res.bestmove = *root_move;
         }
     }
 
-    // if res.value == i32::MIN {
-    //     res.bestmove = MoveGen::new_legal(&state)
-    //         .choose(&mut thread_rng())
-    //         .unwrap();
-    // }
+    if res.value == i32::MIN {
+        res.bestmove = *root_moves.choose(&mut thread_rng()).unwrap();
+    }
 
     res
 }
 
-fn negamax(state: Board, depth: u32) -> i32 {
+fn negamax(state: &Position, depth: u32) -> i32 {
     // Reached the end of the depth; return board's evaluation.
     if depth == 0 {
-        return eval(&state);
+        return eval(state.bitboards());
     }
 
     // Our goal is to maximize this number
     let mut max = i32::MAX;
 
-    let moves = MoveGen::new_legal(&state);
+    // let moves = MoveGen::new_legal(&state);
+    let moves = state.legal_moves();
 
     // If there are no moves available, it's a special case.
     if moves.len() == 0 {
         // eprintln!("No moves available");
-        return eval(&state);
+        return eval(state.bitboards());
     }
 
     // For every move, recursively call this function on the new state created by
     // applying that move
     for mv in moves {
-        let new_state = state.make_move_new(mv);
-        let score = -negamax(new_state, depth - 1);
+        let mut new_state = state.clone();
+        new_state.make_move(*mv);
+
+        let score = -negamax(&new_state, depth - 1);
 
         // If the score is better, record it.
         max = score.max(max);
@@ -98,50 +98,6 @@ fn negamax(state: Board, depth: u32) -> i32 {
 
     max
 }
-
-/*
-fn negamax(
-    state: Board,
-    depth: u32,
-    player: Color,
-    mut alpha: i32,
-    beta: i32,
-    mut chessmove: ChessMove,
-) -> SearchResult {
-    if depth == 0 {
-        return SearchResult::new(chessmove, eval(&state));
-    }
-
-    let moves = MoveGen::new_legal(&state);
-
-    // If there are mo moves available, the player is in trouble
-    if moves.len() == 0 {
-        // If they're in check, that's bad
-        if state.checkers().popcnt() == 0 {
-            return SearchResult::new(chessmove, i32::MIN);
-        } else {
-            // Otherwise, we don't know
-            return SearchResult::new(chessmove, 0);
-        }
-    }
-
-    for mv in moves {
-        let new_state = state.make_move_new(mv);
-        let res = negamax(new_state, depth - 1, !player, -beta, -alpha, mv);
-
-        if res.value >= beta {
-            return res;
-        }
-
-        if res.value >= alpha {
-            chessmove = mv;
-            alpha = res.value;
-        }
-    }
-
-    SearchResult::new(chessmove, alpha)
-}
- */
 
 /*
 pub trait Search {

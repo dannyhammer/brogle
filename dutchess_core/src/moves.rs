@@ -410,6 +410,15 @@ impl fmt::Debug for Move {
     }
 }
 
+impl Default for Move {
+    /// A "default" move is an illegal move. See [`Move::illegal`]
+    ///
+    /// This is mostly just to satisfy the compiler, and should never be used in a real scenario.
+    fn default() -> Self {
+        Self::illegal()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
