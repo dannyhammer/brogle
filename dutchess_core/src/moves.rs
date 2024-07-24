@@ -210,6 +210,21 @@ impl Move {
         }
     }
 
+    /// Fetches the parts of this [`Move`] in a tuple of `(from, to, kind)`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Move, MoveKind, PieceKind, Tile};
+    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
+    /// let (from, to, kind) = e7e8q.parts();
+    /// assert_eq!(from, Tile::E7);
+    /// assert_eq!(to, Tile::E8);
+    /// assert_eq!(kind, MoveKind::Promote(PieceKind::Queen));
+    /// ```
+    pub const fn parts(&self) -> (Tile, Tile, MoveKind) {
+        (self.from(), self.to(), self.kind())
+    }
+
     /// Returns `true` if this [`Move`] is a capture of any kind.
     ///
     /// # Example
@@ -372,11 +387,10 @@ impl Move {
     /// assert_eq!(e7e8Q.to_uci(), "e7e8q");
     /// ```
     pub fn to_uci(&self) -> String {
-        match self.kind() {
-            MoveKind::Promote(promote) | MoveKind::CaptureAndPromote(promote) => {
-                format!("{}{}{}", self.from(), self.to(), promote)
-            }
-            _ => format!("{}{}", self.from(), self.to()),
+        if let Some(promote) = self.promotion() {
+            format!("{}{}{}", self.from(), self.to(), promote)
+        } else {
+            format!("{}{}", self.from(), self.to())
         }
     }
 }

@@ -199,9 +199,11 @@ pub struct Position {
     /// A fullmove is a complete turn by white and then by black.
     fullmove: usize,
 
-    // /// Every tile attacked by the piece at the respective index
-    // attacks: [BitBoard; Tile::COUNT],
-    history: Vec<Move>,
+    /// A cache for all of the legal moves in the current board state.
+    legal_moves: [Move; MAX_NUM_MOVES],
+
+    /// The total number of legal moves in the current board state.
+    num_legal_moves: usize,
 }
 
 impl Position {
@@ -228,7 +230,8 @@ impl Position {
             halfmove: 0,
             fullmove: 1,
             // attacks: [BitBoard::EMPTY_BOARD; Tile::COUNT],
-            history: Vec::with_capacity(256), // TODO: GET RID OF THIS IN POSITION
+            legal_moves: [Move::illegal(); MAX_NUM_MOVES],
+            num_legal_moves: 0,
         }
     }
 
@@ -305,13 +308,15 @@ impl Position {
         let fullmove = split.next().unwrap_or_else(|| "1");
         self.fullmove = fullmove.parse().or(Err(ChessError::InvalidFenString))?;
 
+        self.compute_legal_moves_for(self.current_player());
+
         Ok(self)
     }
 
     /// Generates a FEN string from this [`Position`].
     pub fn to_fen(&self) -> String {
         let placements = self.bitboards().fen();
-        let active_color = self.current_player;
+        let active_color = self.current_player();
         let castling = self.castling_rights.to_uci();
 
         let en_passant_target = if let Some(tile) = self.ep_tile {
@@ -346,14 +351,14 @@ impl Position {
         self.current_player = self.current_player.opponent();
     }
 
-    pub fn legal_moves(&self) -> Vec<Move> {
-        self.legal_moves_for(self.current_player())
+    pub fn legal_moves(&self) -> &[Move] {
+        &self.legal_moves[..self.num_legal_moves]
     }
 
-    pub fn legal_moves_for(&self, color: Color) -> Vec<Move> {
-        let mut moves = Vec::with_capacity(MAX_NUM_MOVES);
+    fn compute_legal_moves_for(&mut self, color: Color) {
+        self.num_legal_moves = 0;
 
-        let mobility = self.compute_legal_for(color);
+        let mobility = self.compute_legal_mobility_for(color);
         for (i, moves_bb) in mobility.into_iter().enumerate() {
             if moves_bb.is_empty() {
                 continue;
@@ -399,28 +404,28 @@ impl Position {
                     if to.rank().is_home_rank(color.opponent()) {
                         if let MoveKind::Capture = kind {
                             // The pawn can reach the enemy's home rank and become promoted
-                            moves.push(Move::new(
-                                from,
-                                to,
-                                MoveKind::CaptureAndPromote(PieceKind::Knight),
-                            ));
-                            moves.push(Move::new(
-                                from,
-                                to,
-                                MoveKind::CaptureAndPromote(PieceKind::Rook),
-                            ));
-                            moves.push(Move::new(
-                                from,
-                                to,
-                                MoveKind::CaptureAndPromote(PieceKind::Bishop),
-                            ));
+                            self.legal_moves[self.num_legal_moves] =
+                                Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Knight));
+                            self.num_legal_moves += 1;
+                            self.legal_moves[self.num_legal_moves] =
+                                Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Rook));
+                            self.num_legal_moves += 1;
+                            self.legal_moves[self.num_legal_moves] =
+                                Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Bishop));
+                            self.num_legal_moves += 1;
                             // This gets pushed to the move list after this if-else chain
                             kind = MoveKind::CaptureAndPromote(PieceKind::Queen);
                         } else {
                             // The pawn can reach the enemy's home rank and become promoted
-                            moves.push(Move::new(from, to, MoveKind::Promote(PieceKind::Knight)));
-                            moves.push(Move::new(from, to, MoveKind::Promote(PieceKind::Rook)));
-                            moves.push(Move::new(from, to, MoveKind::Promote(PieceKind::Bishop)));
+                            self.legal_moves[self.num_legal_moves] =
+                                Move::new(from, to, MoveKind::Promote(PieceKind::Knight));
+                            self.num_legal_moves += 1;
+                            self.legal_moves[self.num_legal_moves] =
+                                Move::new(from, to, MoveKind::Promote(PieceKind::Rook));
+                            self.num_legal_moves += 1;
+                            self.legal_moves[self.num_legal_moves] =
+                                Move::new(from, to, MoveKind::Promote(PieceKind::Bishop));
+                            self.num_legal_moves += 1;
                             // This gets pushed to the move list after this if-else chain
                             kind = MoveKind::Promote(PieceKind::Queen);
                         }
@@ -428,11 +433,12 @@ impl Position {
                 }
 
                 // Everyone else is normal
-                moves.push(Move::new(from, to, kind));
+                self.legal_moves[self.num_legal_moves] = Move::new(from, to, kind);
+                self.num_legal_moves += 1;
             }
         }
 
-        moves
+        // (moves, num_moves)
     }
 
     pub fn pinmasks(&self, color: Color) -> (BitBoard, BitBoard) {
@@ -478,7 +484,7 @@ impl Position {
         (pinmask_hv, pinmask_diag)
     }
 
-    pub fn compute_legal_for(&self, color: Color) -> [BitBoard; Tile::COUNT] {
+    fn compute_legal_mobility_for(&self, color: Color) -> [BitBoard; Tile::COUNT] {
         let mut moves = [BitBoard::EMPTY_BOARD; Tile::COUNT];
 
         let not_enemy_king = !self.bitboards().king(color.opponent());
@@ -542,24 +548,17 @@ impl Position {
 
         // Assign legal moves to each piece
         for tile in self.bitboards().color(color) {
-            let piece = self.bitboards().get(tile).unwrap_or_else(|| {
-                panic!(
-                    "Tried to get {color} piece at {tile}. Board:\n{}\nHistory: {:?}\n{:?}",
-                    self.bitboards(),
-                    self.history,
-                    self.bitboards(),
-                )
-            });
+            let piece = self.bitboards().get(tile).unwrap();
 
             moves[tile.index()] =
-                self.compute_legal_at(&piece, tile, checkmask, pinmask_hv, pinmask_diag)
+                self.compute_legal_mobility_at(&piece, tile, checkmask, pinmask_hv, pinmask_diag)
                     & not_enemy_king;
         }
 
         moves
     }
 
-    fn compute_legal_at(
+    fn compute_legal_mobility_at(
         &self,
         piece: &Piece,
         tile: Tile,
@@ -779,7 +778,8 @@ impl Position {
     }
 
     pub fn is_in_checkmate(&self, color: Color) -> bool {
-        self.is_in_check(color) && self.legal_moves_for(color).is_empty()
+        // self.is_in_check(color) && self.compute_legal_moves_for(color).1 == 0
+        self.is_in_check(color) && self.num_legal_moves == 0
     }
 
     pub fn is_checkmate(&self) -> bool {
@@ -800,7 +800,7 @@ impl Position {
 
     // Checks if the provided move is legal to perform
     pub fn is_legal(&self, chessmove: Move) -> (bool, &str) {
-        let (from, to, kind) = (chessmove.from(), chessmove.to(), chessmove.kind());
+        let (from, to, kind) = chessmove.parts();
 
         // If there's no piece here, illegal move
         let Some(piece) = self.bitboards().piece_at(from) else {
@@ -957,9 +957,7 @@ impl Position {
 
         // Next player's turn
         self.toggle_current_player();
-
-        // TODO: REMOVE HISTORY FROM POSITION
-        self.history.push(chessmove);
+        self.compute_legal_moves_for(self.current_player());
     }
 
     /*

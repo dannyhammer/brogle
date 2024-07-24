@@ -1,6 +1,6 @@
 use dutchess_core::*;
 
-#[allow(dead_code)]
+/*
 fn perft(position: &mut Position, depth: usize) -> usize {
     if depth == 0 {
         return 1;
@@ -11,11 +11,11 @@ fn perft(position: &mut Position, depth: usize) -> usize {
     let mut nodes = 0;
     // let tab = " ".repeat(depth);
 
-    let moves = position.legal_moves();
-    for chessmove in moves {
+    let (moves, num_moves) = position.legal_moves();
+    for chessmove in moves.iter() {
         let mut cloned = position.clone();
         // println!("{tab}Making  : {chessmove}");
-        cloned.make_move(chessmove);
+        cloned.make_move(*chessmove);
         // println!("{tab}{cloned}");
         nodes += perft(&mut cloned, depth - 1);
         // println!("{tab}Unmaking: {chessmove}");
@@ -25,6 +25,7 @@ fn perft(position: &mut Position, depth: usize) -> usize {
 
     nodes
 }
+ */
 
 fn main() {
     let fen = FEN_STARTPOS;
@@ -134,12 +135,13 @@ fn main() {
     // let moves_to_make = ["d2d4", "e7e5", "d1d2", "f8b4", "d2c3", "d8h4"]; // c3g3 is not legal!
     // let moves_to_make = ["d8c7", "a5b4", "c7b7", "b4c4", "d7d5"]; // Illegal EP c5d6
     // let moves_to_make = ["b3a2", "e6d5", "c4b6"]; // d5e6 is illegal!
-    let moves_to_make = ["g2h1b"]; // kiwipete
+    // let moves_to_make = ["g2h1b"]; // kiwipete
 
     // let moves_to_make = ["a1a2", "h8h1", "e1d2", "h1a1", "a2a1"]; // Missing e8c8
     // let moves_to_make = ["a7a8q", "d7c7", "b7b8b", "c7d8", "b8c7"]; // Missing d8c7
     // let moves_to_make = ["b4b1", "h4g4", "b1g1", "h5h3", "g2h3"]; // Missing g4f5
 
+    /*
     for mv in moves_to_make {
         let mv = Move::from_uci(&game.position(), mv).unwrap();
         println!("\nMaking move: {mv:?}");
@@ -159,6 +161,7 @@ fn main() {
         }
         println!("\n");
     }
+     */
 
     // let board = ChessBoard::new().with_default_setup();
     // println!("{board}");

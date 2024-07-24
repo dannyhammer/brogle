@@ -1,3 +1,4 @@
+/*
 use std::process;
 
 use dutchess_core::{Move, Position};
@@ -14,10 +15,10 @@ fn perft(position: Position, depth: usize) -> usize {
 
     let moves = position.legal_moves();
     // eprintln!("LEGAL MOVES: {moves:?}");
-    for chessmove in moves {
+    for chessmove in moves.iter() {
         let mut cloned = position.clone();
         // eprintln!("{tab}Making  : {chessmove}");
-        cloned.make_move(chessmove);
+        cloned.make_move(*chessmove);
         // eprintln!("{tab}{cloned}");
         nodes += perft(cloned, depth - 1);
         // eprintln!("{tab}Unmaking: {chessmove}");
@@ -51,9 +52,9 @@ fn main() {
     let mut nodes = 0;
     let moves = position.legal_moves();
 
-    for chessmove in moves {
+    for chessmove in moves.iter() {
         let mut cloned = position.clone();
-        cloned.make_move(chessmove);
+        cloned.make_move(*chessmove);
         let new_nodes = perft(cloned, depth - 1);
         // cloned.unmake_move(chessmove);
         nodes += new_nodes;
@@ -63,3 +64,6 @@ fn main() {
 
     println!("\n{nodes}");
 }
+
+ */
+fn main() {}

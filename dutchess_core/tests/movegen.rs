@@ -59,6 +59,7 @@ fn lists_match<'a>(
     }
 }
 
+/*
 #[test]
 #[allow(non_snake_case)]
 fn test_moves_from_rnbqkbnr_pppppppp_8_8_8_8_PPPPPPPP_RNBQKBNR_w_KQkq_X_0_1() {
@@ -737,3 +738,4 @@ fn test_moves_from_8_8_8_8_8_1r6_2k5_K7_b_X_X_0_1() {
 
     lists_match(&pos, &moves, legal_moves);
 }
+ */

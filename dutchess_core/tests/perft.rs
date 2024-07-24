@@ -180,7 +180,7 @@ const POS3_PERFT_RESULTS: [PerftResult; 2] = [
 */
 
 // TODO: Something like this: https://peterellisjones.com/generating-legal-chess-moves-efficiently/perft-results.png
-#[allow(dead_code)]
+/*
 fn perft(position: Position, depth: usize) -> PerftResult {
     if depth == 0 {
         return PerftResult {
@@ -201,15 +201,16 @@ fn perft(position: Position, depth: usize) -> PerftResult {
     let moves = position.legal_moves();
 
     // println!("Valid moves: {moves:#?}");
-    for chessmove in moves {
+    for chessmove in moves.iter() {
         let mut cloned = position.clone();
-        cloned.make_move(chessmove);
+        cloned.make_move(*chessmove);
         res += perft(cloned, depth - 1);
         // position.unmake_move(chessmove);
     }
 
     res
 }
+ */
 
 fn perft_nodes_only(position: Position, depth: usize) -> usize {
     if depth == 0 {
@@ -226,7 +227,7 @@ fn perft_nodes_only(position: Position, depth: usize) -> usize {
     // println!("Valid moves: {moves:#?}");
     for chessmove in moves {
         let mut cloned = position.clone();
-        cloned.make_move(chessmove);
+        cloned.make_move(*chessmove);
         nodes += perft_nodes_only(cloned, depth - 1);
         // position.unmake_move(chessmove);
     }

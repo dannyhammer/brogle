@@ -1,11 +1,6 @@
 use std::{
     fmt,
-    ops::{Index, IndexMut, Shl, Shr},
-};
-
-use derive_more::{
-    BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
-    ShrAssign,
+    ops::{Index, IndexMut, Not, Shl, Shr},
 };
 
 use super::{
@@ -18,11 +13,8 @@ use super::{
 /// Internally uses a collection of [`BitBoards`] to keep track of piece locations, occupied/empty squares, and attack squares.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ChessBoard {
-    /// All tiles occupied by a piece
+    /// All tiles occupied by a piece of any kind or color.
     occupied: BitBoard,
-
-    /// All unoccupied tiles
-    empty: BitBoard,
 
     /// All tiles occupied by a specific color
     colors: [BitBoard; NUM_COLORS],
@@ -43,7 +35,6 @@ impl ChessBoard {
     pub const fn new() -> Self {
         Self {
             occupied: BitBoard::EMPTY_BOARD,
-            empty: BitBoard::FULL_BOARD,
             colors: [BitBoard::EMPTY_BOARD; NUM_COLORS],
             pieces: [BitBoard::EMPTY_BOARD; NUM_PIECE_TYPES],
         }
@@ -58,7 +49,7 @@ impl ChessBoard {
     /// assert_eq!(board.fen(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
     /// ```
     pub fn with_default_setup(self) -> Self {
-        // Safe unwrap because the DEFAULT_FEN is always valid
+        // Safe unwrap because the FEN for startpos is always valid
         self.with_setup(FEN_STARTPOS).unwrap()
     }
 
@@ -113,9 +104,6 @@ impl ChessBoard {
             return Err(ChessError::InvalidFenString);
         }
 
-        let mut pieces = Vec::with_capacity(64);
-        let mut tiles = Vec::with_capacity(64);
-
         // Need to reverse this so that White pieces are at the "bottom" of the board
         for (rank, placements) in placements.split('/').rev().enumerate() {
             let mut file = 0;
@@ -127,8 +115,7 @@ impl ChessBoard {
                     // Firstly, create a tile and set the "Occupied" board at this location.
                     let tile = Tile::new(File::new_unchecked(file), Rank::new_unchecked(rank));
 
-                    pieces.push(piece);
-                    tiles.push(tile);
+                    self = self.with_piece(piece, tile);
 
                     file += 1;
                 } else {
@@ -140,11 +127,6 @@ impl ChessBoard {
                 }
             }
         }
-
-        self = self.with_pieces(pieces, tiles);
-
-        // After all pieces have been set, we can compute the "Attacks" boards
-        // TODO: SET ATTACKS BOARD
 
         Ok(self)
     }
@@ -194,9 +176,7 @@ impl ChessBoard {
     pub fn set(&mut self, piece: Piece, tile: Tile) {
         self[piece.color()].set(tile);
         self[piece.kind()].set(tile);
-
         self.occupied.set(tile);
-        self.empty.clear(tile);
     }
 
     /// Clears the supplied [`Tile`] of any pieces.
@@ -214,8 +194,6 @@ impl ChessBoard {
             self[piece.kind()].clear(tile);
         }
         self.occupied.clear(tile);
-        self.empty.set(tile);
-        // self.empty = !self.occupied;
     }
 
     /// Takes the [`Piece`] from a given [`Tile`], if there is one present.
@@ -259,7 +237,7 @@ impl ChessBoard {
     /// assert!(board.color_at(Tile::E4).is_none());
     /// ```
     pub const fn color_at(&self, tile: Tile) -> Option<Color> {
-        if !self.occupied.get(tile) {
+        if !self.occupied().get(tile) {
             return None;
         }
 
@@ -283,7 +261,7 @@ impl ChessBoard {
     /// assert!(board.kind_at(Tile::E4).is_none());
     /// ```
     pub const fn kind_at(&self, tile: Tile) -> Option<PieceKind> {
-        if !self.occupied.get(tile) {
+        if !self.occupied().get(tile) {
             return None;
         }
 
@@ -409,11 +387,12 @@ impl ChessBoard {
 
     pub const fn blockers(&self, blocker_mask: BitBoard) -> BitBoard {
         // All occupied squares within the blocker mask
-        self.occupied.and(blocker_mask)
+        self.occupied().and(blocker_mask)
     }
 
     pub const fn occupied(&self) -> BitBoard {
         self.occupied
+        // BitBoard(self.colors[0].0 | self.colors[1].0)
     }
 
     pub const fn empty(&self) -> BitBoard {
@@ -423,7 +402,7 @@ impl ChessBoard {
     /// Returns an instance of this [`ChessBoard`] that has all bits specified by `mask` cleared.
     pub const fn without(&self, mask: BitBoard) -> Self {
         let not_mask = mask.not();
-        let occupied = self.occupied.and(not_mask);
+        let occupied = self.occupied().and(not_mask);
         let mut colors = self.colors;
         colors[0] = colors[0].and(not_mask);
         colors[1] = colors[1].and(not_mask);
@@ -438,7 +417,6 @@ impl ChessBoard {
 
         Self {
             occupied,
-            empty: occupied.not(),
             colors,
             pieces,
         }
@@ -461,6 +439,8 @@ impl ChessBoard {
         attacks
     }
 
+    /// Removes the defending King from this board and computes the attacks of the `attacker_color` pieces,
+    /// returning a [`BitBoard`] of all of the squares that can be attacked.
     pub fn king_danger_squares(&self, attacker_color: Color) -> BitBoard {
         let king_bb = self.king(attacker_color.opponent());
         let kingless = self.without(king_bb);
@@ -504,7 +484,7 @@ impl ChessBoard {
     pub const fn iter<'a>(&'a self) -> BoardIter<'a> {
         BoardIter {
             board: &self,
-            occupancy: self.occupied,
+            occupancy: self.occupied(),
         }
     }
 
@@ -544,41 +524,6 @@ impl Default for ChessBoard {
 
 impl fmt::Display for ChessBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        /*
-        // Allocate just enough capacity
-        let mut board = String::with_capacity(646);
-
-        // Visual divider between each rank
-        let divider = File::iter().map(|_| "+---").collect::<Vec<_>>().join("");
-
-        board += "  ";
-
-        for rank in Rank::iter().rev() {
-            board += &divider;
-
-            board += &format!("+\n{rank} ");
-
-            for file in File::iter() {
-                let occupant = if let Some(piece) = self.get(file * rank) {
-                    piece.to_string()
-                } else {
-                    String::from(" ")
-                };
-
-                board += &format!("| {occupant} ");
-            }
-
-            board += &format!("|\n  ");
-        }
-        board += &divider;
-        board += "+\n  ";
-        for file in File::iter() {
-            board += &format!("  {file} ");
-        }
-
-        write!(f, "{board}")
-         */
-
         // Allocate just enough capacity
         let mut board = String::with_capacity(198);
 
@@ -652,28 +597,6 @@ impl IndexMut<Color> for ChessBoard {
     }
 }
 
-/*
-// Can't be done due to `Index` returning a reference
-impl Index<Piece> for BitBoards {
-    type Output = BitBoard;
-    fn index(&self, index: Piece) -> &Self::Output {
-        let color = self[index.color()];
-        let kind = self[index.kind()];
-
-        unsafe {
-            // let ptr = self as *const Self;
-            // let ptr = ptr as *mut Self;
-            // let ptr = &mut *ptr;
-            // ptr.piece = color & kind;
-
-            (&mut *((self as *const Self) as *mut Self)).piece = color & kind;
-        }
-
-        &self.piece
-    }
-}
- */
-
 impl fmt::Debug for ChessBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let format = |to_fmt: &[(BitBoard, &str)]| {
@@ -716,8 +639,8 @@ impl fmt::Debug for ChessBoard {
         ]);
 
         let metadata = format(&[
-            (self.occupied, "Occupied"),
-            (self.empty, "Empty"),
+            (self.occupied(), "Occupied"),
+            (self.empty(), "Empty"),
             (self.colors[Color::White], "White"),
             (self.colors[Color::Black], "Black"),
         ]);
@@ -730,14 +653,14 @@ pub struct BoardIter<'a> {
     board: &'a ChessBoard,
     occupancy: BitBoard,
 }
+
 impl<'a> Iterator for BoardIter<'a> {
     type Item = (Tile, Piece);
 
     fn next(&mut self) -> Option<Self::Item> {
         let lsb = self.occupancy.pop_lsb()?;
-        let tile = Tile(lsb);
-        let piece = self.board.get(tile)?;
-        Some((tile, piece))
+        let piece = self.board.get(lsb)?;
+        Some((lsb, piece))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -747,20 +670,6 @@ impl<'a> Iterator for BoardIter<'a> {
 }
 
 impl<'a> ExactSizeIterator for BoardIter<'a> {}
-
-/*
-impl<'a> IntoIterator for BitBoards {
-    type Item = Option<&'a Piece>;
-    type IntoIter = BoardIter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        BoardIter {
-            board: &self,
-            current: None,
-        }
-    }
-}
- */
 
 /// A [`BitBoard`] represents the game board as a set of bits.
 /// They are used for various computations, such as fetching valid moves or computing move costs.
@@ -783,25 +692,7 @@ impl<'a> IntoIterator for BitBoards {
 /// 00000000
 /// 11111111
 /// ```
-#[derive(
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    Default,
-    BitAnd,
-    BitAndAssign,
-    BitOr,
-    BitOrAssign,
-    BitXor,
-    BitXorAssign,
-    Not,
-    Shl,
-    ShlAssign,
-    Shr,
-    ShrAssign,
-)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(transparent)]
 pub struct BitBoard(pub(crate) u64);
 
@@ -831,8 +722,8 @@ impl BitBoard {
     pub const EMPTY_BOARD: Self = Self(0x0000000000000000);
     pub const FULL_BOARD: Self = Self(0xFFFFFFFFFFFFFFFF);
     pub const EDGES: Self = Self(0xFF818181818181FF);
-    pub const NOT_EDGES: Self = Self(0x007E7E7E7E7E7E00);
     pub const CORNERS: Self = Self(0x8100000000000081);
+    pub const CENTER: Self = Self(0x0000001818000000);
 
     const RANK_END_INDICES: [usize; 8] = [7, 15, 23, 31, 39, 47, 55, 63];
 
@@ -860,7 +751,7 @@ impl BitBoard {
     /// ```
     pub const fn from_index(index: usize) -> Self {
         debug_assert!(index < 64, "Index must be between [0,64)");
-        Self(1 << index)
+        Self::from_tile(Tile::from_index_unchecked(index))
     }
 
     /// Constructs a new [`BitBoard`] from the provided [`Tile`].
@@ -874,7 +765,7 @@ impl BitBoard {
     /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
     /// ```
     pub const fn from_tile(tile: Tile) -> Self {
-        Self::from_index(tile.index())
+        Self(1 << tile.index())
     }
 
     /// Constructs a new [`BitBoard`] from the provided [`File`].
@@ -939,14 +830,6 @@ impl BitBoard {
         }
     }
 
-    pub const fn from_option_tile(tile: Option<Tile>) -> Self {
-        if let Some(tile) = tile {
-            tile.bitboard()
-        } else {
-            Self::EMPTY_BOARD
-        }
-    }
-
     /// Returns [`BitBoard::FULL_BOARD`] if `true`, else [`BitBoard::EMPTY_BOARD`].
     ///
     /// # Example
@@ -960,14 +843,59 @@ impl BitBoard {
         Self((value as u64).wrapping_neg() & u64::MAX)
     }
 
-    pub const fn home_rank(color: Color) -> Self {
+    /// Returns a [`BitBoard`] of this [`Color`]'s first rank.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Color};
+    ///
+    /// assert_eq!(BitBoard::first_rank(Color::White), BitBoard::RANK_1);
+    /// assert_eq!(BitBoard::first_rank(Color::Black), BitBoard::RANK_8);
+    /// ```
+    pub const fn first_rank(color: Color) -> Self {
         [Self::RANK_1, Self::RANK_8][color.index()]
     }
 
-    pub const fn pawn_rank(color: Color) -> Self {
+    /// Returns a [`BitBoard`] of this [`Color`]'s second rank.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Color};
+    ///
+    /// assert_eq!(BitBoard::second_rank(Color::White), BitBoard::RANK_2);
+    /// assert_eq!(BitBoard::second_rank(Color::Black), BitBoard::RANK_7);
+    /// ```
+    pub const fn second_rank(color: Color) -> Self {
         [Self::RANK_2, Self::RANK_7][color.index()]
     }
 
+    /// Returns a [`BitBoard`] of this [`Color`]'s seventh rank.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Color};
+    ///
+    /// assert_eq!(BitBoard::seventh_rank(Color::White), BitBoard::RANK_7);
+    /// assert_eq!(BitBoard::seventh_rank(Color::Black), BitBoard::RANK_2);
+    /// ```
+    pub const fn seventh_rank(color: Color) -> Self {
+        [Self::RANK_7, Self::RANK_2][color.index()]
+    }
+
+    /// Returns a [`BitBoard`] of this [`Color`]'s eighth (last) rank.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Color};
+    ///
+    /// assert_eq!(BitBoard::eighth_rank(Color::White), BitBoard::RANK_8);
+    /// assert_eq!(BitBoard::eighth_rank(Color::Black), BitBoard::RANK_1);
+    /// ```
+    pub const fn eighth_rank(color: Color) -> Self {
+        [Self::RANK_8, Self::RANK_1][color.index()]
+    }
+
+    /// Returns the squares between (inclusive) the short (kingside) castling of `color`.
     pub const fn kingside_castle(color: Color) -> Self {
         [
             ray_between(Tile::E1, Tile::G1),
@@ -975,6 +903,7 @@ impl BitBoard {
         ][color.index()]
     }
 
+    /// Returns the squares between (inclusive) the long (queenside) castling of `color`.
     pub const fn queenside_castle(color: Color) -> Self {
         [
             ray_between(Tile::E1, Tile::C1),
@@ -996,6 +925,7 @@ impl BitBoard {
         ][color.index()]
     }
 
+    /// Returns the inner `u64` of this [`BitBoard`].
     pub const fn inner(&self) -> u64 {
         self.0
     }
@@ -1015,6 +945,19 @@ impl BitBoard {
         Tile::from_index_unchecked(self.to_index())
     }
 
+    /// Creates a [`Tile`] from this [`BitBoard`] based on the lowest-index bit that is flipped.
+    ///
+    /// If this [`BitBoard`] contains more than a single flipped bit, it is converted into a [`Tile`]
+    /// based on the index of the lowest bit that is flipped.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Tile};
+    /// let board = BitBoard::from_index(14);
+    /// assert_eq!(board.to_tile(), Some(Tile::G2));
+    /// let invalid = BitBoard::RANK_1;
+    /// assert_eq!(invalid.to_tile(), None);
+    /// ```
     pub const fn to_tile(&self) -> Option<Tile> {
         if self.is_only_one() {
             Some(self.to_tile_unchecked())
@@ -1054,10 +997,12 @@ impl BitBoard {
         self.0 == 0
     }
 
+    /// Returns `true` if this [`BitBoard`] has at most `n` bits on.
     pub const fn has_at_most(&self, n: u32) -> bool {
         self.population() <= n
     }
 
+    /// Returns `true` if this [`BitBoard`] has at most 1 bit on.
     pub const fn is_only_one(&self) -> bool {
         self.population() == 1
     }
@@ -1087,9 +1032,7 @@ impl BitBoard {
     /// assert_eq!(board.to_hex_string(), "0x0000000000004000");
     /// ```
     pub fn set(&mut self, tile: Tile) {
-        // self.0 |= 1 << tile.index();
         self.set_index(tile.index());
-        // *self = *self | Self::from_tile(tile);
     }
 
     /// Gets the value of the bit corresponding to the location of the provided [`Tile`].
@@ -1101,7 +1044,6 @@ impl BitBoard {
     /// assert!(board.get(Tile::A3));
     /// ```
     pub const fn get(&self, tile: Tile) -> bool {
-        // (self.0 & 1 << tile.index()) != 0
         self.get_index(tile.index())
     }
 
@@ -1115,7 +1057,6 @@ impl BitBoard {
     /// assert_eq!(board.to_hex_string(), "0x00000000000000FB");
     /// ```
     pub fn clear(&mut self, tile: Tile) {
-        // self.0 ^= !(1 << tile.index());
         self.clear_index(tile.index())
     }
 
@@ -1124,15 +1065,17 @@ impl BitBoard {
         self.0 &= !other.0
     }
 
-    pub const fn lsb(&self) -> Option<u8> {
+    /// Returns the index of the lowest non-zero bit of this [`BitBoard`], as a [`Tile`].
+    pub const fn lsb(&self) -> Option<Tile> {
         if self.is_empty() {
             None
         } else {
-            Some(self.0.trailing_zeros() as u8)
+            Some(Tile(self.0.trailing_zeros() as u8))
         }
     }
 
-    pub fn pop_lsb(&mut self) -> Option<u8> {
+    /// Pops and returns the index of the lowest non-zero bit of this [`BitBoard`], as a [`Tile`].
+    pub fn pop_lsb(&mut self) -> Option<Tile> {
         let lsb = self.lsb();
         self.clear_lsb();
         lsb
@@ -1145,41 +1088,70 @@ impl BitBoard {
 
     // https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set
     pub fn carry_rippler(&mut self, mask: Self) {
-        self.0 = self.0.wrapping_sub(mask.0) & mask.0;
+        *self = self.to_carry_rippler(mask);
     }
 
+    // https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set
     pub const fn to_carry_rippler(self, mask: Self) -> Self {
         Self(self.0.wrapping_sub(mask.0) & mask.0)
     }
 
-    pub fn toggle(&mut self, mask: Self) {
-        *self ^= mask
-    }
-
+    /// Toggles the bit corresponding to the specified [`Tile`].
     pub fn toggle_tile(&mut self, tile: Tile) {
-        self.toggle(Self::from_tile(tile))
+        *self ^= Self::from_tile(tile);
     }
 
+    /// Toggles the bit at `index`.
     pub fn toggle_index(&mut self, index: usize) {
-        self.toggle(Self::from_index(index))
+        *self ^= Self::from_index(index);
     }
 
+    /// Sets the bit at `index` to `1`.
+    ///
+    /// # Panics
+    /// If `index > 63` with debug assertions enabled.
     fn set_index(&mut self, index: usize) {
         debug_assert!(index < 64, "Index must be between [0,64)");
         // self.0 |= 1 << index;
-        *self = *self | Self::from_index(index);
-        // self.set(Tile::from_index_unchecked(index));
+        *self |= Self::from_index(index);
     }
 
+    /// Returns `true` if the bit at `index` is set, else `false`.
+    ///
+    /// # Panics
+    /// If `index > 63` with debug assertions enabled.
     const fn get_index(&self, index: usize) -> bool {
         debug_assert!(index < 64, "Index must be between [0,64)");
         (self.0 & 1 << index) != 0
     }
 
+    /// Sets the bit at `index` to `0`.
+    ///
+    /// # Panics
+    /// If `index > 63` with debug assertions enabled.
     fn clear_index(&mut self, index: usize) {
         debug_assert!(index < 64, "Index must be between [0,64)");
         // self.0 ^= 1 << index;
-        *self = *self ^ Self::from_index(index)
+        *self ^= Self::from_index(index);
+    }
+
+    /// Returns a [`BitBoardIter`] to iterate over all of the set bits as [`Tile`]s.
+    pub const fn iter(&self) -> BitBoardIter {
+        BitBoardIter { bb: *self }
+    }
+
+    /// Yields the total number of `1`s in this [`BitBoard`].
+    ///
+    /// In other words, this function determines how many bits are activated.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::BitBoard;
+    /// let board = BitBoard::RANK_1;
+    /// assert_eq!(board.population(), 8);
+    /// ```
+    pub const fn population(&self) -> u32 {
+        self.0.count_ones()
     }
 
     /// Returns `true` if `other` is a subset of `self`.
@@ -1190,7 +1162,6 @@ impl BitBoard {
     /// Returns `true` if `self` contains any bits of `other`.
     pub const fn contains_any(&self, other: &Self) -> bool {
         self.0 & other.0 != Self::EMPTY_BOARD.0
-        // *self & *other != Self::EMPTY_BOARD
     }
 
     /// If there are any bits set in `self`, returns [`BitBoard::FULL_BOARD`].
@@ -1319,106 +1290,158 @@ impl BitBoard {
         Self(self.0 >> 8)
     }
 
-    // File up
-    pub const fn west(self) -> Self {
-        // Post-shift mask
-        Self((self.0 >> 1) & Self::NOT_FILE_H.0)
-        // (self >> 1) & Self::NOT_FILE_H
-    }
-
-    // File down
-    pub const fn east(self) -> Self {
-        // Post-shift mask
-        Self((self.0 << 1) & Self::NOT_FILE_A.0)
-        // (self << 1) & Self::NOT_FILE_A
-    }
-
-    pub const fn northeast(self) -> Self {
-        // Post-shift mask
-        Self((self.0 << 9) & Self::NOT_FILE_A.0)
-        // (self << 9) & Self::NOT_FILE_A
-    }
-
-    pub const fn southeast(self) -> Self {
-        // Post-shift mask
-        Self((self.0 >> 7) & Self::NOT_FILE_A.0)
-        // (self >> 7) & Self::NOT_FILE_A
-    }
-
-    pub const fn northwest(self) -> Self {
-        // Post-shift mask
-        Self((self.0 << 7) & Self::NOT_FILE_H.0)
-        // (self << 7) & Self::NOT_FILE_H
-    }
-
-    pub const fn southwest(self) -> Self {
-        // Post-shift mask
-        Self((self.0 >> 9) & Self::NOT_FILE_H.0)
-        // (self >> 9) & Self::NOT_FILE_H
-    }
-
-    /*
-    const fn north_fill(&self) -> Self {
-        let mut bits = self.0;
-        bits |= bits << 8;
-        bits |= bits << 16;
-        bits |= bits << 32;
-        Self(bits)
-    }
-
-    const fn south_fill(&self) -> Self {
-        let mut bits = self.0;
-        bits |= bits >> 8;
-        bits |= bits >> 16;
-        bits |= bits >> 32;
-        Self(bits)
-    }
-     */
-
-    pub fn iter(&self) -> BitBoardIter {
-        self.into_iter()
-    }
-
-    /// Yields the total number of `1`s in this [`BitBoard`].
+    /// Shifts this [`BitBoard`] by one [`File`] up.
     ///
-    /// In other words, this function determines how many bits are activated.
+    /// If already at the first file (a), returns an empty board.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::BitBoard;
-    /// let board = BitBoard::RANK_1;
-    /// assert_eq!(board.population(), 8);
+    /// assert_eq!(BitBoard::FILE_C.east(), BitBoard::FILE_D);
+    /// assert_eq!(BitBoard::FILE_H.east(), BitBoard::EMPTY_BOARD);
     /// ```
-    pub const fn population(&self) -> u32 {
-        self.0.count_ones()
+    pub const fn east(self) -> Self {
+        // Post-shift mask
+        Self((self.0 << 1) & Self::NOT_FILE_A.0)
     }
 
-    pub fn to_hex_string(&self) -> String {
-        format!("0x{:0>16X}", self.0)
+    /// Shifts this [`BitBoard`] by one [`File`] down.
+    ///
+    /// If already at the final file (h), returns an empty board.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::BitBoard;
+    /// assert_eq!(BitBoard::FILE_C.west(), BitBoard::FILE_B);
+    /// assert_eq!(BitBoard::FILE_A.west(), BitBoard::EMPTY_BOARD);
+    /// ```
+    pub const fn west(self) -> Self {
+        // Post-shift mask
+        Self((self.0 >> 1) & Self::NOT_FILE_H.0)
     }
 
+    /// Combination of [`BitBoard::north`] and [`BitBoard::east`].
+    ///
+    /// If already at the edge, returns an empty board.
+    ///
+    /// This operation is faster than calling [`BitBoard::north`] and [`BitBoard::east`] separately.
+    pub const fn northeast(self) -> Self {
+        // Post-shift mask
+        Self((self.0 << 9) & Self::NOT_FILE_A.0)
+    }
+
+    /// Combination of [`BitBoard::south`] and [`BitBoard::east`].
+    ///
+    /// If already at the edge, returns an empty board.
+    ///
+    /// This operation is faster than calling [`BitBoard::south`] and [`BitBoard::east`] separately.
+    pub const fn southeast(self) -> Self {
+        // Post-shift mask
+        Self((self.0 >> 7) & Self::NOT_FILE_A.0)
+    }
+
+    /// Combination of [`BitBoard::north`] and [`BitBoard::west`].
+    ///
+    /// If already at the edge, returns an empty board.
+    ///
+    /// This operation is faster than calling [`BitBoard::north`] and [`BitBoard::west`] separately.
+    pub const fn northwest(self) -> Self {
+        // Post-shift mask
+        Self((self.0 << 7) & Self::NOT_FILE_H.0)
+    }
+
+    /// Combination of [`BitBoard::south`] and [`BitBoard::west`].
+    ///
+    /// If already at the edge, returns an empty board.
+    ///
+    /// This operation is faster than calling [`BitBoard::south`] and [`BitBoard::west`] separately.
+    pub const fn southwest(self) -> Self {
+        // Post-shift mask
+        Self((self.0 >> 9) & Self::NOT_FILE_H.0)
+    }
+
+    /*
+    /// Creates a mask of all squares in front of `tile` (according to `color`) that are either directly in front or on the adjacent files.
     pub fn passed_pawn_mask(tile: Tile, color: Color) -> Self {
-        let forward_ranks = match color {
-            Color::White => Self::FULL_BOARD << (tile.rank() + 1),
-            Color::Black => Self::FULL_BOARD << (tile.rank() - 1),
+        let rank = match color {
+            Color::White => tile.rank().increase(),
+            Color::Black => tile.rank().decrease(),
         };
 
-        let files =
-            Self::from(tile.file()) | Self::from(tile.file() + 1) | Self::from(tile.file() - 1);
+        let forward_ranks = Self::FULL_BOARD << rank;
+
+        let file = tile.file();
+        let left = Self::from(file.decrease());
+        let right = Self::from(file.increase());
+        let center = Self::from_file(file);
+
+        let files = center | left | right;
 
         forward_ranks & files
     }
+     */
 
+    /// `const` analog of [`BitAnd::bitand`].
+    ///
+    /// Returns the bitwise AND (`&`) of `self` and `other`.
     pub const fn and(self, other: Self) -> Self {
         Self(self.0 & other.0)
     }
+
+    /// `const` analog of [`BitOr::bitor`].
+    ///
+    /// Returns the bitwise OR (`|`) of `self` and `other`.
     pub const fn or(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
+
+    /// `const` analog of [`BitXor::bitxor`].
+    ///
+    /// Returns the bitwise XOR (`^`) of `self` and `other`.
     pub const fn xor(self, other: Self) -> Self {
         Self(self.0 ^ other.0)
     }
+
+    /// `const` analog of [`Not::not`].
+    ///
+    /// Returns the logical negation (`!`) of `self`, flipping all `1`'s to `0`'s and vice versa.
     pub const fn not(self) -> Self {
+        Self(!self.0)
+    }
+
+    /// Formats this [`BitBoard`] as a hexadecimal string.
+    pub fn to_hex_string(&self) -> String {
+        format!("0x{:0>16X}", self.0)
+    }
+}
+
+macro_rules! impl_bitwise_op {
+    // Impl op and op_assign for Self
+    ($op:tt, $op_assign:tt, $func:ident, $func_assign:ident, $op_tok:tt) => {
+        impl std::ops::$op for BitBoard {
+            type Output = Self;
+            fn $func(self, rhs: Self) -> Self::Output {
+                Self(self.0 $op_tok rhs.0)
+            }
+        }
+
+        impl std::ops::$op_assign for BitBoard {
+            fn $func_assign(&mut self, rhs: Self) {
+                *self = *self $op_tok rhs;
+            }
+        }
+    };
+}
+
+impl_bitwise_op!(BitAnd, BitAndAssign, bitand, bitand_assign, &);
+impl_bitwise_op!(BitOr, BitOrAssign, bitor, bitor_assign, |);
+impl_bitwise_op!(BitXor, BitXorAssign, bitxor, bitxor_assign, ^);
+impl_bitwise_op!(Shl, ShlAssign, shl, shl_assign, <<);
+impl_bitwise_op!(Shr, ShrAssign, shr, shr_assign, >>);
+
+impl Not for BitBoard {
+    type Output = Self;
+    fn not(self) -> Self::Output {
         Self(!self.0)
     }
 }
@@ -1453,6 +1476,7 @@ impl Shr<Rank> for BitBoard {
 
 impl Index<Tile> for BitBoard {
     type Output = bool;
+    /// A [`BitBoard`] can be indexed by a [`Tile`] to yield `true` or `false`, if the bit at that index is set.
     fn index(&self, index: Tile) -> &Self::Output {
         if self.get_index(index.index()) {
             &true
@@ -1462,9 +1486,18 @@ impl Index<Tile> for BitBoard {
     }
 }
 
-impl From<Tile> for BitBoard {
-    fn from(value: Tile) -> Self {
-        Self::from_tile(value)
+impl Index<usize> for BitBoard {
+    type Output = bool;
+    /// A [`BitBoard`] can be indexed by a [`usize`] to yield `true` or `false`, if the bit at that index is set.
+    ///
+    /// # Panics
+    /// If debug assertions are enabled and `index > 63`.
+    fn index(&self, index: usize) -> &Self::Output {
+        if self.get_index(index) {
+            &true
+        } else {
+            &false
+        }
     }
 }
 
@@ -1472,12 +1505,19 @@ impl<T> From<Option<T>> for BitBoard
 where
     Self: From<T>,
 {
+    /// If `value` is `None`, this yields an empty [`BitBoard`].
     fn from(value: Option<T>) -> Self {
         if let Some(t) = value {
             Self::from(t)
         } else {
             Self::default()
         }
+    }
+}
+
+impl From<Tile> for BitBoard {
+    fn from(value: Tile) -> Self {
+        Self::from_tile(value)
     }
 }
 
@@ -1500,18 +1540,21 @@ impl From<u64> for BitBoard {
 }
 
 impl fmt::UpperHex for BitBoard {
+    /// Formats this [`BitBoard`] as a 16-character uppercase hexadecimal string, not including the `0x` prefix.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "0X{:0>16X}", self.0)
     }
 }
 
 impl fmt::LowerHex for BitBoard {
+    /// Formats this [`BitBoard`] as a 16-character lowercase hexadecimal string, not including the `0x` prefix.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "0x{:0>16x}", self.0)
     }
 }
 
 impl fmt::Binary for BitBoard {
+    /// Formats this [`BitBoard`] as a 64-character binary string, not including the `0b` prefix.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "0b{:0>64b}", self.0)
     }
@@ -1609,7 +1652,7 @@ impl Iterator for BitBoardIter {
     fn next(&mut self) -> Option<Self::Item> {
         let next = self.bb.lsb()?;
         self.bb.clear_lsb();
-        Some(Tile(next))
+        Some(next)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
