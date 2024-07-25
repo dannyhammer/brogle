@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::MAX_NUM_MOVES;
+use crate::{File, Rank, MAX_NUM_MOVES};
 
 use super::{
     bishop_moves, default_movement_for, king_moves, knight_moves, pawn_attacks, pawn_pushes,
@@ -173,6 +173,12 @@ impl CastlingRights {
     }
 }
 
+impl fmt::Display for CastlingRights {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_uci())
+    }
+}
+
 /// Represents the current state of the game, including move counters
 ///
 /// Analogous to a FEN string.
@@ -286,7 +292,7 @@ impl Position {
     }
 
     pub fn from_fen(mut self, fen: &str) -> Result<Self, ChessError> {
-        let mut split = fen.split(' ');
+        let mut split = fen.trim().split(' ');
         let placements = split.next().ok_or(ChessError::InvalidFenString)?;
         self.bitboards = ChessBoard::from_fen(placements)?;
 
@@ -335,6 +341,26 @@ impl Position {
         self.current_player
     }
 
+    pub const fn ep_tile(&self) -> Option<Tile> {
+        self.ep_tile
+    }
+
+    pub const fn castling_rights(&self) -> CastlingRights {
+        self.castling_rights
+    }
+
+    pub const fn halfmove(&self) -> usize {
+        self.halfmove
+    }
+
+    pub const fn fullmove(&self) -> usize {
+        self.fullmove
+    }
+
+    pub fn toggle_current_player(&mut self) {
+        self.current_player = self.current_player.opponent();
+    }
+
     pub const fn bitboards(&self) -> &ChessBoard {
         &self.bitboards
     }
@@ -343,13 +369,7 @@ impl Position {
         &mut self.bitboards
     }
 
-    pub const fn ep_tile(&self) -> Option<Tile> {
-        self.ep_tile
-    }
-
-    pub fn toggle_current_player(&mut self) {
-        self.current_player = self.current_player.opponent();
-    }
+    // pub fn pseudo_legal_moves(&self) -> &[Move] {}
 
     pub fn legal_moves(&self) -> &[Move] {
         &self.legal_moves[..self.num_legal_moves]
@@ -868,6 +888,21 @@ impl Position {
         (true, "")
     }
 
+    pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
+        for chessmove in moves {
+            self.make_move(chessmove);
+        }
+    }
+
+    pub fn make_move_checked(&mut self, chessmove: Move) -> Result<(), String> {
+        let (is_legal, reason) = self.is_legal(chessmove);
+        if is_legal {
+            Ok(self.make_move(chessmove))
+        } else {
+            Err(format!("{reason}"))
+        }
+    }
+
     /// Applies the move. No enforcement of legality
     pub fn make_move(&mut self, chessmove: Move) {
         // println!("Making {chessmove} on:\n{:?}", self.bitboards());
@@ -1092,8 +1127,46 @@ impl fmt::Display for Position {
 }
 
 impl fmt::Debug for Position {
-    // TODO: Something like this: https://peterellisjones.com/generating-legal-chess-moves-efficiently/perft-results.png
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.bitboards())
+        let ranks = Rank::iter().rev();
+
+        let mut board_str = String::with_capacity(10);
+        for rank in ranks {
+            board_str += &format!("{rank}|");
+            for file in File::iter() {
+                let piece = self.bitboards().piece_at(file * rank);
+                let piece_char = piece.map(|p| p.char()).unwrap_or('.');
+                board_str += &format!(" {piece_char}");
+            }
+
+            if rank == Rank(6) {
+                board_str += &format!("           FEN: {}", self.to_fen());
+            } else if rank == Rank(5) {
+                board_str += &format!("          Side: {}", self.current_player());
+            } else if rank == Rank(4) {
+                board_str += &format!("      Castling: {}", self.castling_rights());
+            } else if rank == Rank(3) {
+                let ep = self
+                    .ep_tile()
+                    .map(|t| t.to_uci())
+                    .unwrap_or(String::from("-"));
+                board_str += &format!("            EP: {ep}",);
+            } else if rank == Rank(2) {
+                board_str += &format!("     Half-move: {}", self.halfmove());
+            } else if rank == Rank(1) {
+                board_str += &format!("     Full-move: {}", self.fullmove());
+            }
+            board_str += "\n";
+        }
+        board_str += " +";
+        for _ in File::iter() {
+            board_str += "--";
+        }
+        board_str += "\n   ";
+        for file in File::iter() {
+            board_str += &format!("{file} ");
+        }
+
+        write!(f, "{board_str}")
     }
 }

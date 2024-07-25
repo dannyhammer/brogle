@@ -338,8 +338,10 @@ impl Move {
         let from = Tile::from_uci(from)?;
         let to = Tile::from_uci(to)?;
 
-        // Safe unwrap because there MUST be a piece here in order to move
-        let piece = position.bitboards().piece_at(from).unwrap();
+        let piece = position
+            .bitboards()
+            .piece_at(from)
+            .ok_or(ChessError::NoPieceAtTile { tile: from })?;
         let color = piece.color();
 
         let kind = if piece.is_pawn() {

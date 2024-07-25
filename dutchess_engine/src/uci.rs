@@ -29,7 +29,7 @@ impl log::Log for UciLogger {
     }
 }
 
-pub type UciResult<T> = Result<T, InvalidUciError>;
+pub type UciResult<T> = Result<T, UciError>;
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum UciSearchMode<'a> {
@@ -53,7 +53,7 @@ pub struct SearchOptions<'a> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum InvalidUciError {
+pub enum UciError {
     NoInputProvided,
     UnrecognizedCommand,
     NotEnoughArguments,
@@ -82,24 +82,21 @@ pub trait UciEngine {
                 break self.quit();
             }
 
-            // if let Ok(cmd) = UciCommand::new(&buffer) {
-            //     //
-            // }
-
             // Attempt to parse the user input
             let cmd = match UciCommand::new(&buffer) {
                 Ok(cmd) => cmd,
-                Err(_err) => {
-                    // if matches!(e, InvalidUciError::UnrecognizedCommand) {
-                    // if self.custom_command(&buffer).is_err() {
-                    //     //
-                    // }
-                    // continue;
-                    // } else {
-                    // UCI protocol states to continue running when invalid input is received.
-                    println!("Unrecognized command: {buffer}");
+                Err(err) => {
+                    // This is an unrecognized command, so attempt to parse it through custom means
+                    if matches!(err, UciError::UnrecognizedCommand) {
+                        if let Err(err) = self.custom_command(&buffer) {
+                            println!("Unrecognized command: {buffer}");
+                            eprintln!("{err}");
+                        }
+                    } else {
+                        // UCI protocol states to continue running when invalid input is received.
+                        println!("Unrecognized command: {buffer}");
+                    }
                     continue;
-                    // }
                 }
             };
 
@@ -120,7 +117,7 @@ pub trait UciEngine {
         }
     }
 
-    // fn custom_command(&mut self, cmd: &str) -> io::Result<()>;
+    fn custom_command(&mut self, cmd: &str) -> io::Result<()>;
 
     /* GUI to Engine communication */
 
@@ -410,7 +407,7 @@ impl<'a> UciCommand<'a> {
                 "register" => Self::parse_register(rest),
                 "position" => Self::parse_position(rest),
                 "go" => Self::parse_go(rest),
-                _ => Err(InvalidUciError::UnrecognizedCommand),
+                _ => Err(UciError::UnrecognizedCommand),
             }
         } else {
             // If not, it may be a single-worded command, so check that
@@ -422,7 +419,7 @@ impl<'a> UciCommand<'a> {
                 "ponderhit" => Ok(Self::PonderHit),
                 "quit" => Ok(Self::Quit),
                 "go" => Self::parse_go(""),
-                _ => Err(InvalidUciError::UnrecognizedCommand),
+                _ => Err(UciError::UnrecognizedCommand),
             }
         }
     }
@@ -432,7 +429,7 @@ impl<'a> UciCommand<'a> {
         match args {
             "on" => Ok(Self::Debug(true)),
             "off" => Ok(Self::Debug(false)),
-            _ => Err(InvalidUciError::InvalidArgument),
+            _ => Err(UciError::InvalidArgument),
         }
     }
 
@@ -440,12 +437,12 @@ impl<'a> UciCommand<'a> {
         // First, we fetch the `value` field
         let (name, value) = args
             .split_once("value")
-            .ok_or(InvalidUciError::NotEnoughArguments)?;
+            .ok_or(UciError::NotEnoughArguments)?;
 
         // Then, we fetch the `name` of the option
         let (_, name) = name
             .split_once("name")
-            .ok_or(InvalidUciError::NotEnoughArguments)?;
+            .ok_or(UciError::NotEnoughArguments)?;
 
         Ok(UciCommand::SetOption(name.trim(), value.trim()))
     }
@@ -458,13 +455,13 @@ impl<'a> UciCommand<'a> {
             // Otherwise, we need to fetch the name and code.
             let (_, args) = args
                 .split_once("name")
-                .ok_or(InvalidUciError::NotEnoughArguments)?;
+                .ok_or(UciError::NotEnoughArguments)?;
             let (name, code) = args
                 .split_once("code")
-                .ok_or(InvalidUciError::NotEnoughArguments)?;
+                .ok_or(UciError::NotEnoughArguments)?;
             Some((name.trim(), code.trim()))
         } else {
-            return Err(InvalidUciError::InvalidArgument);
+            return Err(UciError::InvalidArgument);
         };
 
         Ok(UciCommand::Register(registration))
@@ -504,7 +501,7 @@ impl<'a> UciCommand<'a> {
         } else if args.starts_with("startpos") {
             DEFAULT_FEN
         } else {
-            return Err(InvalidUciError::InvalidArgument);
+            return Err(UciError::InvalidArgument);
         };
 
         Ok(UciCommand::Position(pos, moves))
@@ -521,14 +518,14 @@ impl<'a> UciCommand<'a> {
             // reduces redundant code
             fn parse<T: FromStr>(input: Option<&str>) -> UciResult<T> {
                 input
-                    .ok_or(InvalidUciError::NotEnoughArguments)?
+                    .ok_or(UciError::NotEnoughArguments)?
                     .parse()
-                    .map_err(|_| InvalidUciError::InvalidArgument)
+                    .map_err(|_| UciError::InvalidArgument)
             }
 
             fn parse_duration(input: Option<&str>) -> UciResult<Duration> {
-                let next = input.ok_or(InvalidUciError::NotEnoughArguments)?;
-                let millis = next.parse().map_err(|_| InvalidUciError::InvalidArgument)?;
+                let next = input.ok_or(UciError::NotEnoughArguments)?;
+                let millis = next.parse().map_err(|_| UciError::InvalidArgument)?;
                 Ok(Duration::from_millis(millis))
             }
 
@@ -552,7 +549,7 @@ impl<'a> UciCommand<'a> {
                     "mate" => opt.mate = Some(parse(args.next())?),
                     "movetime" => opt.move_time = Some(parse_duration(args.next())?),
                     // "infinite" => opt.infinite = true,
-                    _ => return Err(InvalidUciError::InvalidArgument),
+                    _ => return Err(UciError::InvalidArgument),
                 }
             }
             UciSearchMode::Timed(opt)

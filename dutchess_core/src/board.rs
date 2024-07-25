@@ -725,7 +725,7 @@ impl BitBoard {
     pub const CORNERS: Self = Self(0x8100000000000081);
     pub const CENTER: Self = Self(0x0000001818000000);
 
-    const RANK_END_INDICES: [usize; 8] = [7, 15, 23, 31, 39, 47, 55, 63];
+    // const RANK_END_INDICES: [usize; 8] = [7, 15, 23, 31, 39, 47, 55, 63];
 
     /// Constructs a new [`BitBoard`] from the provided bit pattern.
     ///
@@ -1562,31 +1562,20 @@ impl fmt::Binary for BitBoard {
 
 impl fmt::Display for BitBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = format!("{:0>64b}", self.0).into_bytes();
-        // 48 = '0'
-        // 49 = '1'
-        // 88 = 'X'
-        // 46 = '.'
-        // 88 - 46 = 42
+        // Allocate just enough capacity
+        let mut board = String::with_capacity(136);
 
-        // If `bit` is `1`, yields 'X', otherwise '.'
-        let bit2char = |bit| (46 + (bit - 48) * 42) as char;
+        for rank in Rank::iter().rev() {
+            for file in File::iter() {
+                let tile = Tile::new(file, rank);
+                let occupant = if self.get(tile) { 'X' } else { '.' };
 
-        let rank = |i: usize| {
-            format!(
-                "{} {} {} {} {} {} {} {}",
-                bit2char(s[i - 0]),
-                bit2char(s[i - 1]),
-                bit2char(s[i - 2]),
-                bit2char(s[i - 3]),
-                bit2char(s[i - 4]),
-                bit2char(s[i - 5]),
-                bit2char(s[i - 6]),
-                bit2char(s[i - 7]),
-            )
-        };
+                board += &format!("{occupant} ");
+            }
+            board += "\n";
+        }
 
-        write!(f, "{}", Self::RANK_END_INDICES.map(rank).join("\n"))
+        write!(f, "{board}")
     }
 }
 
@@ -1599,16 +1588,16 @@ impl fmt::Debug for BitBoard {
             board += &format!("{rank}| ");
 
             for file in File::iter() {
-                let occupant = if self.get(file * rank) { 'X' } else { '.' };
+                let tile = Tile::new(file, rank);
+                let occupant = if self.get(tile) { 'X' } else { '.' };
 
                 board += &format!("{occupant} ");
             }
-
             board += "\n";
         }
         board += " +";
         for _ in File::iter() {
-            board += &format!("--");
+            board += "--";
         }
         board += "\n   ";
         for file in File::iter() {

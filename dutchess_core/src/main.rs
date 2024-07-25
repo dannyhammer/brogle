@@ -89,7 +89,6 @@ fn main() {
 
     let game = Game::from_fen(fen).unwrap();
     println!("{game}\n\n");
-
     // let moves = game
     //     .position()
     //     .compute_legal_for(game.position().current_player());

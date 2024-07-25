@@ -9,10 +9,13 @@ use std::{
 };
 
 use crate::{
+    eval,
     search::{search, SearchResult},
     uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
 };
-use dutchess_core::{Color, Move, Position};
+use dutchess_core::{
+    perft, print_perft, print_split_perft, print_split_perft_pretty, Color, Move, Position,
+};
 
 // type TranspositionTable = ();
 
@@ -35,7 +38,7 @@ pub enum EngineProtocol {
 /// state), then tell it to analyze the board and find the most optimal move that
 /// can be made, given some search parameters. It will then yield what it thinks
 /// is the best move to make.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Engine {
     /// State of the game, including castling rights, piece placement, etc.
     ///
@@ -57,14 +60,6 @@ pub struct Engine {
 }
 
 impl Engine {
-    /*
-    pub fn new(game: Game) -> Self {
-        Self {
-            game,
-            ..Default::default()
-        }
-    }
-     */
     pub fn new(game: Position) -> Self {
         Self {
             game,
@@ -143,10 +138,165 @@ impl Engine {
         self.bestmove(bestmove, ponder)
     }
      */
+
+    fn parse_perft_command(&self, rest: &str) -> Result<EngineCommand, String> {
+        let mut args = rest.split_ascii_whitespace();
+
+        let Some(depth) = args.next() else {
+            return Err(format!("usage: perft <depth> [pretty] [split]"));
+        };
+
+        let Ok(depth) = depth.parse() else {
+            return Err(format!("usage: perft <depth> [pretty] [split]"));
+        };
+
+        let pretty = rest
+            .split_ascii_whitespace()
+            .any(|arg| arg.to_ascii_lowercase() == "pretty");
+
+        let split = rest
+            .split_ascii_whitespace()
+            .any(|arg| arg.to_ascii_lowercase() == "split");
+
+        Ok(EngineCommand::Perft {
+            depth,
+            pretty,
+            split,
+        })
+    }
+
+    fn parse_eval_command(&self, rest: &str) -> Result<EngineCommand, String> {
+        let mut args = rest.split_ascii_whitespace();
+
+        let mut pos = self.game;
+
+        if let Some(arg) = args.next() {
+            if arg.to_ascii_lowercase() == "startpos" {
+                pos = pos.with_default_setup();
+            } else if let Ok(parsed) = pos.from_fen(arg) {
+                pos = parsed;
+            } else {
+                return Err(format!("usage: eval [fen]"));
+            }
+        }
+
+        Ok(EngineCommand::Eval(pos))
+    }
+
+    fn parse_move_command(&self, rest: &str) -> Result<EngineCommand, String> {
+        if rest.is_empty() {
+            return Err(format!("usage: move <move1> [move2 move3 ...]"));
+        }
+
+        let mut moves = vec![];
+        let mut pos = self.game.clone();
+
+        for arg in rest.split_ascii_whitespace() {
+            match Move::from_uci(&pos, arg) {
+                Ok(mv) => {
+                    if let Err(err) = pos.make_move_checked(mv) {
+                        return Err(format!("Invalid move: {err}"));
+                    }
+                    moves.push(mv);
+                }
+                Err(err) => return Err(format!("{err}")),
+            }
+        }
+
+        Ok(EngineCommand::Move(moves))
+    }
+
+    fn parse_custom_command(&self, input: &str) -> Result<EngineCommand, String> {
+        let (cmd, rest) = if input.contains(' ') {
+            input.trim().split_once(' ').unwrap()
+        } else {
+            (input.trim(), "")
+        };
+
+        match cmd {
+            "help" => Ok(EngineCommand::Help),
+            "show" => Ok(EngineCommand::Show),
+            "perft" => self.parse_perft_command(rest),
+            "eval" => self.parse_eval_command(rest),
+            "move" => self.parse_move_command(rest),
+            _ => Err(format!("Failed to parse custom command: {input:?}")),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+enum EngineCommand {
+    /// For displaying the list of available commands
+    Help,
+
+    /// Run a perft at the provided depth
+    Perft {
+        depth: usize,
+        pretty: bool,
+        split: bool,
+    },
+
+    /// Pretty-print the current state of the board
+    Show,
+
+    /// Show the current state of of the board as a FEN string
+    Fen,
+
+    /// Display the list of moves applied to the board
+    Moves,
+
+    /// Make the list of moves applied to the board
+    Move(Vec<Move>),
+
+    /// Evaluates the current position
+    Eval(Position),
 }
 
 impl UciEngine for Engine {
     /* GUI to Engine communication */
+
+    fn custom_command(&mut self, input: &str) -> io::Result<()> {
+        let cmd = match self.parse_custom_command(input) {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                eprintln!("{err}");
+                return Ok(());
+            }
+        };
+
+        match cmd {
+            EngineCommand::Help => {
+                println!("available commands: help, perft, uci, bench, show, moves, undo, eval")
+            }
+            EngineCommand::Show => println!("{:?}", self.game),
+            EngineCommand::Perft {
+                depth,
+                pretty,
+                split,
+            } => {
+                if split {
+                    if pretty {
+                        print_split_perft_pretty(&self.game, depth);
+                    } else {
+                        print_split_perft(&self.game, depth);
+                    }
+                } else {
+                    if pretty {
+                        print_perft(&self.game, depth);
+                    } else {
+                        println!("{}", perft(&self.game, depth));
+                        //
+                    }
+                }
+            }
+            EngineCommand::Fen => println!("{}", self.game.to_fen()),
+            EngineCommand::Eval(pos) => println!("{}", eval(pos.bitboards())),
+            EngineCommand::Move(moves) => self.game.make_moves(moves),
+            _ => todo!(),
+        }
+
+        Ok(())
+    }
 
     // Engine receive a `uci` command
     fn uci(&mut self) -> io::Result<()> {
@@ -384,17 +534,15 @@ impl UciEngine for Engine {
     }
 }
 
-/*
 impl Default for Engine {
     fn default() -> Self {
         Self {
-            state: GameState::default(),
-            ttable: TranspositionTable::default(),
-            protocol: EngineProtocol::UCI,
+            game: Position::new().with_default_setup(),
+            // ttable: TranspositionTable::default(),
+            // protocol: EngineProtocol::UCI,
             debug: false,
             searching: Arc::default(),
             search_result: Arc::default(),
         }
     }
 }
- */

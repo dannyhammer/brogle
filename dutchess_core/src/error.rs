@@ -1,6 +1,6 @@
 use std::{error::Error, fmt};
 
-use super::{Color, Move};
+use super::{Color, Move, Tile};
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum ChessError {
@@ -16,6 +16,7 @@ pub enum ChessError {
     InvalidCastlingRights,
     InvalidFenString,
     InvalidMove { color: Color, chessmove: Move },
+    NoPieceAtTile { tile: Tile },
 }
 
 impl fmt::Display for ChessError {
@@ -43,7 +44,8 @@ impl fmt::Display for ChessError {
             Self::InvalidBitBoardString => write!(f, "BitBoards must be constructed by either hexadecimal strings of length 16 or binary strings of length 64"),
             Self::InvalidCastlingRights => write!(f, "Invalid castling rights in FEN string"),
             Self::InvalidFenString => write!(f, "Invalid FEN string"),
-            Self::InvalidMove { color, chessmove } => write!(f, "Player `{color}` attempted to perform `{chessmove}`")
+            Self::InvalidMove { color, chessmove } => write!(f, "Player `{color}` attempted to perform `{chessmove}`"),
+            Self::NoPieceAtTile { tile }=> write!(f, "No piece at the specified tile {tile}")
         }
     }
 }
