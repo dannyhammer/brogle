@@ -1,8 +1,8 @@
 use super::{BitBoard, Color, Piece, PieceKind, Tile};
 
-include!("rays_between.rs");
-include!("rays.rs");
-include!("magics.rs");
+include!("blobs/rays_between.rs");
+include!("blobs/rays.rs");
+include!("blobs/magics.rs");
 struct MagicEntry {
     mask: u64,
     magic: u64,

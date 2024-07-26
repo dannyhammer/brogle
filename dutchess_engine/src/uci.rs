@@ -319,7 +319,7 @@ pub trait UciEngine {
     ///
     /// `id name Shredder\n`
     ///
-    /// `id name Stefan MK\n`
+    /// `id author Stefan MK\n`
     fn id(&self) -> io::Result<()>;
 
     /// Send the `uciok` message to `stdout.`

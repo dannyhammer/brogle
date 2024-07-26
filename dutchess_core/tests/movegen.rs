@@ -1,3 +1,4 @@
+/*
 use dutchess_core::{Move, Position};
 
 // Sets up a game from the provided FEN
@@ -11,7 +12,6 @@ fn lists_match<'a>(
     moves: impl IntoIterator<Item = &'a Move>,
     legal_moves: impl IntoIterator<Item = &'a str>,
 ) {
-    let board = pos.bitboards();
     let fen = pos.to_fen();
 
     let mut moves = moves
@@ -47,17 +47,18 @@ fn lists_match<'a>(
     assert_eq!(
         moves.len(),
         legal_moves.len(),
-        "\nMoves: {moves:?}\nLegal: {legal_moves:?}\n{missing_or_extra}\nPosition: {fen}\n{board}"
+        "\nMoves: {moves:?}\nLegal: {legal_moves:?}\n{missing_or_extra}\nPosition: {fen}\n{pos}"
     );
 
     for mv in moves {
         let mv = mv.to_string();
         assert!(
             legal_moves.contains(&mv),
-            "\n\tIllegal move {mv}\nPosition: {fen}\n{board}\n\tLegal moves:\n\t{legal_moves:?}",
+            "\n\tIllegal move {mv}\nPosition: {fen}\n{pos}\n\tLegal moves:\n\t{legal_moves:?}",
         );
     }
 }
+ */
 
 /*
 #[test]

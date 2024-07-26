@@ -180,6 +180,15 @@ impl PieceKind {
     pub const fn char(&self) -> char {
         self.to_uci()
     }
+
+    pub fn iter() -> impl Iterator<Item = Self> {
+        Self::all().into_iter()
+    }
+
+    pub fn all() -> [Self; NUM_PIECE_TYPES] {
+        use PieceKind::*;
+        [Pawn, Knight, Bishop, Rook, Queen, King]
+    }
 }
 
 impl<T> Index<PieceKind> for [T; 6] {

@@ -1,60 +1,4 @@
-use std::ops::{Add, AddAssign};
-
 use dutchess_core::Position;
-
-#[derive(Default, Debug, Clone, Copy)]
-#[allow(dead_code)]
-struct PerftResult {
-    /// Number of game states reachable.
-    nodes: usize,
-
-    /// Number of captures possible.
-    captures: usize,
-
-    /// Number of times en passant can be performed.
-    eps: usize,
-
-    /// Number of times castling can occur.
-    castles: usize,
-
-    /// Number of times a pawn can be promoted. A single move counts as one promotion, not the four possible promotions.
-    promotions: usize,
-
-    /// Number of checks that can occur.
-    checks: usize,
-
-    /// Number of discovery checks possible.
-    discovery_checks: usize,
-
-    /// Number of double checks that can occur.
-    double_checks: usize,
-
-    /// Number of checkmates that can occur.
-    checkmates: usize,
-}
-
-impl Add for PerftResult {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            nodes: self.nodes + rhs.nodes,
-            captures: self.captures + rhs.captures,
-            eps: self.eps + rhs.eps,
-            castles: self.castles + rhs.castles,
-            promotions: self.promotions + rhs.promotions,
-            checks: self.checks + rhs.checks,
-            discovery_checks: self.discovery_checks + rhs.discovery_checks,
-            double_checks: self.double_checks + rhs.double_checks,
-            checkmates: self.checkmates + rhs.checkmates,
-        }
-    }
-}
-
-impl AddAssign for PerftResult {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs
-    }
-}
 
 // https://www.chessprogramming.org/Perft_Results#Initial_Position
 /*
@@ -217,19 +161,14 @@ fn perft_nodes_only(position: Position, depth: usize) -> usize {
         return 1;
     }
 
-    let mut nodes = 0;
-
     let moves = position.legal_moves();
-
     if depth == 1 {
         return moves.len();
     }
-    // println!("Valid moves: {moves:#?}");
+    let mut nodes = 0;
     for chessmove in moves {
-        let mut cloned = position.clone();
-        cloned.make_move(*chessmove);
+        let cloned = position.with_move_made(*chessmove);
         nodes += perft_nodes_only(cloned, depth - 1);
-        // position.unmake_move(chessmove);
     }
 
     nodes

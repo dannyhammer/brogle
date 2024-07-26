@@ -21,6 +21,10 @@ path = "src/perftree_script.rs"
 name = "magic_generator"
 path = "src/magic_generator.rs"
 
+[[bin]]
+name = "arena"
+path = "src/arena/main.rs"
+
 
 [dependencies]
 dutchess_engine = { path = "../dutchess_engine" }
@@ -28,3 +32,4 @@ dutchess_core = { path = "../dutchess_core" }
 egui-macroquad = "0.15.0"
 macroquad = "0.4.8"
 chess = "3.2.0"
+clap = { version = "4.5.10", features = ["derive"] }

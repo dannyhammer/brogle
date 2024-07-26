@@ -14,7 +14,7 @@ use crate::{
     uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
 };
 use dutchess_core::{
-    perft, print_perft, print_split_perft, print_split_perft_pretty, Color, Move, Position,
+    perft, print_perft, print_split_perft, print_split_perft_pretty, Move, Position, FEN_KIWIPETE,
 };
 
 // type TranspositionTable = ();
@@ -45,7 +45,6 @@ pub struct Engine {
     /// This is analogous to a FEN string.
     // game: Game,
     game: Position,
-
     /// Transposition table for game states.
     // ttable: TranspositionTable,
 
@@ -77,7 +76,7 @@ impl Engine {
         let name = env!("CARGO_PKG_NAME");
         let version = env!("CARGO_PKG_VERSION");
         let authors = env!("CARGO_PKG_AUTHORS");
-        println!("{name} v{version} by {authors}");
+        println!("{name} {version} by {authors}");
 
         self.uci_loop()
     }
@@ -90,11 +89,11 @@ impl Engine {
             // UciOption::combo("TestOpt Combo", "Apple", ["Apple", "Banana", "Strawberry"]),
             // UciOption::button("TestOpt Button"),
             // UciOption::string("TestOpt String", "defaultVal"),
-            UciOption::check("Nullmove", true),
-            UciOption::spin("Selectivity", 2, 0, 4),
-            UciOption::combo("Style", "Normal", ["Solid", "Normal", "Risky"]),
-            UciOption::string("NalimovPath", "c:\\"),
-            UciOption::button("Clear Hash"),
+            // UciOption::check("Nullmove", true),
+            // UciOption::spin("Selectivity", 2, 0, 4),
+            // UciOption::combo("Style", "Normal", ["Solid", "Normal", "Risky"]),
+            // UciOption::string("NalimovPath", "c:\\"),
+            // UciOption::button("Clear Hash"),
         ]
         .into_iter()
     }
@@ -138,6 +137,19 @@ impl Engine {
         self.bestmove(bestmove, ponder)
     }
      */
+    fn parse_search_command(&self, rest: &str) -> Result<EngineCommand, String> {
+        let mut args = rest.split_ascii_whitespace();
+
+        let Some(depth) = args.next() else {
+            return Err(format!("usage: search <depth>"));
+        };
+
+        let Ok(depth) = depth.parse() else {
+            return Err(format!("usage: search <depth>"));
+        };
+
+        Ok(EngineCommand::Search(depth))
+    }
 
     fn parse_perft_command(&self, rest: &str) -> Result<EngineCommand, String> {
         let mut args = rest.split_ascii_whitespace();
@@ -216,9 +228,12 @@ impl Engine {
         match cmd {
             "help" => Ok(EngineCommand::Help),
             "show" => Ok(EngineCommand::Show),
+            "search" => self.parse_search_command(rest),
             "perft" => self.parse_perft_command(rest),
             "eval" => self.parse_eval_command(rest),
             "move" => self.parse_move_command(rest),
+            // "moves" => Ok(EngineCommand::Moves),
+            "fen" => Ok(EngineCommand::Fen),
             _ => Err(format!("Failed to parse custom command: {input:?}")),
         }
     }
@@ -226,30 +241,30 @@ impl Engine {
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 enum EngineCommand {
-    /// For displaying the list of available commands
+    /// For displaying the list of available commands.
     Help,
 
-    /// Run a perft at the provided depth
+    /// Run a perft at the provided depth.
     Perft {
         depth: usize,
         pretty: bool,
         split: bool,
     },
 
-    /// Pretty-print the current state of the board
+    /// Pretty-print the current state of the board.
     Show,
 
-    /// Show the current state of of the board as a FEN string
+    /// Show the current state of of the board as a FEN string.
     Fen,
 
-    /// Display the list of moves applied to the board
-    Moves,
-
-    /// Make the list of moves applied to the board
+    /// Make the list of moves applied to the board.
     Move(Vec<Move>),
 
-    /// Evaluates the current position
+    /// Evaluates the current position.
     Eval(Position),
+
+    /// Search the current position up to the provided depth.
+    Search(u32),
 }
 
 impl UciEngine for Engine {
@@ -290,9 +305,10 @@ impl UciEngine for Engine {
                 }
             }
             EngineCommand::Fen => println!("{}", self.game.to_fen()),
-            EngineCommand::Eval(pos) => println!("{}", eval(pos.bitboards())),
+            EngineCommand::Eval(pos) => println!("{}", eval(&pos)),
             EngineCommand::Move(moves) => self.game.make_moves(moves),
-            _ => todo!(),
+            EngineCommand::Search(depth) => println!("{:?}", search(&self.game, depth)),
+            // EngineCommand::Moves => println!("{:?}", self.game),
         }
 
         Ok(())
@@ -368,8 +384,8 @@ impl UciEngine for Engine {
         // Arena sent this to our engine
         // go wtime 300000 btime 300000 winc 0 binc 0
 
-        if self.searching.load(Ordering::Relaxed) {
-            // eprintln!("Engine is already searching")
+        if self.is_searching() {
+            eprintln!("Engine is already searching");
             self.stop_search();
         }
 
@@ -387,12 +403,11 @@ impl UciEngine for Engine {
                 //     println!("Pondering infinitely");
                 //     todo!()
                 // });
-                todo!()
+                todo!("Implement ponder")
             }
             UciSearchMode::Timed(search_opt) => {
                 if let (Some(wtime), Some(btime)) = (search_opt.w_time, search_opt.b_time) {
-                    // if self.game.state().current_player().is_white() {
-                    if self.game.current_player() == Color::White {
+                    if self.game.current_player().is_white() {
                         wtime
                     } else {
                         btime
@@ -400,7 +415,7 @@ impl UciEngine for Engine {
                 } else if let Some(movetime) = search_opt.move_time {
                     movetime
                 } else {
-                    eprintln!("Warning: No movetime specified");
+                    eprintln!("Warning: No movetime specified. Defaulting to infinite.");
                     Duration::MAX
                 }
             }
@@ -415,41 +430,41 @@ impl UciEngine for Engine {
         let max_depth = 10;
 
         thread::spawn(move || {
-            // loop {
-            // Search ends if we've timed out, been told to stop, or reached out depth limit
-            // if depth == max_depth
-            //     || starttime.elapsed() >= timeout
-            //     || !stopper.load(Ordering::Relaxed)
-            // {
-            //     break;
-            // }
+            loop {
+                // Search ends if we've timed out, been told to stop, or reached out depth limit
+                if depth == max_depth
+                    || starttime.elapsed() >= timeout
+                    || !stopper.load(Ordering::Relaxed)
+                {
+                    break;
+                }
 
-            // Obtain a result from the search
-            let res = search(&state, depth);
+                // Obtain a result from the search
+                let res = search(&state, depth);
 
-            // Construct a new message to be sent
-            let info = UciInfo::new().depth(depth);
-            // .seldepth(seldepth)
-            // .multipv(multipv)
-            // .score(score)
-            // .nodes(nodes)
-            // .nps(nps)
-            // .tbhits(tbhits)
-            // .time(time)
-            // .pv(pv);
-            let resp = UciResponse::Info(info);
+                // Construct a new message to be sent
+                let info = UciInfo::new().depth(depth);
+                // .seldepth(seldepth)
+                // .multipv(multipv)
+                // .score(score)
+                // .nodes(nodes)
+                // .nps(nps)
+                // .tbhits(tbhits)
+                // .time(time)
+                // .pv(pv);
+                let resp = UciResponse::Info(info);
 
-            // Now send the info to the GUI
-            _ = resp.send();
+                // Now send the info to the GUI
+                resp.send()?;
 
-            // Finally, store the info from the search
-            *result.lock().unwrap() = res;
+                // Finally, store the info from the search
+                *result.lock().unwrap() = res;
 
-            depth += 1;
-            // }
+                depth += 1;
+            }
 
             let res = result.lock().unwrap();
-            let bestmove = res.bestmove.to_string();
+            let bestmove = res.bestmove.map(|m| m.to_string()).unwrap_or_default();
             // let ponder = res.ponder.map(|p| p.to_string());
             let ponder = None;
             let resp = UciResponse::BestMove(bestmove, ponder);
@@ -467,7 +482,7 @@ impl UciEngine for Engine {
         // let bestmove = self.bestmove.lock().unwrap().clone();
         // let ponder = self.ponder.lock().unwrap().clone();
         let res = self.search_result.lock().unwrap();
-        let bestmove = res.bestmove.to_string();
+        let bestmove = res.bestmove.map(|m| m.to_string()).unwrap_or_default();
         // let ponder = res.ponder.map(|p| p.to_string());
         let ponder = None;
 
@@ -537,7 +552,8 @@ impl UciEngine for Engine {
 impl Default for Engine {
     fn default() -> Self {
         Self {
-            game: Position::new().with_default_setup(),
+            // game: Position::new().with_default_setup(),
+            game: Position::new().from_fen(FEN_KIWIPETE).unwrap(),
             // ttable: TranspositionTable::default(),
             // protocol: EngineProtocol::UCI,
             debug: false,

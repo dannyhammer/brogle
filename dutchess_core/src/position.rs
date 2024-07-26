@@ -905,14 +905,6 @@ impl Position {
 
     /// Applies the move. No enforcement of legality
     pub fn make_move(&mut self, chessmove: Move) {
-        // println!("Making {chessmove} on:\n{:?}", self.bitboards());
-        // let (is_legal, msg) = self.is_legal(chessmove);
-        // if !is_legal {
-        //     panic!(
-        //         "Move \"{chessmove:?}\" is not legal in current board state: {self}\n{:?}\nReason: {msg}\nHistory: {:?}", self, self.history
-        //     );
-        // }
-
         // Remove the piece from it's previous location, exiting early if there is no piece there
         let Some(mut piece) = self.bitboards_mut().take(chessmove.from()) else {
             return;
