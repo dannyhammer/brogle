@@ -1,8 +1,16 @@
 pub mod engine;
 
-pub mod search;
+pub mod search {
+    pub mod search;
+    pub use search::*;
+}
 
-pub mod eval;
+pub mod eval {
+    pub mod eval;
+    pub use eval::*;
+
+    pub mod piece_square_tables;
+}
 /// # Universal Chess Interface (UCI)
 ///
 ///

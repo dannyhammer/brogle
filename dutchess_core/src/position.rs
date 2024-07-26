@@ -206,10 +206,10 @@ pub struct Position {
     fullmove: usize,
 
     /// A cache for all of the legal moves in the current board state.
-    legal_moves: [Move; MAX_NUM_MOVES],
+    pub legal_moves: [Move; MAX_NUM_MOVES],
 
     /// The total number of legal moves in the current board state.
-    num_legal_moves: usize,
+    pub num_legal_moves: usize,
 }
 
 impl Position {
@@ -345,6 +345,14 @@ impl Position {
         self.ep_tile
     }
 
+    pub const fn ep_target_tile(&self) -> Option<Tile> {
+        if let Some(ep) = self.ep_tile() {
+            ep.backward_by(self.current_player(), 1)
+        } else {
+            None
+        }
+    }
+
     pub const fn castling_rights(&self) -> CastlingRights {
         self.castling_rights
     }
@@ -373,6 +381,10 @@ impl Position {
 
     pub fn legal_moves(&self) -> &[Move] {
         &self.legal_moves[..self.num_legal_moves]
+    }
+
+    pub fn legal_moves_mut(&mut self) -> &mut [Move] {
+        &mut self.legal_moves[..self.num_legal_moves]
     }
 
     fn compute_legal_moves_for(&mut self, color: Color) {

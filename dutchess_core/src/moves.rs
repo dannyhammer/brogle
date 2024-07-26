@@ -40,7 +40,7 @@ pub enum MoveKind {
 ///      |     +- Target tile of the move.
 ///      +- Special flags for promotion, castling, etc.
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Move(u16);
 

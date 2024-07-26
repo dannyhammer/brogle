@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     eval,
-    search::{search, SearchResult},
+    search::{search, Search, SearchResult},
     uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
 };
 use dutchess_core::{
@@ -307,8 +307,17 @@ impl UciEngine for Engine {
             EngineCommand::Fen => println!("{}", self.game.to_fen()),
             EngineCommand::Eval(pos) => println!("{}", eval(&pos)),
             EngineCommand::Move(moves) => self.game.make_moves(moves),
-            EngineCommand::Search(depth) => println!("{:?}", search(&self.game, depth)),
-            // EngineCommand::Moves => println!("{:?}", self.game),
+            EngineCommand::Search(depth) => {
+                let search = Search::new(self.game, depth);
+                let res = search.start_sync();
+                // let res = search(self.game, depth);
+                if let Some(bestmove) = res.bestmove {
+                    println!("bestmove {bestmove} ({})", res.score);
+                } else {
+                    println!("No bestmove found in search. Score={}", res.score);
+                }
+                // println!("{:?}", search(&self.game, depth)),
+            } // EngineCommand::Moves => println!("{:?}", self.game),
         }
 
         Ok(())
@@ -407,11 +416,13 @@ impl UciEngine for Engine {
             }
             UciSearchMode::Timed(search_opt) => {
                 if let (Some(wtime), Some(btime)) = (search_opt.w_time, search_opt.b_time) {
-                    if self.game.current_player().is_white() {
+                    let remaining = if self.game.current_player().is_white() {
                         wtime
                     } else {
                         btime
-                    }
+                    };
+
+                    Duration::from_secs_f64(remaining.as_secs_f64() / 100.0)
                 } else if let Some(movetime) = search_opt.move_time {
                     movetime
                 } else {
@@ -425,9 +436,11 @@ impl UciEngine for Engine {
         let state = self.game.clone();
 
         let starttime = Instant::now();
+        eprintln!("TIMEOUT: {timeout:?}");
 
-        let mut depth = 4;
+        let mut depth = 1;
         let max_depth = 10;
+        let mut res = SearchResult::default();
 
         thread::spawn(move || {
             loop {
@@ -440,17 +453,18 @@ impl UciEngine for Engine {
                 }
 
                 // Obtain a result from the search
-                let res = search(&state, depth);
+                res = search(state, depth);
 
                 // Construct a new message to be sent
-                let info = UciInfo::new().depth(depth);
-                // .seldepth(seldepth)
-                // .multipv(multipv)
-                // .score(score)
-                // .nodes(nodes)
-                // .nps(nps)
-                // .tbhits(tbhits)
-                // .time(time)
+                let info = UciInfo::new()
+                    .depth(depth)
+                    // .seldepth(seldepth)
+                    // .multipv(multipv)
+                    // .score(score)
+                    // .nodes(nodes)
+                    // .nps(nps)
+                    // .tbhits(tbhits)
+                    .time(format!("{:?}", starttime.elapsed()));
                 // .pv(pv);
                 let resp = UciResponse::Info(info);
 
@@ -463,7 +477,7 @@ impl UciEngine for Engine {
                 depth += 1;
             }
 
-            let res = result.lock().unwrap();
+            res = *result.lock().unwrap();
             let bestmove = res.bestmove.map(|m| m.to_string()).unwrap_or_default();
             // let ponder = res.ponder.map(|p| p.to_string());
             let ponder = None;

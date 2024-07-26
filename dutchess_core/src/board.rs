@@ -985,6 +985,24 @@ impl BitBoard {
         Self(self.0.swap_bytes())
     }
 
+    /// If `color` is Black, flips this [`BitBoard`].
+    /// If `color` is White, does nothing.
+    ///
+    /// See [`BitBoard::flipped`] for more.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Color, BitBoard};
+    /// assert_eq!(BitBoard::RANK_2.relative_to(Color::White), BitBoard::RANK_2);
+    /// assert_eq!(BitBoard::RANK_2.relative_to(Color::Black), BitBoard::RANK_7);
+    /// ```
+    pub const fn relative_to(self, color: Color) -> Self {
+        match color {
+            Color::White => self,
+            Color::Black => self.flipped(),
+        }
+    }
+
     /// Checks if this [`BitBoard`] is empty, or all zeros.
     ///
     /// # Example

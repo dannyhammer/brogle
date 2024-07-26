@@ -186,6 +186,36 @@ impl Tile {
         Ok(Self(int))
     }
 
+    /// Flips this [`Tile`], viewing it from the opponent's perspective.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::A1.flipped(), Tile::H8);
+    /// assert_eq!(Tile::C4.flipped(), Tile::F5);
+    /// ```
+    pub const fn flipped(self) -> Self {
+        Self(Self::MAX - self.0)
+    }
+
+    /// If `color` is Black, flips this [`Tile`].
+    /// If `color` is White, does nothing.
+    ///
+    /// See [`Tile::flipped`] for more.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Color, Tile};
+    /// assert_eq!(Tile::C4.relative_to(Color::White), Tile::C4);
+    /// assert_eq!(Tile::C4.relative_to(Color::Black), Tile::F5);
+    /// ```
+    pub const fn relative_to(self, color: Color) -> Self {
+        match color {
+            Color::White => self,
+            Color::Black => self.flipped(),
+        }
+    }
+
     /// Fetches the inner index value of the [`Tile`], which represented as a [`u8`].
     ///
     /// # Example
@@ -629,27 +659,27 @@ impl SubAssign<File> for Tile {
     }
 }
 
-impl<T> Index<Tile> for [T; 64] {
+impl<T> Index<Tile> for [T; Tile::COUNT] {
     type Output = T;
     fn index(&self, index: Tile) -> &Self::Output {
         &self[index.index()]
     }
 }
 
-impl<T> IndexMut<Tile> for [T; 64] {
+impl<T> IndexMut<Tile> for [T; Tile::COUNT] {
     fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
         &mut self[index.index()]
     }
 }
 
-impl<T> Index<Tile> for [[T; 8]; 8] {
+impl<T> Index<Tile> for [[T; File::COUNT]; Rank::COUNT] {
     type Output = T;
     fn index(&self, index: Tile) -> &Self::Output {
         &self[index.file()][index.rank()]
     }
 }
 
-impl<T> IndexMut<Tile> for [[T; 8]; 8] {
+impl<T> IndexMut<Tile> for [[T; File::COUNT]; Rank::COUNT] {
     fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
         &mut self[index.file()][index.rank()]
     }
@@ -683,6 +713,8 @@ impl Rank {
 
     pub const MIN: u8 = 0;
     pub const MAX: u8 = 7;
+
+    pub const COUNT: usize = 8;
 
     /// Returns an iterator over all available ranks
     ///
@@ -998,14 +1030,14 @@ impl Mul<File> for Rank {
     }
 }
 
-impl<T> Index<Rank> for [T; 8] {
+impl<T> Index<Rank> for [T; Rank::COUNT] {
     type Output = T;
     fn index(&self, index: Rank) -> &Self::Output {
         &self[index.0 as usize]
     }
 }
 
-impl<T> IndexMut<Rank> for [T; 8] {
+impl<T> IndexMut<Rank> for [T; Rank::COUNT] {
     fn index_mut(&mut self, index: Rank) -> &mut Self::Output {
         &mut self[index.0 as usize]
     }
@@ -1044,6 +1076,8 @@ impl File {
 
     pub const MIN: u8 = 0;
     pub const MAX: u8 = 7;
+
+    pub const COUNT: usize = 8;
 
     /// Returns an iterator over all available files.
     ///
@@ -1203,14 +1237,14 @@ impl Mul<Rank> for File {
     }
 }
 
-impl<T> Index<File> for [T; 8] {
+impl<T> Index<File> for [T; File::COUNT] {
     type Output = T;
     fn index(&self, index: File) -> &Self::Output {
         &self[index.0 as usize]
     }
 }
 
-impl<T> IndexMut<File> for [T; 8] {
+impl<T> IndexMut<File> for [T; File::COUNT] {
     fn index_mut(&mut self, index: File) -> &mut Self::Output {
         &mut self[index.0 as usize]
     }

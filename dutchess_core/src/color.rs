@@ -13,15 +13,22 @@ pub enum Color {
     Black,
 }
 
+// pub struct Color(u8);
+
 impl Color {
+    // pub const WHITE: Self = Self(0);
+    // pub const BLACK: Self = Self(1);
+
     /// Returns `true` if this [`Color`] is White.
     pub const fn is_white(&self) -> bool {
         matches!(self, Self::White)
+        // self.0 == Self::WHITE.0
     }
 
     /// Returns `true` if this [`Color`] is Black.
     pub const fn is_black(&self) -> bool {
         matches!(self, Self::Black)
+        // self.0 == Self::BLACK.0
     }
 
     /// Returns this [`Color`]'s opposite / inverse / enemy.
