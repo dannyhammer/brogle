@@ -28,7 +28,7 @@ const WHITE_PAWN_ATTACKS: [BitBoard; 64] =
 const BLACK_PAWN_ATTACKS: [BitBoard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/black_pawn_attack_mobility.blob")) };
 
-pub const fn default_movement_for(piece: &Piece, tile: Tile, blockers: BitBoard) -> BitBoard {
+pub const fn default_attacks_for(piece: &Piece, tile: Tile, blockers: BitBoard) -> BitBoard {
     // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
     match piece.kind() {
         PieceKind::Pawn => pawn_attacks(tile, piece.color()),

@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     eval,
-    search::{search, Search, SearchResult},
+    search::{Search, SearchResult},
     uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
 };
 use dutchess_core::{
@@ -309,7 +309,7 @@ impl UciEngine for Engine {
             EngineCommand::Move(moves) => self.game.make_moves(moves),
             EngineCommand::Search(depth) => {
                 let search = Search::new(self.game, depth);
-                let res = search.start_sync();
+                let res = search.start();
                 // let res = search(self.game, depth);
                 if let Some(bestmove) = res.bestmove {
                     println!("bestmove {bestmove} ({})", res.score);
@@ -440,7 +440,7 @@ impl UciEngine for Engine {
 
         let mut depth = 1;
         let max_depth = 10;
-        let mut res = SearchResult::default();
+        let mut bestmove = None;
 
         thread::spawn(move || {
             loop {
@@ -453,7 +453,13 @@ impl UciEngine for Engine {
                 }
 
                 // Obtain a result from the search
-                res = search(state, depth);
+                let mut search = Search::new(state, depth);
+                // Iterative deepening
+                if let Some(ponder) = bestmove {
+                    search = search.with_ponder(ponder);
+                }
+                let res = search.start();
+                bestmove = res.bestmove;
 
                 // Construct a new message to be sent
                 let info = UciInfo::new()
@@ -477,11 +483,18 @@ impl UciEngine for Engine {
                 depth += 1;
             }
 
-            res = *result.lock().unwrap();
-            let bestmove = res.bestmove.map(|m| m.to_string()).unwrap_or_default();
+            /*
+            let bestmove = result
+                .lock()
+                .unwrap()
+                .bestmove
+                .map(|m| m.to_string())
+                .unwrap_or_default();
+             */
+            let bestmove_string = bestmove.map(|m| m.to_string()).unwrap_or_default();
             // let ponder = res.ponder.map(|p| p.to_string());
             let ponder = None;
-            let resp = UciResponse::BestMove(bestmove, ponder);
+            let resp = UciResponse::BestMove(bestmove_string, ponder);
             resp.send()
         });
 

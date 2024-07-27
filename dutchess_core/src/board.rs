@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::{
-    default_movement_for, ray_between, utils::FEN_STARTPOS, ChessError, Color, File, Piece,
+    default_attacks_for, ray_between, utils::FEN_STARTPOS, ChessError, Color, File, Piece,
     PieceKind, Rank, Tile, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
@@ -433,7 +433,7 @@ impl ChessBoard {
         for tile in self.color(color) {
             // Safe unwrap because we're iterating over all pieces of this color
             let piece = self.piece_at(tile).unwrap();
-            attacks |= default_movement_for(&piece, tile, blockers);
+            attacks |= default_attacks_for(&piece, tile, blockers);
         }
 
         attacks
@@ -1013,6 +1013,18 @@ impl BitBoard {
     /// ```
     pub const fn is_empty(&self) -> bool {
         self.0 == 0
+    }
+
+    /// Checks if this [`BitBoard`] is NOT empty, or contains at least one `1`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::BitBoard;
+    /// let board = BitBoard::CORNERS;
+    /// assert!(board.is_nonempty());
+    /// ```
+    pub const fn is_nonempty(&self) -> bool {
+        self.0 != 0
     }
 
     /// Returns `true` if this [`BitBoard`] has at most `n` bits on.

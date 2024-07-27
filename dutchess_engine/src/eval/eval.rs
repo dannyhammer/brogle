@@ -1,4 +1,4 @@
-use dutchess_core::{BitBoard, ChessBoard, Color, Piece, PieceKind, Position};
+use dutchess_core::{BitBoard, ChessBoard, Color, PieceKind, Position};
 
 use super::piece_square_tables::{CONTROL_CENTER, KING_SAFETY, PAWN_PUSH};
 
@@ -46,7 +46,7 @@ const fn material_difference(position: &Position, color: Color) -> i32 {
     friendly - enemy
 }
 
-const fn value_of(kind: PieceKind) -> i32 {
+pub const fn value_of(kind: PieceKind) -> i32 {
     match kind {
         PieceKind::Pawn => 100,
         PieceKind::Knight => 300,
