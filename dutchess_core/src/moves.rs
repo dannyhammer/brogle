@@ -1,6 +1,8 @@
 use std::fmt;
 
-use super::{ChessError, PieceKind, Position, Tile};
+use anyhow::{anyhow, Result};
+
+use super::{PieceKind, Position, Tile};
 
 /// Represents the different kinds of moves that can be made during a chess game.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
@@ -328,20 +330,24 @@ impl Move {
     /// // An sample test position for discovering promotion bugs.
     /// let position = Position::new().from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
     /// let b7c8b = Move::from_uci(&position, "b7c8b");
-    /// assert_eq!(b7c8b, Ok(Move::new(Tile::B7, Tile::C8, MoveKind::CaptureAndPromote(PieceKind::Bishop))));
+    /// assert!(b7c8b.is_ok());
+    /// assert_eq!(b7c8b.unwrap(), Move::new(Tile::B7, Tile::C8, MoveKind::CaptureAndPromote(PieceKind::Bishop)));
     /// ```
-    pub fn from_uci(position: &Position, uci: &str) -> Result<Self, ChessError> {
+    pub fn from_uci(position: &Position, uci: &str) -> Result<Self> {
         // println!("Parsing SAN: {uci}\nPosition: {position}");
-        let from = uci.get(0..2).ok_or(ChessError::InvalidTileNotation)?;
-        let to = uci.get(2..4).ok_or(ChessError::InvalidTileNotation)?;
+        let from = uci
+            .get(0..2)
+            .ok_or(anyhow!("Move str must contain a `from` tile."))?;
+        let to = uci
+            .get(2..4)
+            .ok_or(anyhow!("Move str must contain a `to` tile."))?;
 
         let from = Tile::from_uci(from)?;
         let to = Tile::from_uci(to)?;
 
-        let piece = position
-            .bitboards()
-            .piece_at(from)
-            .ok_or(ChessError::NoPieceAtTile { tile: from })?;
+        let piece = position.bitboards().piece_at(from).ok_or(anyhow!(
+            "No piece found at {from} when parsing UCI move string."
+        ))?;
         let color = piece.color();
 
         let kind = if piece.is_pawn() {

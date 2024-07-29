@@ -1,13 +1,56 @@
-use super::{BitBoard, Color, Piece, PieceKind, Tile};
+use crate::{ChessBoard, NUM_COLORS};
+
+use super::{BitBoard, Color, Move, MoveKind, Piece, PieceKind, Position, Tile};
 
 include!("blobs/rays_between.rs");
 include!("blobs/rays.rs");
 include!("blobs/magics.rs");
-struct MagicEntry {
-    mask: u64,
-    magic: u64,
-    shift: u8,
-    offset: u32,
+
+pub struct MoveGenerator<'a> {
+    position: &'a Position,
+    attacks: [BitBoard; NUM_COLORS],
+}
+
+impl<'a> MoveGenerator<'a> {
+    pub const fn new(position: &'a Position) -> Self {
+        let attacks = [BitBoard::EMPTY_BOARD; NUM_COLORS];
+        Self { position, attacks }
+    }
+
+    pub const fn position(&self) -> &'a Position {
+        &self.position
+    }
+}
+
+fn generate_pseudo_legal_mobility(board: &ChessBoard, color: Color) -> [BitBoard; Tile::COUNT] {
+    let mut pseudo_legal_mobility = [BitBoard::EMPTY_BOARD; Tile::COUNT];
+
+    let blockers = board.occupied();
+
+    for tile in board.color(color) {
+        // Safe unwrap because we're iterating over all pieces of a color
+        let piece = board.piece_at(tile).unwrap();
+        pseudo_legal_mobility[tile.index()] = default_attacks_for(&piece, tile, blockers);
+    }
+
+    pseudo_legal_mobility
+}
+
+/// Computes a [`BitBoard`] of all of the squares that can be attacked by [`Color`] pieces.
+pub fn squares_attacked_by(board: &ChessBoard, color: Color) -> BitBoard {
+    let mut attacks = BitBoard::EMPTY_BOARD;
+
+    // All occupied spaces
+    let blockers = board.occupied();
+
+    // Get the attack tables for all pieces of this color
+    for tile in board.color(color) {
+        // Safe unwrap because we're iterating over all pieces of this color
+        let piece = board.piece_at(tile).unwrap();
+        attacks |= default_attacks_for(&piece, tile, blockers);
+    }
+
+    attacks
 }
 
 const KNIGHT_MOVES: [BitBoard; 64] =
@@ -27,6 +70,13 @@ const WHITE_PAWN_ATTACKS: [BitBoard; 64] =
 
 const BLACK_PAWN_ATTACKS: [BitBoard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/black_pawn_attack_mobility.blob")) };
+
+struct MagicEntry {
+    mask: u64,
+    magic: u64,
+    shift: u8,
+    offset: u32,
+}
 
 pub const fn default_attacks_for(piece: &Piece, tile: Tile, blockers: BitBoard) -> BitBoard {
     // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
@@ -103,20 +153,6 @@ pub const fn pawn_attacks(tile: Tile, color: Color) -> BitBoard {
         BLACK_PAWN_ATTACKS[tile.index()],
     ][color.index()]
 }
-
-/*
-// http://pradu.us/old/Nov27_2008/Buzz/research/magic/Bitboards.pdf
-/// `key` - Sparsely populated input key
-///
-/// `magic` - Magic constant used to hash `key`
-///
-/// `num_bits` - Number of bits in the index
-///
-/// `data` - Data to index into
-const fn magic_hash<T>(key: u64, magic: u64, num_bits: u8, data: &[T]) -> &T {
-    &data[(key.wrapping_mul(magic) >> (64 - num_bits)) as usize]
-}
- */
 
 #[cfg(test)]
 mod test {

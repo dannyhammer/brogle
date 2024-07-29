@@ -4,7 +4,9 @@ use std::{
     str::FromStr,
 };
 
-use super::{BitBoard, ChessError, Color};
+use anyhow::{bail, Context, Result};
+
+use super::{BitBoard, Color};
 
 /// Represents a single tile (or square) on an `8x8` chess board.
 ///
@@ -24,77 +26,77 @@ use super::{BitBoard, ChessError, Color};
 pub struct Tile(pub(crate) u8);
 
 impl Tile {
-    pub const A1: Tile = Self::new(File::A, Rank::ONE);
-    pub const A2: Tile = Self::new(File::A, Rank::TWO);
-    pub const A3: Tile = Self::new(File::A, Rank::THREE);
-    pub const A4: Tile = Self::new(File::A, Rank::FOUR);
-    pub const A5: Tile = Self::new(File::A, Rank::FIVE);
-    pub const A6: Tile = Self::new(File::A, Rank::SIX);
-    pub const A7: Tile = Self::new(File::A, Rank::SEVEN);
-    pub const A8: Tile = Self::new(File::A, Rank::EIGHT);
+    pub const A1: Self = Self::new(File::A, Rank::ONE);
+    pub const A2: Self = Self::new(File::A, Rank::TWO);
+    pub const A3: Self = Self::new(File::A, Rank::THREE);
+    pub const A4: Self = Self::new(File::A, Rank::FOUR);
+    pub const A5: Self = Self::new(File::A, Rank::FIVE);
+    pub const A6: Self = Self::new(File::A, Rank::SIX);
+    pub const A7: Self = Self::new(File::A, Rank::SEVEN);
+    pub const A8: Self = Self::new(File::A, Rank::EIGHT);
 
-    pub const B1: Tile = Self::new(File::B, Rank::ONE);
-    pub const B2: Tile = Self::new(File::B, Rank::TWO);
-    pub const B3: Tile = Self::new(File::B, Rank::THREE);
-    pub const B4: Tile = Self::new(File::B, Rank::FOUR);
-    pub const B5: Tile = Self::new(File::B, Rank::FIVE);
-    pub const B6: Tile = Self::new(File::B, Rank::SIX);
-    pub const B7: Tile = Self::new(File::B, Rank::SEVEN);
-    pub const B8: Tile = Self::new(File::B, Rank::EIGHT);
+    pub const B1: Self = Self::new(File::B, Rank::ONE);
+    pub const B2: Self = Self::new(File::B, Rank::TWO);
+    pub const B3: Self = Self::new(File::B, Rank::THREE);
+    pub const B4: Self = Self::new(File::B, Rank::FOUR);
+    pub const B5: Self = Self::new(File::B, Rank::FIVE);
+    pub const B6: Self = Self::new(File::B, Rank::SIX);
+    pub const B7: Self = Self::new(File::B, Rank::SEVEN);
+    pub const B8: Self = Self::new(File::B, Rank::EIGHT);
 
-    pub const C1: Tile = Self::new(File::C, Rank::ONE);
-    pub const C2: Tile = Self::new(File::C, Rank::TWO);
-    pub const C3: Tile = Self::new(File::C, Rank::THREE);
-    pub const C4: Tile = Self::new(File::C, Rank::FOUR);
-    pub const C5: Tile = Self::new(File::C, Rank::FIVE);
-    pub const C6: Tile = Self::new(File::C, Rank::SIX);
-    pub const C7: Tile = Self::new(File::C, Rank::SEVEN);
-    pub const C8: Tile = Self::new(File::C, Rank::EIGHT);
+    pub const C1: Self = Self::new(File::C, Rank::ONE);
+    pub const C2: Self = Self::new(File::C, Rank::TWO);
+    pub const C3: Self = Self::new(File::C, Rank::THREE);
+    pub const C4: Self = Self::new(File::C, Rank::FOUR);
+    pub const C5: Self = Self::new(File::C, Rank::FIVE);
+    pub const C6: Self = Self::new(File::C, Rank::SIX);
+    pub const C7: Self = Self::new(File::C, Rank::SEVEN);
+    pub const C8: Self = Self::new(File::C, Rank::EIGHT);
 
-    pub const D1: Tile = Self::new(File::D, Rank::ONE);
-    pub const D2: Tile = Self::new(File::D, Rank::TWO);
-    pub const D3: Tile = Self::new(File::D, Rank::THREE);
-    pub const D4: Tile = Self::new(File::D, Rank::FOUR);
-    pub const D5: Tile = Self::new(File::D, Rank::FIVE);
-    pub const D6: Tile = Self::new(File::D, Rank::SIX);
-    pub const D7: Tile = Self::new(File::D, Rank::SEVEN);
-    pub const D8: Tile = Self::new(File::D, Rank::EIGHT);
+    pub const D1: Self = Self::new(File::D, Rank::ONE);
+    pub const D2: Self = Self::new(File::D, Rank::TWO);
+    pub const D3: Self = Self::new(File::D, Rank::THREE);
+    pub const D4: Self = Self::new(File::D, Rank::FOUR);
+    pub const D5: Self = Self::new(File::D, Rank::FIVE);
+    pub const D6: Self = Self::new(File::D, Rank::SIX);
+    pub const D7: Self = Self::new(File::D, Rank::SEVEN);
+    pub const D8: Self = Self::new(File::D, Rank::EIGHT);
 
-    pub const E1: Tile = Self::new(File::E, Rank::ONE);
-    pub const E2: Tile = Self::new(File::E, Rank::TWO);
-    pub const E3: Tile = Self::new(File::E, Rank::THREE);
-    pub const E4: Tile = Self::new(File::E, Rank::FOUR);
-    pub const E5: Tile = Self::new(File::E, Rank::FIVE);
-    pub const E6: Tile = Self::new(File::E, Rank::SIX);
-    pub const E7: Tile = Self::new(File::E, Rank::SEVEN);
-    pub const E8: Tile = Self::new(File::E, Rank::EIGHT);
+    pub const E1: Self = Self::new(File::E, Rank::ONE);
+    pub const E2: Self = Self::new(File::E, Rank::TWO);
+    pub const E3: Self = Self::new(File::E, Rank::THREE);
+    pub const E4: Self = Self::new(File::E, Rank::FOUR);
+    pub const E5: Self = Self::new(File::E, Rank::FIVE);
+    pub const E6: Self = Self::new(File::E, Rank::SIX);
+    pub const E7: Self = Self::new(File::E, Rank::SEVEN);
+    pub const E8: Self = Self::new(File::E, Rank::EIGHT);
 
-    pub const F1: Tile = Self::new(File::F, Rank::ONE);
-    pub const F2: Tile = Self::new(File::F, Rank::TWO);
-    pub const F3: Tile = Self::new(File::F, Rank::THREE);
-    pub const F4: Tile = Self::new(File::F, Rank::FOUR);
-    pub const F5: Tile = Self::new(File::F, Rank::FIVE);
-    pub const F6: Tile = Self::new(File::F, Rank::SIX);
-    pub const F7: Tile = Self::new(File::F, Rank::SEVEN);
-    pub const F8: Tile = Self::new(File::F, Rank::EIGHT);
+    pub const F1: Self = Self::new(File::F, Rank::ONE);
+    pub const F2: Self = Self::new(File::F, Rank::TWO);
+    pub const F3: Self = Self::new(File::F, Rank::THREE);
+    pub const F4: Self = Self::new(File::F, Rank::FOUR);
+    pub const F5: Self = Self::new(File::F, Rank::FIVE);
+    pub const F6: Self = Self::new(File::F, Rank::SIX);
+    pub const F7: Self = Self::new(File::F, Rank::SEVEN);
+    pub const F8: Self = Self::new(File::F, Rank::EIGHT);
 
-    pub const G1: Tile = Self::new(File::G, Rank::ONE);
-    pub const G2: Tile = Self::new(File::G, Rank::TWO);
-    pub const G3: Tile = Self::new(File::G, Rank::THREE);
-    pub const G4: Tile = Self::new(File::G, Rank::FOUR);
-    pub const G5: Tile = Self::new(File::G, Rank::FIVE);
-    pub const G6: Tile = Self::new(File::G, Rank::SIX);
-    pub const G7: Tile = Self::new(File::G, Rank::SEVEN);
-    pub const G8: Tile = Self::new(File::G, Rank::EIGHT);
+    pub const G1: Self = Self::new(File::G, Rank::ONE);
+    pub const G2: Self = Self::new(File::G, Rank::TWO);
+    pub const G3: Self = Self::new(File::G, Rank::THREE);
+    pub const G4: Self = Self::new(File::G, Rank::FOUR);
+    pub const G5: Self = Self::new(File::G, Rank::FIVE);
+    pub const G6: Self = Self::new(File::G, Rank::SIX);
+    pub const G7: Self = Self::new(File::G, Rank::SEVEN);
+    pub const G8: Self = Self::new(File::G, Rank::EIGHT);
 
-    pub const H1: Tile = Self::new(File::H, Rank::ONE);
-    pub const H2: Tile = Self::new(File::H, Rank::TWO);
-    pub const H3: Tile = Self::new(File::H, Rank::THREE);
-    pub const H4: Tile = Self::new(File::H, Rank::FOUR);
-    pub const H5: Tile = Self::new(File::H, Rank::FIVE);
-    pub const H6: Tile = Self::new(File::H, Rank::SIX);
-    pub const H7: Tile = Self::new(File::H, Rank::SEVEN);
-    pub const H8: Tile = Self::new(File::H, Rank::EIGHT);
+    pub const H1: Self = Self::new(File::H, Rank::ONE);
+    pub const H2: Self = Self::new(File::H, Rank::TWO);
+    pub const H3: Self = Self::new(File::H, Rank::THREE);
+    pub const H4: Self = Self::new(File::H, Rank::FOUR);
+    pub const H5: Self = Self::new(File::H, Rank::FIVE);
+    pub const H6: Self = Self::new(File::H, Rank::SIX);
+    pub const H7: Self = Self::new(File::H, Rank::SEVEN);
+    pub const H8: Self = Self::new(File::H, Rank::EIGHT);
 
     pub const MIN: u8 = 0;
     pub const MAX: u8 = 63;
@@ -136,15 +138,16 @@ impl Tile {
 
     /// Creates a new [`Tile`] from the provided index value.
     ///
-    /// The provided `index` must be `[0, 63]` or else a [`ChessError`] is returned.
+    /// The provided `index` must be `[0, 63]` or else an error is returned.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::Tile;
     /// let c4 = Tile::from_index(26);
-    /// assert_eq!(c4, Ok(Tile::C4));
+    /// assert!(c4.is_ok());
+    /// assert_eq!(c4.unwrap(), Tile::C4);
     /// ```
-    pub const fn from_index(index: usize) -> Result<Self, ChessError> {
+    pub fn from_index(index: usize) -> Result<Self> {
         Self::from_int(index as u8)
     }
 
@@ -167,21 +170,22 @@ impl Tile {
 
     /// Creates a new [`Tile`] from the provided `u8` value.
     ///
-    /// The provided `index` must be `[0, 63]` or else a [`ChessError`] is returned.
+    /// The provided `index` must be `[0, 63]` or else an error is returned.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::Tile;
     /// let c4 = Tile::from_int(26);
-    /// assert_eq!(c4, Ok(Tile::C4));
+    /// assert!(c4.is_ok());
+    /// assert_eq!(c4.unwrap(), Tile::C4);
     /// ```
-    pub const fn from_int(int: u8) -> Result<Self, ChessError> {
+    pub fn from_int(int: u8) -> Result<Self> {
         if int > Self::MAX {
-            return Err(ChessError::OutOfBounds {
-                val: int as usize,
-                min: Self::MIN as usize,
-                max: Self::MAX as usize,
-            });
+            bail!(
+                "Invalid int for Tile: Must be between [{}, {}]. Got {int}",
+                Self::MIN,
+                Self::MAX
+            );
         }
         Ok(Self(int))
     }
@@ -366,24 +370,21 @@ impl Tile {
     /// ```
     /// # use dutchess_core::Tile;
     /// let c4 = Tile::from_uci("c4");
-    /// assert_eq!(c4, Ok(Tile::C4));
+    /// assert!(c4.is_ok());
+    /// assert_eq!(c4.unwrap(), Tile::C4);
     ///
     /// let err = Tile::from_uci("z0");
     /// assert!(err.is_err());
     /// ```
-    pub const fn from_uci(tile: &str) -> Result<Self, ChessError> {
+    pub fn from_uci(tile: &str) -> Result<Self> {
         let bytes = tile.as_bytes();
-        if tile.len() < 2 {
-            return Err(ChessError::InvalidTileNotation);
+        if tile.len() != 2 {
+            bail!("Invalid Tile string: String must contain exactly 2 characters. Got {tile}")
         }
-        let file = File::from_char(bytes[0] as char);
-        let rank = Rank::from_char(bytes[1] as char);
+        let file = File::from_char(bytes[0] as char)?;
+        let rank = Rank::from_char(bytes[1] as char)?;
 
-        if let (Ok(file), Ok(rank)) = (file, rank) {
-            Ok(Self::new(file, rank))
-        } else {
-            Err(ChessError::InvalidTileNotation)
-        }
+        Ok(Self::new(file, rank))
     }
 
     /// Converts this [`Tile`] to a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
@@ -402,21 +403,16 @@ impl Tile {
         BitBoard::from_tile(*self)
     }
 
-    pub const fn try_offset(&self, df: i8, dr: i8) -> Result<Self, ChessError> {
+    pub fn try_offset(&self, df: i8, dr: i8) -> Result<Self> {
         let file_bits = self.file().0 as i8 + df;
-        if file_bits.is_negative() || file_bits > 7 {
-            return Err(ChessError::InvalidTileNotation);
-        }
+        let file = File::new(file_bits as u8)
+            .context(format!("Attempting to offset file {} by {df}", self.file()))?;
 
         let rank_bits = self.rank().0 as i8 + dr;
-        if rank_bits.is_negative() || rank_bits > 7 {
-            return Err(ChessError::InvalidTileNotation);
-        }
+        let rank = Rank::new(rank_bits as u8)
+            .context(format!("Attempting to offset file {} by {df}", self.rank()))?;
 
-        Ok(Self::new(
-            File::new_unchecked(file_bits as u8),
-            Rank::new_unchecked(rank_bits as u8),
-        ))
+        Ok(Self::new(file, rank))
     }
 
     /// Increments this [`Tile`] "North" (+rank) by `n`, if possible.
@@ -565,7 +561,7 @@ impl Tile {
 }
 
 impl FromStr for Tile {
-    type Err = ChessError;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::from_uci(s)
@@ -573,35 +569,35 @@ impl FromStr for Tile {
 }
 
 impl TryFrom<&str> for Tile {
-    type Error = ChessError;
+    type Error = anyhow::Error;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Self::from_uci(value)
     }
 }
 
 impl TryFrom<String> for Tile {
-    type Error = ChessError;
+    type Error = anyhow::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::from_uci(&value)
     }
 }
 
 impl TryFrom<usize> for Tile {
-    type Error = ChessError;
+    type Error = anyhow::Error;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         Self::from_index(value)
     }
 }
 
 impl TryFrom<u8> for Tile {
-    type Error = ChessError;
+    type Error = anyhow::Error;
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Self::from_int(value)
     }
 }
 
 impl TryFrom<i32> for Tile {
-    type Error = ChessError;
+    type Error = anyhow::Error;
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         Self::from_int(value as u8)
     }
@@ -697,6 +693,82 @@ impl fmt::Debug for Tile {
     }
 }
 
+/*
+#[macro_export]
+macro_rules! do_for_tiles {
+    ($id:ident in $code:expr) => {
+        do_for_tiles!($id = Tile::A1, $code);
+        do_for_tiles!($id = Tile::B1, $code);
+        do_for_tiles!($id = Tile::C1, $code);
+        do_for_tiles!($id = Tile::D1, $code);
+        do_for_tiles!($id = Tile::E1, $code);
+        do_for_tiles!($id = Tile::F1, $code);
+        do_for_tiles!($id = Tile::G1, $code);
+        do_for_tiles!($id = Tile::H1, $code);
+        do_for_tiles!($id = Tile::A2, $code);
+        do_for_tiles!($id = Tile::B2, $code);
+        do_for_tiles!($id = Tile::C2, $code);
+        do_for_tiles!($id = Tile::D2, $code);
+        do_for_tiles!($id = Tile::E2, $code);
+        do_for_tiles!($id = Tile::F2, $code);
+        do_for_tiles!($id = Tile::G2, $code);
+        do_for_tiles!($id = Tile::H2, $code);
+        do_for_tiles!($id = Tile::A3, $code);
+        do_for_tiles!($id = Tile::B3, $code);
+        do_for_tiles!($id = Tile::C3, $code);
+        do_for_tiles!($id = Tile::D3, $code);
+        do_for_tiles!($id = Tile::E3, $code);
+        do_for_tiles!($id = Tile::F3, $code);
+        do_for_tiles!($id = Tile::G3, $code);
+        do_for_tiles!($id = Tile::H3, $code);
+        do_for_tiles!($id = Tile::A4, $code);
+        do_for_tiles!($id = Tile::B4, $code);
+        do_for_tiles!($id = Tile::C4, $code);
+        do_for_tiles!($id = Tile::D4, $code);
+        do_for_tiles!($id = Tile::E4, $code);
+        do_for_tiles!($id = Tile::F4, $code);
+        do_for_tiles!($id = Tile::G4, $code);
+        do_for_tiles!($id = Tile::H4, $code);
+        do_for_tiles!($id = Tile::A5, $code);
+        do_for_tiles!($id = Tile::B5, $code);
+        do_for_tiles!($id = Tile::C5, $code);
+        do_for_tiles!($id = Tile::D5, $code);
+        do_for_tiles!($id = Tile::E5, $code);
+        do_for_tiles!($id = Tile::F5, $code);
+        do_for_tiles!($id = Tile::G5, $code);
+        do_for_tiles!($id = Tile::H5, $code);
+        do_for_tiles!($id = Tile::A6, $code);
+        do_for_tiles!($id = Tile::B6, $code);
+        do_for_tiles!($id = Tile::C6, $code);
+        do_for_tiles!($id = Tile::D6, $code);
+        do_for_tiles!($id = Tile::E6, $code);
+        do_for_tiles!($id = Tile::F6, $code);
+        do_for_tiles!($id = Tile::G6, $code);
+        do_for_tiles!($id = Tile::H6, $code);
+        do_for_tiles!($id = Tile::A7, $code);
+        do_for_tiles!($id = Tile::B7, $code);
+        do_for_tiles!($id = Tile::C7, $code);
+        do_for_tiles!($id = Tile::D7, $code);
+        do_for_tiles!($id = Tile::E7, $code);
+        do_for_tiles!($id = Tile::F7, $code);
+        do_for_tiles!($id = Tile::G7, $code);
+        do_for_tiles!($id = Tile::H7, $code);
+        do_for_tiles!($id = Tile::A8, $code);
+        do_for_tiles!($id = Tile::B8, $code);
+        do_for_tiles!($id = Tile::C8, $code);
+        do_for_tiles!($id = Tile::D8, $code);
+        do_for_tiles!($id = Tile::E8, $code);
+        do_for_tiles!($id = Tile::F8, $code);
+        do_for_tiles!($id = Tile::G8, $code);
+        do_for_tiles!($id = Tile::H8, $code);
+    };
+    ($id:ident = $val:expr, $expr:expr) => {
+        let $id = $val;
+        $expr
+    };
+}
+ */
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Rank(pub(crate) u8);
@@ -716,6 +788,19 @@ impl Rank {
 
     pub const COUNT: usize = 8;
 
+    pub fn all() -> [Self; Self::COUNT] {
+        [
+            Self::ONE,
+            Self::TWO,
+            Self::THREE,
+            Self::FOUR,
+            Self::FIVE,
+            Self::SIX,
+            Self::SEVEN,
+            Self::EIGHT,
+        ]
+    }
+
     /// Returns an iterator over all available ranks
     ///
     /// # Example
@@ -730,13 +815,13 @@ impl Rank {
         (Self::MIN..=Self::MAX).map(|i| Self(i))
     }
 
-    pub const fn new(rank: u8) -> Result<Self, ChessError> {
+    pub fn new(rank: u8) -> Result<Self> {
         if rank > Self::MAX {
-            return Err(ChessError::OutOfBounds {
-                val: rank as usize,
-                min: Self::MIN as usize,
-                max: Self::MAX as usize,
-            });
+            bail!(
+                "Invalid int for Rank: Must be between [{}, {}]. Got {rank}",
+                Self::MIN,
+                Self::MAX
+            );
         }
 
         Ok(Self(rank))
@@ -779,15 +864,23 @@ impl Rank {
         self.0 == Self::pawn_double_push_rank(color).0
     }
 
-    pub const fn from_char(rank: char) -> Result<Self, ChessError> {
+    pub fn from_char(rank: char) -> Result<Self> {
         debug_assert!(rank.is_ascii(), "Rank chars must be ASCII!");
 
         let Some(rank_int) = rank.to_digit(10) else {
-            return Err(ChessError::InvalidRankChar { val: rank });
+            bail!(
+                "Invalid char for Rank: Must be between [{}, {}]. Got {rank}",
+                '1',
+                '8'
+            );
         };
 
         let Some(rank) = rank_int.checked_sub(1) else {
-            return Err(ChessError::InvalidRankChar { val: rank });
+            bail!(
+                "Invalid char for Rank: Must be between [{}, {}]. Got {rank}",
+                '1',
+                '8'
+            );
         };
 
         Self::new(rank as u8)
@@ -908,7 +1001,7 @@ macro_rules! impl_try_from_num {
     };
     ($t: ty, $from:ty) => {
         impl TryFrom<$from> for $t {
-            type Error = ChessError;
+            type Error = anyhow::Error;
             fn try_from(value: $from) -> Result<Self, Self::Error> {
                 Self::new(value as u8)
             }
@@ -985,7 +1078,7 @@ impl_binary_ops_with_num!(Rank);
 impl_try_from_num!(Rank);
 
 impl TryFrom<char> for Rank {
-    type Error = ChessError;
+    type Error = anyhow::Error;
     fn try_from(value: char) -> Result<Self, Self::Error> {
         Self::from_char(value)
     }
@@ -1093,13 +1186,13 @@ impl File {
         (Self::MIN..=Self::MAX).map(|i| Self(i))
     }
 
-    pub const fn new(file: u8) -> Result<Self, ChessError> {
+    pub fn new(file: u8) -> Result<Self> {
         if file > Self::MAX {
-            return Err(ChessError::OutOfBounds {
-                val: file as usize,
-                min: Self::MIN as usize,
-                max: Self::MAX as usize,
-            });
+            bail!(
+                "Invalid int for File: Must be between [{}, {}]. Got {file}",
+                Self::MIN,
+                Self::MAX
+            );
         }
         Ok(Self(file))
     }
@@ -1108,14 +1201,18 @@ impl File {
         Self(file)
     }
 
-    pub const fn from_char(file: char) -> Result<Self, ChessError> {
+    pub fn from_char(file: char) -> Result<Self> {
         debug_assert!(file.is_ascii(), "File chars must be ASCII!");
 
         // Subtract the ASCII value for `a` (or `A`) to zero the number
         let file_int = file as u8 - if file.is_ascii_lowercase() { 'a' } else { 'A' } as u8;
 
         if file_int > Self::MAX {
-            return Err(ChessError::InvalidFileChar { val: file });
+            bail!(
+                "Invalid char for File: Must be between [{}, {}]. Got {file}",
+                'a',
+                'h'
+            );
         }
 
         Self::new(file_int)
@@ -1192,7 +1289,7 @@ impl_binary_ops_with_num!(File);
 impl_try_from_num!(File);
 
 impl TryFrom<char> for File {
-    type Error = ChessError;
+    type Error = anyhow::Error;
     fn try_from(value: char) -> Result<Self, Self::Error> {
         Self::from_char(value)
     }

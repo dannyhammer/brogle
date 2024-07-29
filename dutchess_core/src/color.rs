@@ -3,7 +3,9 @@ use std::{
     ops::{Index, IndexMut, Not},
 };
 
-use super::{ChessError, NUM_COLORS};
+use anyhow::{bail, Result};
+
+use super::NUM_COLORS;
 
 /// Represents the color of a player, piece, tile, etc. within a chess board.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -81,16 +83,17 @@ impl Color {
     /// ```
     /// # use dutchess_core::Color;
     /// let white = Color::from_uci('w');
-    /// assert_eq!(white, Ok(Color::White));
+    /// assert!(white.is_ok());
+    /// assert_eq!(white.unwrap(), Color::White);
     ///
     /// let err = Color::from_uci('x');
     /// assert!(err.is_err());
     /// ```
-    pub const fn from_uci(color: char) -> Result<Self, ChessError> {
+    pub fn from_uci(color: char) -> Result<Self> {
         match color {
             'w' | 'W' => Ok(Self::White),
             'b' | 'B' => Ok(Self::Black),
-            val => Err(ChessError::InvalidColorChar { val }),
+            _ => bail!("Color char must be either 'w' or 'b' (case-insensitive)"),
         }
     }
 
@@ -100,16 +103,19 @@ impl Color {
     /// ```
     /// # use dutchess_core::Color;
     /// let white = Color::from_str("w");
-    /// assert_eq!(white, Ok(Color::White));
+    /// assert!(white.is_ok());
+    /// assert_eq!(white.unwrap(), Color::White);
     ///
     /// let err = Color::from_str("x");
     /// assert!(err.is_err());
     /// ```
-    pub fn from_str(color: &str) -> Result<Self, ChessError> {
+    pub fn from_str(color: &str) -> Result<Self> {
         match color {
             "w" | "W" => Ok(Self::White),
             "b" | "B" => Ok(Self::Black),
-            _ => Err(ChessError::InvalidColorStr),
+            _ => {
+                bail!("Color str must be either \"w\" or \"b\" (case-insensitive). Found {color}")
+            }
         }
     }
 

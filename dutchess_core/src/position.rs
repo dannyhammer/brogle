@@ -1,11 +1,13 @@
 use std::fmt;
 
+use anyhow::{anyhow, bail, Result};
+
 use crate::{File, Rank, MAX_NUM_MOVES};
 
 use super::{
     bishop_moves, default_attacks_for, king_moves, knight_moves, pawn_attacks, pawn_pushes,
     queen_moves, ray_between, ray_containing, rook_moves, utils::FEN_STARTPOS, BitBoard,
-    ChessBoard, ChessError, Color, Move, MoveKind, Piece, PieceKind, Tile,
+    ChessBoard, Color, Move, MoveKind, Piece, PieceKind, Tile,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -53,7 +55,7 @@ impl Game {
         Self::from_fen(FEN_STARTPOS).unwrap()
     }
 
-    pub fn from_fen(fen: &str) -> Result<Self, ChessError> {
+    pub fn from_fen(fen: &str) -> Result<Self> {
         let state = Position::new().from_fen(fen)?;
         Ok(Self::new(state, []))
     }
@@ -132,9 +134,9 @@ impl CastlingRights {
         }
     }
 
-    fn from_uci(castling: &str) -> Result<Self, ChessError> {
+    fn from_uci(castling: &str) -> Result<Self> {
         if castling.is_empty() {
-            Err(ChessError::InvalidCastlingRights)
+            bail!("Invalid castling rights: Got empty string.");
         } else {
             let mut kingside = [false; 2];
             let mut queenside = [false; 2];
@@ -291,9 +293,11 @@ impl Position {
         self
     }
 
-    pub fn from_fen(mut self, fen: &str) -> Result<Self, ChessError> {
+    pub fn from_fen(mut self, fen: &str) -> Result<Self> {
         let mut split = fen.trim().split(' ');
-        let placements = split.next().ok_or(ChessError::InvalidFenString)?;
+        let placements = split.next().ok_or(anyhow!(
+            "Invalid FEN string: FEN string must have piece placements."
+        ))?;
         self.bitboards = ChessBoard::from_fen(placements)?;
 
         let active_color = split.next().unwrap_or_else(|| "w");
@@ -309,10 +313,14 @@ impl Position {
         };
 
         let halfmove = split.next().unwrap_or_else(|| "0");
-        self.halfmove = halfmove.parse().or(Err(ChessError::InvalidFenString))?;
+        self.halfmove = halfmove.parse().or(Err(anyhow!(
+            "Invalid FEN string: FEN string must have valid halfmove counter. Got {halfmove}"
+        )))?;
 
         let fullmove = split.next().unwrap_or_else(|| "1");
-        self.fullmove = fullmove.parse().or(Err(ChessError::InvalidFenString))?;
+        self.fullmove = fullmove.parse().or(Err(anyhow!(
+            "Invalid FEN string: FEN string must have valid fullmove counter. Got {fullmove}"
+        )))?;
 
         self.compute_legal_moves_for(self.current_player());
 

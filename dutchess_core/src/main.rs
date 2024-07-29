@@ -87,8 +87,15 @@ fn main() {
     // let fen = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
     // let fen = "8/2p5/3p4/KP6/5pk1/7P/4P3/6R1 b - - 4 3";
 
+    let fen = "k7/8/4n3/7n/2B4R/4n3/5P2/K7 w - - 0 1";
+
     let game = Game::from_fen(fen).unwrap();
     println!("{game}\n\n");
+
+    println!(
+        "{}",
+        squares_attacked_by(game.position().bitboards(), Color::White)
+    );
     // let moves = game
     //     .position()
     //     .compute_legal_for(game.position().current_player());

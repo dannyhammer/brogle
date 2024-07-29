@@ -3,7 +3,9 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use super::{ChessError, Color, NUM_PIECE_TYPES};
+use anyhow::{bail, Result};
+
+use super::{Color, NUM_PIECE_TYPES};
 
 /// Represents the kind (or "class") that a chess piece can be.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -29,12 +31,13 @@ impl PieceKind {
     /// ```
     /// # use dutchess_core::PieceKind;
     /// let queen = PieceKind::from_bits(4);
-    /// assert_eq!(queen, Ok(PieceKind::Queen));
+    /// assert!(queen.is_ok());
+    /// assert_eq!(queen.unwrap(), PieceKind::Queen);
     ///
     /// let err = PieceKind::from_bits(42);
     /// assert!(err.is_err());
     /// ```
-    pub const fn from_bits(bits: u8) -> Result<Self, ChessError> {
+    pub fn from_bits(bits: u8) -> Result<Self> {
         match bits {
             0 => Ok(Self::Pawn),
             1 => Ok(Self::Knight),
@@ -42,11 +45,7 @@ impl PieceKind {
             3 => Ok(Self::Rook),
             4 => Ok(Self::Queen),
             5 => Ok(Self::King),
-            _ => Err(ChessError::OutOfBounds {
-                val: bits as usize,
-                min: 0,
-                max: 5,
-            }),
+            _ => bail!("Invalid bits for PieceKind: Bits must be between [0,5]. Got {bits}."),
         }
     }
 
@@ -64,9 +63,14 @@ impl PieceKind {
     /// assert_eq!(queen, PieceKind::Queen);
     /// ```
     pub const fn from_bits_unchecked(bits: u8) -> PieceKind {
-        match Self::from_bits(bits) {
-            Ok(kind) => kind,
-            Err(_) => panic!("Invalid bit pattern. Must be [0,5]"),
+        match bits {
+            0 => Self::Pawn,
+            1 => Self::Knight,
+            2 => Self::Bishop,
+            3 => Self::Rook,
+            4 => Self::Queen,
+            5 => Self::King,
+            _ => panic!("Invalid bits for PieceKind: Bits must be between [0,5]."),
         }
     }
 
@@ -108,9 +112,10 @@ impl PieceKind {
     /// ```
     /// # use dutchess_core::PieceKind;
     /// let queen = PieceKind::from_uci('Q');
-    /// assert_eq!(queen, Ok(PieceKind::Queen));
+    /// assert!(queen.is_ok());
+    /// assert_eq!(queen.unwrap(), PieceKind::Queen);
     /// ```
-    pub const fn from_uci(kind: char) -> Result<Self, ChessError> {
+    pub fn from_uci(kind: char) -> Result<Self> {
         match kind {
             'P' | 'p' => Ok(Self::Pawn),
             'N' | 'n' => Ok(Self::Knight),
@@ -118,19 +123,22 @@ impl PieceKind {
             'R' | 'r' => Ok(Self::Rook),
             'Q' | 'q' => Ok(Self::Queen),
             'K' | 'k' => Ok(Self::King),
-            _ => Err(ChessError::InvalidPieceChar { val: kind }),
+            _ => bail!("Invalid char for PieceKind: Got {kind}."),
         }
     }
 
     /// Alias for [`PieceKind::from_uci`].
-    pub const fn from_char(kind: char) -> Result<Self, ChessError> {
+    pub fn from_char(kind: char) -> Result<Self> {
         Self::from_uci(kind)
     }
 
     /// Does the same as [`PieceKind::from_uci`], but only if `kind` is one character in length.
-    pub const fn from_str(kind: &str) -> Result<Self, ChessError> {
+    pub fn from_str(kind: &str) -> Result<Self> {
         if kind.is_empty() || kind.len() > 1 {
-            return Err(ChessError::InvalidPieceNotation);
+            bail!(
+                "Invalid str for PieceKind: Must be a str of len 1. Got {}",
+                kind.len()
+            );
         }
 
         Self::from_char(kind.as_bytes()[0] as char)
@@ -382,12 +390,12 @@ impl Piece {
     /// assert_eq!(white_knight.color(), Color::White);
     /// assert_eq!(white_knight.kind(), PieceKind::Knight);
     /// ```
-    pub const fn from_uci(piece: char) -> Result<Self, ChessError> {
+    pub fn from_uci(piece: char) -> Result<Self> {
         if let Ok(kind) = PieceKind::from_uci(piece) {
             let color = Color::from_case(piece);
             Ok(Self::new(color, kind))
         } else {
-            Err(ChessError::InvalidPieceChar { val: piece })
+            bail!("Invalid char for Piece: Got {piece}.");
         }
     }
 

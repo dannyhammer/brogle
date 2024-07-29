@@ -1,6 +1,5 @@
 pub mod board;
 pub mod color;
-pub mod error;
 pub mod magicgen;
 pub mod movegen;
 pub mod moves;
@@ -12,7 +11,6 @@ pub mod utils;
 
 pub use board::*;
 pub use color::*;
-pub use error::*;
 pub use magicgen::*;
 pub use movegen::*;
 pub use moves::*;

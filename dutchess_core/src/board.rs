@@ -3,9 +3,11 @@ use std::{
     ops::{Index, IndexMut, Not, Shl, Shr},
 };
 
+use anyhow::{anyhow, bail, Result};
+
 use super::{
-    default_attacks_for, ray_between, utils::FEN_STARTPOS, ChessError, Color, File, Piece,
-    PieceKind, Rank, Tile, NUM_COLORS, NUM_PIECE_TYPES,
+    default_attacks_for, ray_between, utils::FEN_STARTPOS, Color, File, Piece, PieceKind, Rank,
+    Tile, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
 /// Represents a full chess board at any given state.
@@ -91,17 +93,18 @@ impl ChessBoard {
     }
 
     /// Overrides current board state to apply the provided FEN string to the board.
-    pub fn with_setup(mut self, fen: &str) -> Result<Self, ChessError> {
+    pub fn with_setup(mut self, fen: &str) -> Result<Self> {
         // If this FEN string contains more than just the initial placements, extract the placements
         let placements = if fen.contains(' ') {
             fen.split(' ').next().unwrap()
         } else {
             fen
         };
+        let mut has_both_kings = [false, false];
 
         // Check if the placements string is the correct length
         if placements.matches('/').count() != 7 {
-            return Err(ChessError::InvalidFenString);
+            bail!("Invalid FEN string: Missing placements for all 8 ranks.");
         }
 
         // Need to reverse this so that White pieces are at the "bottom" of the board
@@ -118,21 +121,29 @@ impl ChessBoard {
                     self = self.with_piece(piece, tile);
 
                     file += 1;
+
+                    if piece.is_king() {
+                        has_both_kings[piece.color()] = true;
+                    }
                 } else {
                     // If the next char was not a piece, increment our File counter, checking for errors along the way
                     let Some(empty) = piece_char.to_digit(10) else {
-                        return Err(ChessError::InvalidFenString);
+                        bail!("Invalid FEN string: Found non-piece, non-numeric char {piece_char} when parsing FEN.");
                     };
                     file += empty as u8
                 }
             }
         }
 
+        if !(has_both_kings[Color::White] && has_both_kings[Color::Black]) {
+            bail!("Invalid FEN string: A FEN must have valid placements for both Kings.");
+        }
+
         Ok(self)
     }
 
     /// Alias for chaining [`ChessBoard::new`] with [`ChessBoard::with_setup`].
-    pub fn from_fen(fen: &str) -> Result<Self, ChessError> {
+    pub fn from_fen(fen: &str) -> Result<Self> {
         Self::new().with_setup(fen)
     }
 
@@ -184,9 +195,9 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, Tile};
-    /// let mut board = ChessBoard::new().with_setup("8/8/8/8/2N5/8/8/8").unwrap();
+    /// let mut board = ChessBoard::new().with_setup("k7/8/8/8/2N5/8/8/7K").unwrap();
     /// board.clear(Tile::C4);
-    /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
+    /// assert_eq!(board.fen(), "k7/8/8/8/8/8/8/7K");
     /// ```
     pub fn clear(&mut self, tile: Tile) {
         if let Some(piece) = self.get(tile) {
@@ -201,10 +212,10 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, Piece, PieceKind, Color, Tile};
-    /// let mut board = ChessBoard::new().with_setup("8/8/8/8/2N5/8/8/8").unwrap();
+    /// let mut board = ChessBoard::new().with_setup("k7/8/8/8/2N5/8/8/7K").unwrap();
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// let taken = board.take(Tile::C4);
-    /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
+    /// assert_eq!(board.fen(), "k7/8/8/8/8/8/8/7K");
     /// assert_eq!(taken, Some(white_knight));
     /// ```
     pub fn take(&mut self, tile: Tile) -> Option<Piece> {
@@ -803,30 +814,32 @@ impl BitBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::BitBoard;
-    /// let board1 = BitBoard::from_str("0x00FF000000000000");
-    /// let board2 = BitBoard::from_str("00FF000000000000");
-    /// let board3 = BitBoard::from_str("0000000011111111000000000000000000000000000000000000000000000000");
-    /// let board4 = BitBoard::from_str("0b0000000011111111000000000000000000000000000000000000000000000000");
+    /// let board1 = BitBoard::from_str("0x00FF000000000000").unwrap();
+    /// let board2 = BitBoard::from_str("00FF000000000000").unwrap();
+    /// let board3 = BitBoard::from_str("0000000011111111000000000000000000000000000000000000000000000000").unwrap();
+    /// let board4 = BitBoard::from_str("0b0000000011111111000000000000000000000000000000000000000000000000").unwrap();
     /// assert_eq!(board1, board2);
     /// assert_eq!(board1, board3);
     /// assert_eq!(board1, board4);
-    /// assert_eq!(board1.unwrap().to_hex_string(), "0x00FF000000000000");
+    /// assert_eq!(board1.to_hex_string(), "0x00FF000000000000");
     /// ```
-    pub fn from_str(bits: &str) -> Result<Self, ChessError> {
+    pub fn from_str(bits: &str) -> Result<Self> {
         let bits = bits.to_lowercase();
 
         if bits.len() == 64 || bits.len() == 66 {
             let bits = bits.trim_start_matches("0b");
-            let bits =
-                u64::from_str_radix(bits, 2).map_err(|_| ChessError::InvalidBitBoardString)?;
+            let bits = u64::from_str_radix(bits, 2).map_err(|_| {
+                anyhow!("Invalid BitBoard string: Expected binary digits, got {bits}")
+            })?;
             Ok(Self::new(bits))
         } else if bits.len() == 16 || bits.len() == 18 {
             let bits = bits.trim_start_matches("0x");
-            let bits =
-                u64::from_str_radix(bits, 16).map_err(|_| ChessError::InvalidBitBoardString)?;
+            let bits = u64::from_str_radix(bits, 16).map_err(|_| {
+                anyhow!("Invalid BitBoard string: Expected hexadecimal digits, got {bits}")
+            })?;
             Ok(Self::new(bits))
         } else {
-            Err(ChessError::InvalidBitBoardString)
+            bail!("Invalid BitBoard string: Invalid length {}. Length must be either 64 (binary) or 16 (hexadecimal)", bits.len())
         }
     }
 
