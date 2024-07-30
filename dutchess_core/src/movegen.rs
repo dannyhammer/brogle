@@ -1,4 +1,4 @@
-use crate::{position, ChessBoard, MAX_NUM_MOVES, NUM_COLORS};
+use crate::{ChessBoard, MAX_NUM_MOVES, NUM_COLORS};
 
 use super::{BitBoard, Color, Move, MoveKind, Piece, PieceKind, Position, Tile};
 
@@ -6,8 +6,8 @@ include!("blobs/rays_between.rs");
 include!("blobs/rays.rs");
 include!("blobs/magics.rs");
 
-pub struct MoveGenerator<'a> {
-    position: &'a Position,
+pub struct MoveGenerator {
+    position: Position,
     attacks: [BitBoard; NUM_COLORS],
     pinmasks: (BitBoard, BitBoard),
     checkers: BitBoard,
@@ -17,8 +17,8 @@ pub struct MoveGenerator<'a> {
     num_legal_moves: usize,
 }
 
-impl<'a> MoveGenerator<'a> {
-    pub fn new(position: &'a Position) -> Self {
+impl MoveGenerator {
+    pub fn new(position: Position) -> Self {
         let mut attacks = [BitBoard::default(); NUM_COLORS];
         // let mut pseudo_legal_mobility = [BitBoard::default(); Tile::COUNT];
         let legal_mobility = [BitBoard::default(); Tile::COUNT];
@@ -50,15 +50,15 @@ impl<'a> MoveGenerator<'a> {
         }
     }
 
-    pub fn new_legal(position: &'a Position) -> Self {
+    pub fn new_legal(position: Position) -> Self {
         let mut movegen = Self::new(position);
-        let legal_mobility = compute_legal_mobility(position);
+        let legal_mobility = compute_legal_mobility(&position);
         movegen.generate_moves_from_mobility(&legal_mobility);
         movegen.legal_mobility = legal_mobility;
         movegen
     }
 
-    pub const fn position(&self) -> &'a Position {
+    pub const fn position(&self) -> &Position {
         &self.position
     }
 
@@ -196,6 +196,7 @@ impl<'a> MoveGenerator<'a> {
     }
 }
 
+/*
 fn compute_pseudo_legal_mobility(board: &ChessBoard, color: Color) -> [BitBoard; Tile::COUNT] {
     let mut pseudo_legal_mobility = [BitBoard::EMPTY_BOARD; Tile::COUNT];
 
@@ -209,9 +210,10 @@ fn compute_pseudo_legal_mobility(board: &ChessBoard, color: Color) -> [BitBoard;
 
     pseudo_legal_mobility
 }
+ */
 
 /// Computes a [`BitBoard`] of all of the squares that can be attacked by [`Color`] pieces.
-fn compute_squares_attacked_by(board: &ChessBoard, color: Color) -> BitBoard {
+pub fn compute_squares_attacked_by(board: &ChessBoard, color: Color) -> BitBoard {
     let mut attacks = BitBoard::EMPTY_BOARD;
 
     // All occupied spaces
@@ -225,6 +227,14 @@ fn compute_squares_attacked_by(board: &ChessBoard, color: Color) -> BitBoard {
     }
 
     attacks
+}
+
+/// Removes the defending King from this board and computes the attacks of the `attacker_color` pieces,
+/// returning a [`BitBoard`] of all of the squares that can be attacked.
+pub fn king_danger_squares(board: &ChessBoard, attacker_color: Color) -> BitBoard {
+    let king_bb = board.king(attacker_color.opponent());
+    let kingless = board.without(king_bb);
+    compute_squares_attacked_by(&kingless, attacker_color)
 }
 
 /// Computes a [`BitBoard`] of all the pieces that attack the provided [`Tile`].
@@ -310,7 +320,8 @@ fn compute_legal_mobility(position: &Position) -> [BitBoard; Tile::COUNT] {
 
         // In double-check, so only the King can move, so move him somewhere not attacked
         _ => {
-            let unsafe_squares = position.bitboards().squares_attacked_by(color.opponent());
+            let unsafe_squares =
+                compute_squares_attacked_by(position.bitboards(), color.opponent());
             let king_attacks = king_moves(king_tile);
             let enemy_or_empty = position.bitboards().enemy_or_empty(color);
 
@@ -416,7 +427,7 @@ fn compute_legal_mobility_at(
                 // println!("AFTER EP:\n{board_after_ep}");
 
                 // Get all enemy attacks on the board without these pieces
-                let enemy_attacks = board_after_ep.squares_attacked_by(color.opponent());
+                let enemy_attacks = compute_squares_attacked_by(&board_after_ep, color.opponent());
                 // println!("Enemy attacks:\n{enemy_attacks}");
 
                 // If the enemy could now attack our King, en passant is not legal
@@ -446,7 +457,7 @@ fn compute_legal_mobility_at(
             let enemies = position.bitboards().color(color.opponent());
 
             // A king can move anywhere that isn't attacked by the enemy
-            let enemy_attacks = position.bitboards().king_danger_squares(color.opponent());
+            let enemy_attacks = king_danger_squares(position.bitboards(), color.opponent());
             // println!("ENEMY ATTACKS:\n{enemy_attacks}");
 
             let kingside = if position.castling_rights().kingside[color] {

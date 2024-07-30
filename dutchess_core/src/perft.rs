@@ -12,31 +12,31 @@ pub struct PerftResult {
     depth: usize,
 
     /// Number of game states reachable.
-    nodes: u128,
+    nodes: u64,
 
     /// Number of captures possible.
-    captures: u128,
+    captures: u64,
 
     /// Number of times en passant can be performed.
-    eps: u128,
+    eps: u64,
 
     /// Number of times castling can occur.
-    castles: u128,
+    castles: u64,
 
     /// Number of times a pawn can be promoted. A single move counts as one promotion, not the four possible promotions.
-    promotions: u128,
+    promotions: u64,
 
     /// Number of checks that can occur.
-    checks: u128,
+    checks: u64,
 
     /// Number of discovery checks possible.
-    discovery_checks: u128,
+    discovery_checks: u64,
 
     /// Number of double checks that can occur.
-    double_checks: u128,
+    double_checks: u64,
 
     /// Number of checkmates that can occur.
-    checkmates: u128,
+    checkmates: u64,
 }
 
 impl Add for PerftResult {
@@ -185,17 +185,17 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
 
     if depth == 0 {
         res.nodes = 1;
-        res.captures = 32 - position.bitboards().occupied().population() as u128; // TODO: Fetch original number of pieces
-        res.castles = position.times_castled() as u128;
-        res.checks = position.is_check() as u128;
-        res.checkmates = position.is_checkmate() as u128;
+        res.captures = 32 - position.bitboards().occupied().population() as u64; // TODO: Fetch original number of pieces
+        res.castles = position.times_castled() as u64;
+        res.checks = position.is_check() as u64;
+        res.checkmates = position.is_checkmate() as u64;
         return res;
     }
 
     let moves = position.legal_moves();
 
     if depth == 1 {
-        res.nodes = moves.len() as u128;
+        res.nodes = moves.len() as u64;
         return res;
     }
 
@@ -207,7 +207,7 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
     res
 }
 
-pub fn perft(position: &Position, depth: usize) -> u128 {
+pub fn perft(position: &Position, depth: usize) -> u64 {
     if depth == 0 {
         return 1;
     }
@@ -217,7 +217,7 @@ pub fn perft(position: &Position, depth: usize) -> u128 {
     let moves = position.legal_moves();
 
     if depth == 1 {
-        return moves.len() as u128;
+        return moves.len() as u64;
     }
 
     for chessmove in moves {

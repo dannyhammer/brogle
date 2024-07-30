@@ -1,4 +1,4 @@
-pub mod board;
+pub mod bitboard;
 pub mod color;
 pub mod magicgen;
 pub mod movegen;
@@ -9,7 +9,7 @@ pub mod position;
 pub mod tile;
 pub mod utils;
 
-pub use board::*;
+pub use bitboard::*;
 pub use color::*;
 pub use magicgen::*;
 pub use movegen::*;
@@ -21,7 +21,7 @@ pub use tile::*;
 pub use utils::*;
 
 pub mod prelude {
-    pub use crate::board::*;
+    pub use crate::bitboard::*;
     pub use crate::movegen::*;
     pub use crate::moves::*;
     pub use crate::perft::*;
