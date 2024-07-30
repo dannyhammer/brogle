@@ -122,8 +122,8 @@ impl fmt::Display for Game {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub struct CastlingRights {
-    kingside: [bool; 2],
-    queenside: [bool; 2],
+    pub(crate) kingside: [bool; 2],
+    pub(crate) queenside: [bool; 2],
 }
 
 impl CastlingRights {
@@ -403,11 +403,12 @@ impl Position {
         self.num_legal_moves = 0;
 
         let mobility = self.compute_legal_mobility_for(color);
-        for (i, moves_bb) in mobility.into_iter().enumerate() {
+        for from in self.bitboards().color(color) {
+            // If there are no legal moves at this location, move on to the next tile
+            let moves_bb = mobility[from];
             if moves_bb.is_empty() {
                 continue;
             }
-            let from = Tile::from_index_unchecked(i);
             let piece = self.bitboards().piece_at(from).unwrap();
 
             for to in moves_bb {
@@ -419,29 +420,24 @@ impl Position {
                 };
 
                 // The King has some special cases around castling
-                if piece.is_king() {
-                    // If the King is moving for the first time, check if he's castling
-                    if from == Tile::KING_START_SQUARES[color] {
-                        if to == Tile::KINGSIDE_CASTLE_SQUARES[color]
-                            && self.castling_rights.kingside[color]
-                        {
-                            kind = MoveKind::KingsideCastle;
-                        } else if to == Tile::QUEENSIDE_CASTLE_SQUARES[color]
-                            && self.castling_rights.queenside[color]
-                        {
-                            kind = MoveKind::QueensideCastle;
-                        }
+                // If the King is moving for the first time, check if he's castling
+                if piece.is_king() && from == Tile::KING_START_SQUARES[color] {
+                    if to == Tile::KINGSIDE_CASTLE_SQUARES[color]
+                        && self.castling_rights.kingside[color]
+                    {
+                        kind = MoveKind::KingsideCastle;
+                    } else if to == Tile::QUEENSIDE_CASTLE_SQUARES[color]
+                        && self.castling_rights.queenside[color]
+                    {
+                        kind = MoveKind::QueensideCastle;
                     }
                 } else if piece.is_pawn() {
                     // Special pawn cases
                     if Some(to) == from.forward_by(color, 2) {
                         kind = MoveKind::PawnPushTwo;
-                    } else if to.file() != from.file() {
-                        // A capture is occurring, so check if it's en passant
-                        if self.bitboards().piece_at(to).is_none() {
-                            // A piece was NOT at the captured spot, so this was en passant
-                            kind = MoveKind::EnPassantCapture;
-                        }
+                    } else if to.file() != from.file() && self.bitboards().piece_at(to).is_none() {
+                        // A piece was NOT at the captured spot, so this was en passant
+                        kind = MoveKind::EnPassantCapture;
                     }
 
                     // Regardless of whether this was a capture or quiet, it may be a promotion
@@ -506,22 +502,18 @@ impl Position {
 
         // If an orthogonal slider is reachable from the King, then it is attacking the King
         let orthogonal_overlap = orthogonal_attacks & enemy_orthogonal_sliders;
-        if !orthogonal_overlap.is_empty() {
-            for tile in orthogonal_overlap {
-                let ray = ray_between(king_tile, tile);
-                if (ray & friendlies).population() <= 2 && (ray & enemies).population() <= 1 {
-                    pinmask_hv |= ray;
-                }
+        for tile in orthogonal_overlap {
+            let ray = ray_between(king_tile, tile);
+            if (ray & friendlies).population() <= 2 && (ray & enemies).population() <= 1 {
+                pinmask_hv |= ray;
             }
         }
 
         let diagonal_overlap = diagonal_attacks & enemy_diagonal_sliders;
-        if !diagonal_overlap.is_empty() {
-            for tile in diagonal_overlap {
-                let ray = ray_between(king_tile, tile);
-                if (ray & friendlies).population() <= 2 && (ray & enemies).population() <= 1 {
-                    pinmask_diag |= ray;
-                }
+        for tile in diagonal_overlap {
+            let ray = ray_between(king_tile, tile);
+            if (ray & friendlies).population() <= 2 && (ray & enemies).population() <= 1 {
+                pinmask_diag |= ray;
             }
         }
 
@@ -530,8 +522,6 @@ impl Position {
 
     fn compute_legal_mobility_for(&self, color: Color) -> [BitBoard; Tile::COUNT] {
         let mut moves = [BitBoard::EMPTY_BOARD; Tile::COUNT];
-
-        let not_enemy_king = !self.bitboards().king(color.opponent());
 
         // If the king is in check, move generation is much more strict
         let checkers = self.compute_checkers_for(color);
@@ -589,6 +579,8 @@ impl Position {
 
         // let ep_bb = BitBoard::from_option_tile(self.ep_tile());
         // println!("EN PASSANT:\n{ep_bb}\n---------------");
+
+        let not_enemy_king = !self.bitboards().king(color.opponent());
 
         // Assign legal moves to each piece
         for tile in self.bitboards().color(color) {
@@ -743,13 +735,7 @@ impl Position {
 
                 (attacks | castling) & enemy_or_empty & !enemy_attacks
             }
-            PieceKind::Knight => {
-                // A knight can move to any non-friendly space within the checkmask.
-                // Unless it is pinned, in which case it cannot move
-                let pseudo_legal = attacks & enemy_or_empty;
-                pseudo_legal & checkmask & pinmask
-            }
-            PieceKind::Rook | PieceKind::Bishop | PieceKind::Queen => {
+            PieceKind::Knight | PieceKind::Rook | PieceKind::Bishop | PieceKind::Queen => {
                 let pseudo_legal = attacks & enemy_or_empty;
 
                 pseudo_legal & checkmask & pinmask
@@ -769,10 +755,6 @@ impl Position {
         }
 
         attacks
-    }
-
-    pub const fn is_attacked_by(&self, tile: Tile, color: Color) -> bool {
-        self.attacks_to(tile, color).is_nonempty()
     }
 
     // https://www.chessprogramming.org/Square_Attacked_By#By_all_Pieces

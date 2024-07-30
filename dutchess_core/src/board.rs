@@ -1197,69 +1197,14 @@ impl BitBoard {
         self.0.count_ones()
     }
 
-    /// Returns `true` if `other` is a subset of `self`.
+    /// Returns `true` if `self` contains every bit set in `other`.
     pub const fn contains_all(&self, other: &Self) -> bool {
         self.0 & other.0 == other.0
     }
 
-    /// Returns `true` if `self` contains any bits of `other`.
+    /// Returns `true` if `self` contains any bits set in `other`.
     pub const fn contains_any(&self, other: &Self) -> bool {
         self.0 & other.0 != Self::EMPTY_BOARD.0
-    }
-
-    /// If there are any bits set in `self`, returns [`BitBoard::FULL_BOARD`].
-    /// Otherwise, returns `other`.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::BitBoard;
-    /// let a = BitBoard::RANK_3;
-    /// let b = BitBoard::FILE_H;
-    /// let empty = BitBoard::EMPTY_BOARD;
-    /// let full = BitBoard::FULL_BOARD;
-    ///
-    /// assert_eq!(a.full_if_empty_else_other(b), b);
-    /// assert_eq!(b.full_if_empty_else_other(a), a);
-    /// assert_eq!(empty.full_if_empty_else_other(a), full);
-    /// ```
-    pub const fn full_if_empty_else_other(&self, other: Self) -> Self {
-        Self::from_bool(self.is_empty()).or(other)
-    }
-
-    /// If there are any bits set in `self`, returns [`BitBoard::FULL_BOARD`].
-    /// Otherwise, returns `self`.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::BitBoard;
-    /// let a = BitBoard::RANK_1;
-    /// let empty = BitBoard::EMPTY_BOARD;
-    /// let full = BitBoard::FULL_BOARD;
-    ///
-    /// assert_eq!(a.full_if_not_empty(), full);
-    /// assert_eq!(full.full_if_not_empty(), full);
-    /// assert_eq!(empty.full_if_not_empty(), empty);
-    /// ```
-    pub const fn full_if_not_empty(&self) -> Self {
-        Self::from_bool(!self.is_empty()).or(*self)
-    }
-
-    /// If there are any bits set in `self`, returns [`BitBoard::FULL_BOARD`].
-    /// Otherwise, returns `self`.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::BitBoard;
-    /// let a = BitBoard::RANK_3;
-    /// let empty = BitBoard::EMPTY_BOARD;
-    /// let full = BitBoard::FULL_BOARD;
-    ///
-    /// assert_eq!(a.full_if_empty(), a);
-    /// assert_eq!(full.full_if_empty(), full);
-    /// assert_eq!(empty.full_if_empty(), full);
-    /// ```
-    pub const fn full_if_empty(&self) -> Self {
-        Self::from_bool(self.is_empty()).or(*self)
     }
 
     /// Shifts this [`BitBoard`] forward by `n`, according to `color`.

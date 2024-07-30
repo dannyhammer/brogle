@@ -21,6 +21,10 @@ impl Color {
     // pub const WHITE: Self = Self(0);
     // pub const BLACK: Self = Self(1);
 
+    pub const fn all() -> [Self; NUM_COLORS] {
+        [Self::White, Self::Black]
+    }
+
     /// Returns `true` if this [`Color`] is White.
     pub const fn is_white(&self) -> bool {
         matches!(self, Self::White)
