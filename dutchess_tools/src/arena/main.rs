@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Stdin, Write},
+    io::{self, Write},
     process::{Child, ChildStdin, Command, Stdio},
     thread,
     time::Duration,

@@ -83,12 +83,12 @@ pub trait UciEngine {
             }
 
             // Attempt to parse the user input
-            let cmd = match UciCommand::new(&buffer) {
+            let cmd = match UciCommand::new(buffer.trim()) {
                 Ok(cmd) => cmd,
                 Err(err) => {
                     // This is an unrecognized command, so attempt to parse it through custom means
                     if matches!(err, UciError::UnrecognizedCommand) {
-                        if let Err(err) = self.custom_command(&buffer) {
+                        if let Err(err) = self.custom_command(buffer.trim()) {
                             println!("Unrecognized command: {buffer}");
                             eprintln!("{err}");
                         }

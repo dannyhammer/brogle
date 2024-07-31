@@ -15,6 +15,7 @@ use crate::{
 };
 use dutchess_core::{
     perft, print_perft, print_split_perft, print_split_perft_pretty, Move, Position, FEN_KIWIPETE,
+    FEN_STARTPOS,
 };
 
 // type TranspositionTable = ();
@@ -141,14 +142,18 @@ impl Engine {
         let mut args = rest.split_ascii_whitespace();
 
         let Some(depth) = args.next() else {
-            return Err(format!("usage: search <depth>"));
+            return Err(format!("usage: search <depth> [iterative]"));
         };
 
         let Ok(depth) = depth.parse() else {
-            return Err(format!("usage: search <depth>"));
+            return Err(format!("usage: search <depth> [iterative]"));
         };
 
-        Ok(EngineCommand::Search(depth))
+        let iterative = rest
+            .split_ascii_whitespace()
+            .any(|arg| arg.to_ascii_lowercase() == "iterative");
+
+        Ok(EngineCommand::Search(depth, iterative))
     }
 
     fn parse_perft_command(&self, rest: &str) -> Result<EngineCommand, String> {
@@ -188,11 +193,28 @@ impl Engine {
             } else if let Ok(parsed) = pos.from_fen(arg) {
                 pos = parsed;
             } else {
-                return Err(format!("usage: eval [fen]"));
+                return Err(format!("usage: eval [FEN]"));
             }
         }
 
         Ok(EngineCommand::Eval(pos))
+    }
+
+    fn parse_fen_command(&self, rest: &str) -> Result<EngineCommand, String> {
+        let mut args = rest.split_ascii_whitespace();
+
+        let mut fen = None;
+        if let Some(arg) = args.next() {
+            if arg.to_ascii_lowercase() == "startpos" {
+                fen = Some(FEN_STARTPOS.to_string());
+            } else if Position::new().from_fen(arg).is_ok() {
+                fen = Some(arg.to_string());
+            } else {
+                return Err(format!("usage: fen [FEN]"));
+            }
+        }
+
+        Ok(EngineCommand::Fen(fen))
     }
 
     fn parse_move_command(&self, rest: &str) -> Result<EngineCommand, String> {
@@ -220,9 +242,9 @@ impl Engine {
 
     fn parse_custom_command(&self, input: &str) -> Result<EngineCommand, String> {
         let (cmd, rest) = if input.contains(' ') {
-            input.trim().split_once(' ').unwrap()
+            input.split_once(' ').unwrap()
         } else {
-            (input.trim(), "")
+            (input, "")
         };
 
         match cmd {
@@ -233,7 +255,7 @@ impl Engine {
             "eval" => self.parse_eval_command(rest),
             "move" => self.parse_move_command(rest),
             // "moves" => Ok(EngineCommand::Moves),
-            "fen" => Ok(EngineCommand::Fen),
+            "fen" => self.parse_fen_command(rest),
             _ => Err(format!("Failed to parse custom command: {input:?}")),
         }
     }
@@ -255,7 +277,7 @@ enum EngineCommand {
     Show,
 
     /// Show the current state of of the board as a FEN string.
-    Fen,
+    Fen(Option<String>),
 
     /// Make the list of moves applied to the board.
     Move(Vec<Move>),
@@ -264,7 +286,7 @@ enum EngineCommand {
     Eval(Position),
 
     /// Search the current position up to the provided depth.
-    Search(u32),
+    Search(u32, bool),
 }
 
 impl UciEngine for Engine {
@@ -304,10 +326,15 @@ impl UciEngine for Engine {
                     }
                 }
             }
-            EngineCommand::Fen => println!("{}", self.game.to_fen()),
+            EngineCommand::Fen(fen) => {
+                if let Some(fen) = fen {
+                    self.game = Position::new().from_fen(&fen).unwrap();
+                }
+                println!("{}", self.game.to_fen())
+            }
             EngineCommand::Eval(pos) => println!("{}", eval(&pos)),
             EngineCommand::Move(moves) => self.game.make_moves(moves),
-            EngineCommand::Search(depth) => {
+            EngineCommand::Search(depth, _) => {
                 let search = Search::new(self.game, depth);
                 let res = search.start();
                 // let res = search(self.game, depth);
@@ -405,6 +432,7 @@ impl UciEngine for Engine {
         let stopper = Arc::clone(&self.searching);
         let result = Arc::clone(&self.search_result);
 
+        // Parse the timeout duration
         let timeout = match mode {
             UciSearchMode::Infinite => Duration::MAX,
             UciSearchMode::Ponder => {
@@ -422,7 +450,7 @@ impl UciEngine for Engine {
                         btime
                     };
 
-                    Duration::from_secs_f64(remaining.as_secs_f64() / 100.0)
+                    Duration::from_secs_f64(remaining.as_secs_f64() / 200.0)
                 } else if let Some(movetime) = search_opt.move_time {
                     movetime
                 } else {
@@ -432,7 +460,6 @@ impl UciEngine for Engine {
             }
         };
 
-        // let state = self.game.state().clone();
         let state = self.game.clone();
 
         let starttime = Instant::now();
@@ -443,15 +470,11 @@ impl UciEngine for Engine {
         let mut bestmove = None;
 
         thread::spawn(move || {
-            loop {
-                // Search ends if we've timed out, been told to stop, or reached out depth limit
-                if depth == max_depth
-                    || starttime.elapsed() >= timeout
-                    || !stopper.load(Ordering::Relaxed)
-                {
-                    break;
-                }
-
+            // Search ends if we've timed out, been told to stop, or reached our depth limit
+            while starttime.elapsed() < timeout
+                && depth < max_depth
+                && stopper.load(Ordering::Relaxed)
+            {
                 // Obtain a result from the search
                 let mut search = Search::new(state, depth);
                 // Iterative deepening
@@ -467,8 +490,8 @@ impl UciEngine for Engine {
                     // .seldepth(seldepth)
                     // .multipv(multipv)
                     // .score(score)
-                    // .nodes(nodes)
-                    // .nps(nps)
+                    .nodes(res.nodes_searched)
+                    // .nps(res.nodes_searched as f64 / starttime.elapsed().as_secs_f64())
                     // .tbhits(tbhits)
                     .time(format!("{:?}", starttime.elapsed()));
                 // .pv(pv);
@@ -483,14 +506,6 @@ impl UciEngine for Engine {
                 depth += 1;
             }
 
-            /*
-            let bestmove = result
-                .lock()
-                .unwrap()
-                .bestmove
-                .map(|m| m.to_string())
-                .unwrap_or_default();
-             */
             let bestmove_string = bestmove.map(|m| m.to_string()).unwrap_or_default();
             // let ponder = res.ponder.map(|p| p.to_string());
             let ponder = None;
