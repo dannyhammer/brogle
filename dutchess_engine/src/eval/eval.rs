@@ -1,47 +1,60 @@
-use dutchess_core::{BitBoard, ChessBoard, Color, PieceKind, Position};
+use dutchess_core::{BitBoard, ChessBoard, Color, PieceKind, Position, Tile};
 
 use super::piece_square_tables::{CONTROL_CENTER, KING_SAFETY, PAWN_PUSH};
 
-pub fn eval(position: &Position) -> i32 {
-    eval_for(position, position.current_player())
+pub struct Evaluator<'a> {
+    position: &'a Position,
 }
 
-fn eval_for(position: &Position, color: Color) -> i32 {
-    let mat = material_difference(position, color);
+impl<'a> Evaluator<'a> {
+    pub fn new(position: &'a Position) -> Self {
+        Self { position }
+    }
 
-    let board = position.bitboards();
+    pub fn eval(self) -> i32 {
+        let color = self.position.current_player();
+        material_difference(self.position.bitboards(), color)
+    }
 
-    let pawn_pushes = {
-        let ours = PAWN_PUSH.apply_for(board, color, Some(PieceKind::Pawn));
-        let theirs = PAWN_PUSH.apply_for(board, color.opponent(), Some(PieceKind::Pawn));
-        ours - theirs
-    };
+    pub fn complex_eval(self) -> i32 {
+        let color = self.position.current_player();
+        self.eval_for(color)
+    }
 
-    let king_safety = {
-        let ours = KING_SAFETY.apply_for(board, color, Some(PieceKind::King));
-        let theirs = KING_SAFETY.apply_for(board, color.opponent(), Some(PieceKind::King));
-        ours - theirs
-    };
+    fn eval_for(self, color: Color) -> i32 {
+        let board = self.position.bitboards();
+        let mat = material_difference(board, color);
+        let game_percentage = material_remaining_percentage(board, color.opponent());
 
-    let center_control = {
-        let ours = CONTROL_CENTER.apply_for(board, color, None);
-        let theirs = CONTROL_CENTER.apply_for(board, color.opponent(), None);
-        ours - theirs
-    };
+        let restrict_king = restrict_enemy_king_movement(board, color, game_percentage);
 
-    mat + pawn_pushes + king_safety + center_control
+        let pawn_pushes = {
+            let ours = PAWN_PUSH.apply_for(board, color, Some(PieceKind::Pawn));
+            let theirs = PAWN_PUSH.apply_for(board, color.opponent(), Some(PieceKind::Pawn));
+            ours - theirs
+        };
+
+        let king_safety = ({
+            let ours = KING_SAFETY.apply_for(board, color, Some(PieceKind::King));
+            let theirs = KING_SAFETY.apply_for(board, color.opponent(), Some(PieceKind::King));
+            ours - theirs
+        } as f32
+            * 1.0
+            - game_percentage) as i32;
+
+        let center_control = {
+            let ours = CONTROL_CENTER.apply_for(board, color, None);
+            let theirs = CONTROL_CENTER.apply_for(board, color.opponent(), None);
+            ours - theirs
+        };
+
+        mat + pawn_pushes + king_safety + center_control + restrict_king
+    }
 }
 
-const fn eval_for_color(position: &Position, color: Color) -> i32 {
-    let board = position.bitboards();
-    let material = count_material(board, color);
-
-    material
-}
-
-const fn material_difference(position: &Position, color: Color) -> i32 {
-    let friendly = eval_for_color(position, color);
-    let enemy = eval_for_color(position, color.opponent());
+const fn material_difference(board: &ChessBoard, color: Color) -> i32 {
+    let friendly = count_material(board, color);
+    let enemy = count_material(board, color.opponent());
 
     friendly - enemy
 }
@@ -66,7 +79,6 @@ const fn count_material(board: &ChessBoard, color: Color) -> i32 {
     score += count_material_of(board, color, PieceKind::Bishop);
     score += count_material_of(board, color, PieceKind::Rook);
     score += count_material_of(board, color, PieceKind::Queen);
-    score += count_material_of(board, color, PieceKind::King);
 
     score
 }
@@ -77,24 +89,40 @@ const fn count_material_of(board: &ChessBoard, color: BitBoard, kind: PieceKind)
     (pieces.population() as i32) * value
 }
 
-/*
-const fn original_material() -> i32 {
-    value_of(PieceKind::Pawn) * 16
-        + value_of(PieceKind::Knight) * 4
-        + value_of(PieceKind::Bishop) * 4
-        + value_of(PieceKind::Rook) * 4
-        + value_of(PieceKind::Queen) * 2
-        + value_of(PieceKind::King) * 2
+/// Grants a bonus to positions where the king of `enemy_color` is restricted in his movement,
+/// such as being forced into a corner.
+fn restrict_enemy_king_movement(board: &ChessBoard, color: Color, endgame_weight: f32) -> i32 {
+    let mut score = 0;
+
+    let enemy_king = board.king(color.opponent()).to_tile_unchecked();
+    let friendly_king = board.king(color).to_tile_unchecked();
+
+    // Force enemy King away from center, into corners
+    score += enemy_king.distance_to(Tile::E5);
+
+    // Push our King towards enemy King
+    score += (Tile::A1.distance_to(Tile::H8) - friendly_king.distance_to(enemy_king)) * 10;
+
+    (score as f32 * endgame_weight * 10.0) as i32
 }
 
 /// Divides the original material value of the board by the current material value, yielding a percentage.
 ///
-/// Higher numbers are closer to the beginning of the game. Lower numbers are closer to the end of the game.
-fn material_percentage(board: &ChessBoard) -> f32 {
-    let white_material = count_material(board, Color::White);
-    let black_material = count_material(board, Color::White);
+/// Lower numbers are closer to the beginning of the game. Higher numbers are closer to the end of the game.
+///
+/// The King is ignored when performing this calculation.
+fn material_remaining_percentage(board: &ChessBoard, color: Color) -> f32 {
+    let original = value_of(PieceKind::Pawn) * 8
+        + value_of(PieceKind::Knight) * 2
+        + value_of(PieceKind::Bishop) * 2
+        + value_of(PieceKind::Rook) * 2
+        + value_of(PieceKind::Queen) * 1;
 
-    original_material() as f32 / (white_material + black_material) as f32
+    let current = count_material(board, color);
+
+    if current == 0 {
+        1.0
+    } else {
+        1.0 - current as f32 / original as f32
+    }
 }
-
- */

@@ -4,7 +4,9 @@ use dutchess_core::{Move, Position};
 use rand::{seq::SliceRandom, thread_rng};
 
 use crate::uci::SearchOptions;
-use crate::{eval, value_of};
+use crate::{value_of, Evaluator};
+
+const INITIAL_SCORE: i32 = -32_000;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SearchResult {
@@ -19,23 +21,11 @@ impl Default for SearchResult {
         Self {
             bestmove: None,
             ponder: None,
-            score: -32_000,
+            score: INITIAL_SCORE,
             nodes_searched: 1, // By default, we're searching the root node
         }
     }
 }
-
-/*
-impl SearchResult {
-    fn new(bestmove: Move, score: i32) -> Self {
-        Self {
-            bestmove,
-            score,
-            nodes: 0,
-        }
-    }
-}
- */
 
 impl PartialEq for SearchResult {
     fn eq(&self, other: &Self) -> bool {
@@ -49,11 +39,6 @@ impl PartialOrd for SearchResult {
         self.score.partial_cmp(&other.score)
     }
 }
-// impl Ord for SearchResult {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         self.score.cmp(&other.score)
-//     }
-// }
 
 impl Neg for SearchResult {
     type Output = Self;
@@ -68,8 +53,6 @@ pub struct Search<'a> {
     depth_to_search: u32,
     options: SearchOptions<'a>,
     result: SearchResult,
-    // stopper: Arc<AtomicBool>,
-    // moves: [Move; MAX_NUM_MOVES],
 }
 
 impl<'a> Search<'a> {
@@ -79,8 +62,6 @@ impl<'a> Search<'a> {
             depth_to_search,
             options: SearchOptions::default(),
             result: SearchResult::default(),
-            // moves: position.legal_moves(),
-            // moves: [Move::illegal(); MAX_NUM_MOVES],
         }
     }
 
@@ -146,13 +127,13 @@ impl<'a> Search<'a> {
 
     fn search(&mut self, position: Position, depth: u32) -> SearchResult {
         // Start with a default (very bad) result.
-        let mut alpha = -32_000;
-        let beta = 32_000;
+        let mut alpha = INITIAL_SCORE;
+        let beta = -INITIAL_SCORE;
 
         // Reached the end of the depth; return board's evaluation.
         if depth == 0 {
             // Root nodes in negamax must be evaluated from the current player's perspective
-            self.result.score = eval(&position);
+            self.result.score = Evaluator::new(&position).eval();
             self.result.nodes_searched += 1;
             return self.result;
         }
@@ -197,7 +178,7 @@ impl<'a> Search<'a> {
             if moves.is_empty() {
                 // eprintln!("No legal moves available at: {position}\nRes: {best:?}");
                 if position.is_check() {
-                    self.result.score = i32::MIN;
+                    self.result.score = i32::MIN + depth as i32; // Prefer earlier checkmates
                 } else {
                     self.result.score = 0;
                 }
@@ -213,7 +194,7 @@ impl<'a> Search<'a> {
 
     fn negamax(&mut self, position: Position, depth: u32, mut alpha: i32, beta: i32) -> i32 {
         // Start with a default (very bad) result.
-        let mut best = -32_000;
+        let mut best = INITIAL_SCORE;
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
@@ -222,6 +203,14 @@ impl<'a> Search<'a> {
 
         let mut cloned = position.clone();
         let moves = cloned.legal_moves_mut();
+        if moves.is_empty() {
+            if position.is_check() {
+                return i32::MIN + depth as i32; // Prefer earlier checks
+            } else {
+                return 0;
+            }
+        }
+
         self.order_moves(&position, moves);
 
         for mv in moves.iter() {
@@ -250,24 +239,12 @@ impl<'a> Search<'a> {
             }
         }
 
-        // Handle cases for checkmate and stalemate
-        if best == -32_000 {
-            if moves.is_empty() {
-                // eprintln!("No legal moves available at: {position}\nRes: {best:?}");
-                if position.is_check() {
-                    best = i32::MIN;
-                } else {
-                    best = 0;
-                }
-            }
-        }
-
         best
     }
 
     fn quiescence(&mut self, position: Position, mut alpha: i32, beta: i32) -> i32 {
         // Root nodes in negamax must be evaluated from the current player's perspective
-        let stand_pat = eval(&position);
+        let stand_pat = Evaluator::new(&position).eval();
         if stand_pat >= beta {
             return beta;
         } else if stand_pat > alpha {
@@ -276,6 +253,15 @@ impl<'a> Search<'a> {
 
         let mut cloned = position.clone();
         let moves = cloned.legal_moves_mut();
+        // Handle cases for checkmate and stalemate
+        if moves.is_empty() {
+            if position.is_check() {
+                return i32::MIN;
+            } else {
+                return 0;
+            }
+        }
+
         self.order_moves(&position, moves);
         // println!("MOVES: {moves:?}");
 

@@ -403,6 +403,37 @@ impl Tile {
         BitBoard::from_tile(*self)
     }
 
+    /// Computes the distance between `self` and `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::C4.distance_to(Tile::C1), 3);
+    /// assert_eq!(Tile::A1.distance_to(Tile::A8), 7);
+    /// assert_eq!(Tile::D6.distance_to(Tile::D6), 0);
+    /// assert_eq!(Tile::E2.distance_to(Tile::C6), 6);
+    /// ```
+    pub const fn distance_to(&self, other: Self) -> u8 {
+        self.file().0.abs_diff(other.file().0) + self.rank().0.abs_diff(other.rank().0)
+    }
+
+    /// Computes the distance between `self` and the center of the board.
+    ///
+    /// The center tiles are E4, E5, D4, and D5.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::D5.distance_from_center(), 0);
+    /// assert_eq!(Tile::E4.distance_from_center(), 0);
+    /// assert_eq!(Tile::A1.distance_from_center(), 6);
+    /// ```
+    pub fn distance_from_center(&self) -> u8 {
+        self.distance_to(Self::E4)
+            .min(self.distance_to(Self::E5))
+            .min(self.distance_to(Self::D4).min(self.distance_to(Self::D5)))
+    }
+
     pub fn try_offset(&self, df: i8, dr: i8) -> Result<Self> {
         let file_bits = self.file().0 as i8 + df;
         let file = File::new(file_bits as u8)

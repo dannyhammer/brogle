@@ -9,9 +9,9 @@ use std::{
 };
 
 use crate::{
-    eval,
     search::{Search, SearchResult},
     uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
+    Evaluator,
 };
 use dutchess_core::{
     perft, print_perft, print_split_perft, print_split_perft_pretty, Move, Position, FEN_KIWIPETE,
@@ -332,7 +332,7 @@ impl UciEngine for Engine {
                 }
                 println!("{}", self.game.to_fen())
             }
-            EngineCommand::Eval(pos) => println!("{}", eval(&pos)),
+            EngineCommand::Eval(pos) => println!("{}", Evaluator::new(&pos).eval()),
             EngineCommand::Move(moves) => self.game.make_moves(moves),
             EngineCommand::Search(depth, _) => {
                 let search = Search::new(self.game, depth);
@@ -450,7 +450,7 @@ impl UciEngine for Engine {
                         btime
                     };
 
-                    Duration::from_secs_f64(remaining.as_secs_f64() / 200.0)
+                    Duration::from_secs_f64(remaining.as_secs_f64() / 300.0)
                 } else if let Some(movetime) = search_opt.move_time {
                     movetime
                 } else {
