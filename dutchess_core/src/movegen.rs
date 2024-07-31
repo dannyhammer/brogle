@@ -1,4 +1,4 @@
-use crate::{ChessBoard, MAX_NUM_MOVES, NUM_COLORS};
+use crate::{ChessBoard, Rank, MAX_NUM_MOVES, NUM_COLORS};
 
 use super::{BitBoard, Color, Move, MoveKind, Piece, PieceKind, Position, Tile};
 
@@ -157,7 +157,7 @@ impl MoveGenerator {
                     }
 
                     // Regardless of whether this was a capture or quiet, it may be a promotion
-                    if to.rank().is_home_rank(color.opponent()) {
+                    if to.rank() == Rank::eighth(color) {
                         if let MoveKind::Capture = kind {
                             // The pawn can reach the enemy's home rank and become promoted
                             self.legal_moves[self.num_legal_moves] =
@@ -256,9 +256,9 @@ fn compute_attacks_to(board: &ChessBoard, tile: Tile, attacker_color: Color) -> 
         .or(bb.retreat_by(attacker_color, 1).west());
 
     attacks = attacks.or(pawn_moves.and(pawns));
-    attacks = attacks.or(knight_moves(tile).and(knights));
-    attacks = attacks.or(bishop_moves(tile, occupied).and(bishops));
-    attacks = attacks.or(rook_moves(tile, occupied).and(rooks));
+    attacks = attacks.or(knight_attacks(tile).and(knights));
+    attacks = attacks.or(bishop_attacks(tile, occupied).and(bishops));
+    attacks = attacks.or(rook_attacks(tile, occupied).and(rooks));
     attacks = attacks.or(queen_moves(tile, occupied).and(queens));
 
     attacks
@@ -272,8 +272,8 @@ fn compute_pinmasks_for(board: &ChessBoard, tile: Tile, color: Color) -> (BitBoa
     let enemies = board.color(color.opponent());
 
     // By treating this tile like a rook/bishop that can attack "through" anything, we can find all of the possible attacks *to* this tile by these enemy pieces, including possible pins
-    let orthogonal_attacks = rook_moves(tile, BitBoard::EMPTY_BOARD);
-    let diagonal_attacks = bishop_moves(tile, BitBoard::EMPTY_BOARD);
+    let orthogonal_attacks = rook_attacks(tile, BitBoard::EMPTY_BOARD);
+    let diagonal_attacks = bishop_attacks(tile, BitBoard::EMPTY_BOARD);
 
     let enemy_orthogonal_sliders = board.orthogonal_sliders(color.opponent());
     let enemy_diagonal_sliders = board.diagonal_sliders(color.opponent());
@@ -322,7 +322,7 @@ fn compute_legal_mobility(position: &Position) -> [BitBoard; Tile::COUNT] {
         _ => {
             let unsafe_squares =
                 compute_squares_attacked_by(position.bitboards(), color.opponent());
-            let king_attacks = king_moves(king_tile);
+            let king_attacks = king_attacks(king_tile);
             let enemy_or_empty = position.bitboards().enemy_or_empty(color);
 
             // These are the attack lines of the pieces checking the King. Don't move along them!
@@ -462,10 +462,11 @@ fn compute_legal_mobility_at(
 
             let kingside = if position.castling_rights().kingside[color] {
                 // These squares must not be attacked by the enemy
-                let castling = BitBoard::kingside_castle(color);
+                let rook_tile = [Tile::G1, Tile::G8][color];
+                let castling = ray_between(tile, rook_tile);
 
                 // These squares must be empty
-                let squares_between = BitBoard::kingside_castle_clearance(color);
+                let squares_between = ray_between(tile, rook_tile);
 
                 if (enemy_attacks & castling).is_empty()
                     && (squares_between & (friendlies | enemies)).is_empty()
@@ -481,10 +482,12 @@ fn compute_legal_mobility_at(
 
             let queenside = if position.castling_rights().queenside[color] {
                 // These squares must not be attacked by the enemy
-                let castling = BitBoard::queenside_castle(color);
+                let rook_tile = [Tile::C1, Tile::C8][color];
+                let castling = ray_between(tile, rook_tile);
 
                 // These squares must be empty
-                let squares_between = BitBoard::queenside_castle_clearance(color);
+                let dst_tile = [Tile::B1, Tile::B8][color];
+                let squares_between = ray_between(tile, dst_tile);
 
                 if (enemy_attacks & castling).is_empty()
                     && (squares_between & (friendlies | enemies)).is_empty()
@@ -516,10 +519,10 @@ fn compute_legal_mobility_at(
     }
 }
 
-const KNIGHT_MOVES: [BitBoard; 64] =
+const KNIGHT_ATTACKS: [BitBoard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/knight_mobility.blob")) };
 
-const KING_MOVES: [BitBoard; 64] =
+const KING_ATTACKS: [BitBoard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/king_mobility.blob")) };
 
 const WHITE_PAWN_PUSHES: [BitBoard; 64] =
@@ -545,11 +548,11 @@ pub const fn default_attacks_for(piece: &Piece, tile: Tile, blockers: BitBoard) 
     // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
     match piece.kind() {
         PieceKind::Pawn => pawn_attacks(tile, piece.color()),
-        PieceKind::Knight => knight_moves(tile),
-        PieceKind::Bishop => bishop_moves(tile, blockers),
-        PieceKind::Rook => rook_moves(tile, blockers),
-        PieceKind::Queen => rook_moves(tile, blockers).or(bishop_moves(tile, blockers)),
-        PieceKind::King => king_moves(tile),
+        PieceKind::Knight => knight_attacks(tile),
+        PieceKind::Bishop => bishop_attacks(tile, blockers),
+        PieceKind::Rook => rook_attacks(tile, blockers),
+        PieceKind::Queen => rook_attacks(tile, blockers).or(bishop_attacks(tile, blockers)),
+        PieceKind::King => king_attacks(tile),
     }
 }
 
@@ -571,7 +574,7 @@ pub const fn ray_containing(from: Tile, to: Tile) -> BitBoard {
 /// Computes the possible moves for a Rook at a given [`Tile`] with the provided blockers.
 ///
 /// This will yield a [`BitBoard`] that allows the Rook to capture the first blocker.
-pub const fn rook_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
+pub const fn rook_attacks(tile: Tile, blockers: BitBoard) -> BitBoard {
     let magic = &ROOK_MAGICS[tile.index()];
     BitBoard(ROOK_MOVES[magic_index(magic, blockers)])
 }
@@ -579,7 +582,7 @@ pub const fn rook_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
 /// Computes the possible moves for a Bishop at a given [`Tile`] with the provided blockers.
 ///
 /// This will yield a [`BitBoard`] that allows the Bishop to capture the first blocker.
-pub const fn bishop_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
+pub const fn bishop_attacks(tile: Tile, blockers: BitBoard) -> BitBoard {
     let magic = &BISHOP_MAGICS[tile.index()];
     BitBoard(BISHOP_MOVES[magic_index(magic, blockers)])
 }
@@ -588,15 +591,15 @@ pub const fn bishop_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
 ///
 /// This will yield a [`BitBoard`] that allows the Queen to capture the first blocker.
 pub const fn queen_moves(tile: Tile, blockers: BitBoard) -> BitBoard {
-    rook_moves(tile, blockers).or(bishop_moves(tile, blockers))
+    rook_attacks(tile, blockers).or(bishop_attacks(tile, blockers))
 }
 
-pub const fn knight_moves(tile: Tile) -> BitBoard {
-    KNIGHT_MOVES[tile.index()]
+pub const fn knight_attacks(tile: Tile) -> BitBoard {
+    KNIGHT_ATTACKS[tile.index()]
 }
 
-pub const fn king_moves(tile: Tile) -> BitBoard {
-    KING_MOVES[tile.index()]
+pub const fn king_attacks(tile: Tile) -> BitBoard {
+    KING_ATTACKS[tile.index()]
 }
 
 pub const fn pawn_moves(tile: Tile, color: Color) -> BitBoard {
@@ -668,7 +671,7 @@ mod test {
         let blockers =
             BitBoard::new(0b1000100000000000000010000000000010000000000001000010100000000000);
 
-        let moves = rook_moves(Tile::D4, blockers);
+        let moves = rook_attacks(Tile::D4, blockers);
 
         lists_match(moves, &legal_moves);
     }

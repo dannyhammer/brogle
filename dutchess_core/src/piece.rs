@@ -20,6 +20,17 @@ pub enum PieceKind {
 }
 
 impl PieceKind {
+    /// An array of all 6 [`PieceKind`]s, starting with Pawn.
+    pub const fn all() -> [Self; NUM_PIECE_TYPES] {
+        use PieceKind::*;
+        [Pawn, Knight, Bishop, Rook, Queen, King]
+    }
+
+    /// An iterator over all [`PieceKind`]s, starting with Pawn.
+    pub fn iter() -> impl Iterator<Item = Self> {
+        Self::all().into_iter()
+    }
+
     /// Creates a new [`PieceKind`] from a set of bits.
     ///
     /// `bits` must be `[0,5]`.
@@ -165,7 +176,7 @@ impl PieceKind {
 
     /// Converts this [`PieceKind`] to a character, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
     ///
-    /// Will always be a capital letter.
+    /// Will always be a lowercase letter.
     ///
     /// # Example
     /// ```
@@ -189,13 +200,25 @@ impl PieceKind {
         self.to_uci()
     }
 
-    pub fn iter() -> impl Iterator<Item = Self> {
-        Self::all().into_iter()
-    }
-
-    pub fn all() -> [Self; NUM_PIECE_TYPES] {
-        use PieceKind::*;
-        [Pawn, Knight, Bishop, Rook, Queen, King]
+    /// Converts this [`PieceKind`] to a `str`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// Will always be a lowercase letter.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::PieceKind;
+    /// let queen = PieceKind::Queen;
+    /// assert_eq!(queen.as_str(), "q");
+    /// ```
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pawn => "p",
+            Self::Knight => "n",
+            Self::Bishop => "b",
+            Self::Rook => "r",
+            Self::Queen => "q",
+            Self::King => "k",
+        }
     }
 }
 
@@ -213,9 +236,9 @@ impl<T> IndexMut<PieceKind> for [T; 6] {
 }
 
 impl AsRef<str> for PieceKind {
-    /// Alias for [`PieceKind::name`].
+    /// Alias for [`PieceKind::as_str`].
     fn as_ref(&self) -> &str {
-        self.name()
+        self.as_str()
     }
 }
 

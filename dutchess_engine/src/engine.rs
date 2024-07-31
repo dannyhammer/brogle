@@ -13,10 +13,7 @@ use crate::{
     uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
     Evaluator,
 };
-use dutchess_core::{
-    perft, print_perft, print_split_perft, print_split_perft_pretty, Move, Position, FEN_KIWIPETE,
-    FEN_STARTPOS,
-};
+use dutchess_core::{print_perft, print_split_perft, Move, Position, FEN_STARTPOS};
 
 // type TranspositionTable = ();
 
@@ -313,16 +310,15 @@ impl UciEngine for Engine {
             } => {
                 if split {
                     if pretty {
-                        print_split_perft_pretty(&self.game, depth);
+                        print_split_perft::<true>(&self.game, depth);
                     } else {
-                        print_split_perft(&self.game, depth);
+                        print_split_perft::<false>(&self.game, depth);
                     }
                 } else {
                     if pretty {
-                        print_perft(&self.game, depth);
+                        print_perft::<true>(&self.game, depth);
                     } else {
-                        println!("{}", perft(&self.game, depth));
-                        //
+                        print_perft::<false>(&self.game, depth);
                     }
                 }
             }
@@ -595,7 +591,9 @@ impl Default for Engine {
     fn default() -> Self {
         Self {
             // game: Position::new().with_default_setup(),
-            game: Position::new().from_fen(FEN_KIWIPETE).unwrap(),
+            game: Position::new()
+                .from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1")
+                .unwrap(),
             // ttable: TranspositionTable::default(),
             // protocol: EngineProtocol::UCI,
             debug: false,

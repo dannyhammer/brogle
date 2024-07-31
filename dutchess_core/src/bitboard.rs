@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Result};
 
-use super::{ray_between, Color, File, Rank, Tile};
+use super::{Color, File, Rank, Tile};
 
 /// A [`BitBoard`] represents the game board as a set of bits.
 /// They are used for various computations, such as fetching valid moves or computing move costs.
@@ -60,8 +60,6 @@ impl BitBoard {
     pub const EDGES: Self = Self(0xFF818181818181FF);
     pub const CORNERS: Self = Self(0x8100000000000081);
     pub const CENTER: Self = Self(0x0000001818000000);
-
-    // const RANK_END_INDICES: [usize; 8] = [7, 15, 23, 31, 39, 47, 55, 63];
 
     /// Constructs a new [`BitBoard`] from the provided bit pattern.
     ///
@@ -233,36 +231,6 @@ impl BitBoard {
         [Self::RANK_8, Self::RANK_1][color.index()]
     }
 
-    /// Returns the squares between (inclusive) the short (kingside) castling of `color`.
-    pub const fn kingside_castle(color: Color) -> Self {
-        [
-            ray_between(Tile::E1, Tile::G1),
-            ray_between(Tile::E8, Tile::G8),
-        ][color.index()]
-    }
-
-    /// Returns the squares between (inclusive) the long (queenside) castling of `color`.
-    pub const fn queenside_castle(color: Color) -> Self {
-        [
-            ray_between(Tile::E1, Tile::C1),
-            ray_between(Tile::E8, Tile::C8),
-        ][color.index()]
-    }
-
-    pub(crate) const fn queenside_castle_clearance(color: Color) -> Self {
-        [
-            ray_between(Tile::E1, Tile::B1),
-            ray_between(Tile::E8, Tile::B8),
-        ][color.index()]
-    }
-
-    pub(crate) const fn kingside_castle_clearance(color: Color) -> Self {
-        [
-            ray_between(Tile::E1, Tile::G1),
-            ray_between(Tile::E8, Tile::G8),
-        ][color.index()]
-    }
-
     /// Returns the inner `u64` of this [`BitBoard`].
     pub const fn inner(&self) -> u64 {
         self.0
@@ -280,7 +248,7 @@ impl BitBoard {
     /// assert_eq!(board.to_tile_unchecked(), Tile::G2);
     /// ```
     pub const fn to_tile_unchecked(&self) -> Tile {
-        Tile::from_index_unchecked(self.to_index())
+        Tile::from_index_unchecked(self.0.trailing_zeros() as usize)
     }
 
     /// Creates a [`Tile`] from this [`BitBoard`] based on the lowest-index bit that is flipped.
@@ -302,10 +270,6 @@ impl BitBoard {
         } else {
             None
         }
-    }
-
-    pub const fn to_index(&self) -> usize {
-        self.0.trailing_zeros() as usize
     }
 
     /// Reverse this [`BitBoard`], viewing it from the opponent's perspective.
@@ -920,30 +884,6 @@ impl fmt::Debug for BitBoard {
         write!(f, "{board}")
     }
 }
-
-// impl IntoIterator for BitBoard {
-//     type Item = Position;
-//     type IntoIter = ;
-// }
-
-/*
-// Formatting
-impl fmt::Binary for BitBoard {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:b}", self.0)
-    }
-}
-impl fmt::UpperHex for BitBoard {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:X}", self.0)
-    }
-}
-impl fmt::LowerHex for BitBoard {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:x}", self.0)
-    }
-}
- */
 
 pub struct BitBoardIter {
     bb: BitBoard,

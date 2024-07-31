@@ -19,7 +19,7 @@ fn slider_moves(slider_deltas: &[(i8, i8)], tile: Tile, blockers: BitBoard) -> B
     for &(df, dr) in slider_deltas {
         let mut ray = tile;
         while !blockers.get(ray) {
-            if let Ok(shifted) = ray.try_offset(df, dr) {
+            if let Some(shifted) = ray.offset(df, dr) {
                 ray = shifted;
                 moves |= ray.bitboard();
             } else {

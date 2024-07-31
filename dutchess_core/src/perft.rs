@@ -6,6 +6,7 @@ use std::{
 
 use super::Position;
 
+/// A result from a perft function.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct PerftResult {
     /// Depth searched
@@ -133,53 +134,71 @@ impl fmt::Display for PerftResult {
     }
 }
 
-pub fn print_split_perft(position: &Position, depth: usize) {
-    // println!("SplitPerft({depth}) for {}", position.to_fen());
-    let mut total_nodes = 1;
-    let moves = position.legal_moves();
-    for chessmove in moves {
-        let new_pos = position.with_move_made(*chessmove);
-        let nodes = perft(&new_pos, depth - 1);
-        println!("{chessmove:>8} {nodes:>width$}", width = depth * 2 + 1);
-        total_nodes += nodes;
+/// Prints a splitperft at the specified depth.
+///
+/// If the generic parameter `PRETTY` is `true`, additional info will be printed.
+pub fn print_split_perft<const PRETTY: bool>(position: &Position, depth: usize) {
+    if PRETTY {
+        println!("SplitPerft({depth}) for {}", position.to_fen());
     }
 
-    println!("\n{total_nodes}");
-}
-
-pub fn print_split_perft_pretty(position: &Position, depth: usize) {
-    println!("SplitPerft({depth}) for {}", position.to_fen());
-    let mut total_nodes = 1;
+    let now = Instant::now();
+    let mut total_nodes = 0;
     let moves = position.legal_moves();
-    for chessmove in moves {
-        let new_pos = position.with_move_made(*chessmove);
+    for i in 0..moves.len() {
+        let mv = moves[i];
+        let new_pos = position.with_move_made(mv);
+
         let nodes = perft(&new_pos, depth - 1);
-        println!("{chessmove:>8} {nodes:>width$}", width = depth * 2 + 1);
+
+        println!("{mv:>8} {nodes:>width$}", width = depth * 2 + 1);
         total_nodes += nodes;
     }
+    let elapsed = now.elapsed();
 
-    println!("\nMoves: {}", moves.len());
-    println!("Nodes: {total_nodes}");
+    if PRETTY {
+        // Math
+        let nps = total_nodes as f64 / elapsed.as_secs_f64();
+        let m_nps = nps / 1_000_000.0;
+
+        println!("Moves at root:         {}", moves.len());
+        println!("Elapsed Time:          {elapsed:?}");
+        println!("Total Nodes:           {total_nodes}");
+        println!("Nodes / Sec:           {nps:.0}");
+        println!("M Nodes / Sec:         {m_nps:.1}");
+    } else {
+        println!("{total_nodes}");
+    }
 }
 
-pub fn print_perft(position: &Position, depth: usize) {
-    println!("Computing PERFT({depth}) of the following position:\n{position:?}\n");
+/// Prints a perft at the specified depth.
+///
+/// If the generic parameter `PRETTY` is `true`, additional info will be printed.
+pub fn print_perft<const PRETTY: bool>(position: &Position, depth: usize) {
+    if PRETTY {
+        println!("Computing PERFT({depth}) of the following position:\n{position:?}\n");
+    }
 
     // Time the perft
     let now = Instant::now();
     let total_nodes = perft(position, depth);
     let elapsed = now.elapsed();
 
-    // Math
-    let nps = total_nodes as f64 / elapsed.as_secs_f64();
-    let m_nps = nps / 1_000_000.0;
+    if PRETTY {
+        // Math
+        let nps = total_nodes as f64 / elapsed.as_secs_f64();
+        let m_nps = nps / 1_000_000.0;
 
-    println!("Elapsed Time:          {elapsed:?}");
-    println!("Total Nodes:           {total_nodes}");
-    println!("Nodes / Sec:           {nps:.0}");
-    println!("M Nodes / Sec:         {m_nps:.1}");
+        println!("Elapsed Time:          {elapsed:?}");
+        println!("Total Nodes:           {total_nodes}");
+        println!("Nodes / Sec:           {nps:.0}");
+        println!("M Nodes / Sec:         {m_nps:.1}");
+    } else {
+        println!("{total_nodes}");
+    }
 }
 
+/// Perform a perft at the specified depth, collecting data on captures, castling, promotions, etc.
 pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
     let mut res = PerftResult::default();
 
@@ -196,79 +215,40 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
 
     if depth == 1 {
         res.nodes = moves.len() as u64;
+        // TODO: Functions for `num_captures_available()` etc.
         return res;
     }
 
-    for chessmove in moves {
-        let new_pos = position.with_move_made(*chessmove);
+    for i in 0..moves.len() {
+        let mv = moves[i];
+        let new_pos = position.with_move_made(mv);
         res += perft_full(&new_pos, depth - 1);
     }
 
     res
 }
 
+/// Perform a perft at the specified depth, collecting only data about the number of possible states (nodes).
 pub fn perft(position: &Position, depth: usize) -> u64 {
+    // Bulk counting; no need to recurse again just to apply a singular move and return 1.
+    if depth == 1 {
+        return position.legal_moves().len() as u64;
+    }
+
+    // Recursion limit; return 1, since we're fathoming this node.
     if depth == 0 {
         return 1;
     }
 
     let mut nodes = 0;
-
     let moves = position.legal_moves();
 
-    if depth == 1 {
-        return moves.len() as u64;
-    }
+    for i in 0..moves.len() {
+        let mv = moves[i];
+        let new_pos = position.with_move_made(mv);
 
-    for chessmove in moves {
-        let new_pos = position.with_move_made(*chessmove);
         nodes += perft(&new_pos, depth - 1);
     }
 
     nodes
 }
-
-// https://www.chessprogramming.org/Perft_Results#Initial_Position
-/*
-Depth   Nodes	                        Captures	    E.p.	    Castles	        Promotions	    Checks          Discovery Checks    Double Checks   Checkmates
-0       1	                            0	            0	        0	            0	            0	            0	                0	            0
-1	    20	                            0	            0	        0	            0	            0           	0	                0	            0
-2	    400	                            0	            0	        0	            0	            0	            0	                0	            0
-3	    8_902	                        34	            0	        0	            0	            12	            0	                0	            0
-4	    197_281	                        1576	        0	        0	            0	            469	            0	                0	            8
-5	    4_865_609	                    82_719	        258	        0	            0	            27_351	        6	                0	            347
-6	    119_060_324	                    2_812_008	    5248	    0	            0	            809_099	        329	                46	            10_828
-7	    3_195_901_860	                108_329_926	    319_617	    883_453	        0	            33_103_848	    18_026	            1628	        435_767
-8	    84_998_978_956	                3_523_740_106	7_187_977	23_605_205	    0	            968_981_593	    847_039	            147_215	        9_852_036
-9	    2_439_530_234_167	            125_208_536_153	319_496_827	1_784_356_000	17_334_376	    36_095_901_903	37_101_713	        5_547_231	    400_191_963
-10	    69_352_859_712_417
-11	    2_097_651_003_696_806
-12	    62_854_969_236_701_747
-13	    1_981_066_775_000_396_239
-14	    61_885_021_521_585_529_237
-15	    2_015_099_950_053_364_471_960
-*/
-
-/*
-// Kiwipete: https://www.chessprogramming.org/Perft_Results#Position_2
-Depth	Nodes	Captures	E.p.	Castles	Promotions	Checks	Discovery Checks	Double Checks	Checkmates
-1	48	8	0	2	0	0	0	0	0
-2	2039	351	1	91	0	3	0	0	0
-3	97862	17102	45	3162	0	993	0	0	1
-4	4085603	757163	1929	128013	15172	25523	42	6	43
-5	193690690	35043416	73365	4993637	8392	3309887	19883	2637	30171
-6	8031647685	1558445089	3577504	184513607	56627920	92238050	568417	54948	360003
- */
-
-// Position 3: 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -
-/*
-Depth	Nodes	Captures	E.p.	Castles	Promotions	Checks	Discovery Checks	Double Checks	Checkmates
-1	14	1	0	0	0	2	0	0	0
-2	191	14	0	0	0	10	0	0	0
-3	2812	209	2	0	0	267	3	0	0
-4	43238	3348	123	0	0	1680	106	0	17
-5	[9] 674624	52051	1165	0	0	52950	1292	3	0
-6	11030083	940350	33325	0	7552	452473	26067	0	2733
-7	178633661	14519036	294874	0	140024	12797406	370630	3612	87
-8	3009794393	267586558	8009239	0	6578076	135626805	7181487	1630	45041
-*/

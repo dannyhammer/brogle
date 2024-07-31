@@ -15,26 +15,49 @@ pub enum Color {
     Black,
 }
 
-// pub struct Color(u8);
-
 impl Color {
-    // pub const WHITE: Self = Self(0);
-    // pub const BLACK: Self = Self(1);
-
+    /// An array of both colors, starting with White.
     pub const fn all() -> [Self; NUM_COLORS] {
         [Self::White, Self::Black]
+    }
+
+    /// An iterator over both colors, starting with White.
+    pub fn iter() -> impl Iterator<Item = Self> {
+        Self::all().into_iter()
     }
 
     /// Returns `true` if this [`Color`] is White.
     pub const fn is_white(&self) -> bool {
         matches!(self, Self::White)
-        // self.0 == Self::WHITE.0
     }
 
     /// Returns `true` if this [`Color`] is Black.
     pub const fn is_black(&self) -> bool {
         matches!(self, Self::Black)
-        // self.0 == Self::BLACK.0
+    }
+
+    /// Returns a multiplier for negating numbers relative to this color.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Color;
+    /// assert_eq!(Color::White.negation_multiplier(), 1);
+    /// assert_eq!(Color::Black.negation_multiplier(), -1);
+    /// ```
+    pub const fn negation_multiplier(&self) -> i8 {
+        // TODO: Which of these 3 is faster?
+
+        // A: Match
+        // match self {
+        //     Self::White => 1,
+        //     Self::Black => -1,
+        // }
+
+        // B: Multiply
+        // 1 - 2 * *self as i8
+
+        // C: Shift
+        1 - ((*self as i8) << 1)
     }
 
     /// Returns this [`Color`]'s opposite / inverse / enemy.
@@ -43,17 +66,29 @@ impl Color {
     /// ```
     /// # use dutchess_core::Color;
     /// assert_eq!(Color::White.opponent(), Color::Black);
+    /// assert_eq!(Color::Black.opponent(), Color::White);
     /// ```
     pub const fn opponent(&self) -> Self {
-        match self {
-            Self::White => Self::Black,
-            Self::Black => Self::White,
-        }
+        // TODO: Which is faster?
+
+        // A: Match
+        // match self {
+        //     Self::White => Self::Black,
+        //     Self::Black => Self::White,
+        // }
+
+        // B: Transmute
+        // Safety: Since `Color` is a `repr(u8)` enum, it's values are guaranteed to be either 0 or 1.
+        // Thus, we can cast a 0 or 1 to a `Color` without fear.
+        // By XOR'ing, we flip the bit of this color, getting us the opposite color.
+        unsafe { std::mem::transmute(*self as u8 ^ 1) }
     }
 
     /// Returns this [`Color`] as a `usize`.
     ///
     /// Will be `0` for White, `1` for Black.
+    ///
+    /// Useful for indexing into lists.
     ///
     /// # Example
     /// ```
@@ -97,7 +132,7 @@ impl Color {
         match color {
             'w' | 'W' => Ok(Self::White),
             'b' | 'B' => Ok(Self::Black),
-            _ => bail!("Color char must be either 'w' or 'b' (case-insensitive)"),
+            _ => bail!("Color must be either 'w' or 'b' (case-insensitive). Found {color}"),
         }
     }
 
@@ -118,7 +153,7 @@ impl Color {
             "w" | "W" => Ok(Self::White),
             "b" | "B" => Ok(Self::Black),
             _ => {
-                bail!("Color str must be either \"w\" or \"b\" (case-insensitive). Found {color}")
+                bail!("Color must be either \"w\" or \"b\" (case-insensitive). Found {color}")
             }
         }
     }
@@ -151,6 +186,20 @@ impl Color {
         match self {
             Self::White => 'w',
             Self::Black => 'b',
+        }
+    }
+
+    /// Converts this [`Color`] to a `str`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Color;
+    /// assert_eq!(Color::White.as_str(), "w");
+    /// ```
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::White => "w",
+            Self::Black => "b",
         }
     }
 
@@ -201,9 +250,9 @@ impl<T> IndexMut<Color> for [T; NUM_COLORS] {
 }
 
 impl AsRef<str> for Color {
-    /// Alias for [`Color::name`].
+    /// Alias for [`Color::as_str`].
     fn as_ref(&self) -> &str {
-        self.name()
+        self.as_str()
     }
 }
 

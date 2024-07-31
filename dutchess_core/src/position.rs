@@ -6,10 +6,10 @@ use std::{
 use anyhow::{anyhow, bail, Result};
 
 use super::{
-    bishop_moves, compute_squares_attacked_by, default_attacks_for, king_danger_squares,
-    king_moves, knight_moves, pawn_attacks, pawn_pushes, queen_moves, ray_between, ray_containing,
-    rook_moves, utils::FEN_STARTPOS, BitBoard, Color, File, Move, MoveKind, Piece, PieceKind, Rank,
-    Tile, MAX_NUM_MOVES, NUM_COLORS, NUM_PIECE_TYPES,
+    bishop_attacks, compute_squares_attacked_by, default_attacks_for, king_attacks,
+    king_danger_squares, knight_attacks, pawn_attacks, pawn_pushes, queen_moves, ray_between,
+    ray_containing, rook_attacks, utils::FEN_STARTPOS, BitBoard, Color, File, Move, MoveKind,
+    Piece, PieceKind, Rank, Tile, MAX_NUM_MOVES, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -355,7 +355,7 @@ impl Position {
         self.ep_tile
     }
 
-    pub const fn ep_target_tile(&self) -> Option<Tile> {
+    pub fn ep_target_tile(&self) -> Option<Tile> {
         if let Some(ep) = self.ep_tile() {
             ep.backward_by(self.current_player(), 1)
         } else {
@@ -443,7 +443,7 @@ impl Position {
                     }
 
                     // Regardless of whether this was a capture or quiet, it may be a promotion
-                    if to.rank().is_home_rank(color.opponent()) {
+                    if to.rank() == Rank::eighth(color) {
                         if let MoveKind::Capture = kind {
                             // The pawn can reach the enemy's home rank and become promoted
                             self.legal_moves[self.num_legal_moves] =
@@ -493,8 +493,8 @@ impl Position {
         let enemies = self.bitboards().color(color.opponent());
 
         // By treating the King like a rook/bishop that can attack "through" anything, we can find all of the possible attacks *to* the King by these enemy pieces, including possible pins
-        let orthogonal_attacks = rook_moves(king_tile, BitBoard::EMPTY_BOARD);
-        let diagonal_attacks = bishop_moves(king_tile, BitBoard::EMPTY_BOARD);
+        let orthogonal_attacks = rook_attacks(king_tile, BitBoard::EMPTY_BOARD);
+        let diagonal_attacks = bishop_attacks(king_tile, BitBoard::EMPTY_BOARD);
 
         let enemy_orthogonal_sliders = self.bitboards().orthogonal_sliders(color.opponent());
         let enemy_diagonal_sliders = self.bitboards().diagonal_sliders(color.opponent());
@@ -544,7 +544,7 @@ impl Position {
                 // Otherwise, only the King can move, so move him somewhere not attacked
                 let unsafe_squares =
                     compute_squares_attacked_by(self.bitboards(), color.opponent()); // TODO: Compute this after removing the King?
-                let king_attacks = king_moves(king_tile);
+                let king_attacks = king_attacks(king_tile);
                 let enemy_or_empty = self.bitboards().enemy_or_empty(color);
 
                 // These are the attack lines of the pieces checking the King. Don't move along them!
@@ -699,10 +699,11 @@ impl Position {
 
                 let kingside = if self.castling_rights.kingside[color] {
                     // These squares must not be attacked by the enemy
-                    let castling = BitBoard::kingside_castle(color);
+                    let rook_tile = [Tile::G1, Tile::G8][color];
+                    let castling = ray_between(tile, rook_tile);
 
                     // These squares must be empty
-                    let squares_between = BitBoard::kingside_castle_clearance(color);
+                    let squares_between = ray_between(tile, rook_tile);
 
                     if (enemy_attacks & castling).is_empty()
                         && (squares_between & (friendlies | enemies)).is_empty()
@@ -718,10 +719,12 @@ impl Position {
 
                 let queenside = if self.castling_rights.queenside[color] {
                     // These squares must not be attacked by the enemy
-                    let castling = BitBoard::queenside_castle(color);
+                    let rook_tile = [Tile::C1, Tile::C8][color];
+                    let castling = ray_between(tile, rook_tile);
 
                     // These squares must be empty
-                    let squares_between = BitBoard::queenside_castle_clearance(color);
+                    let dst_tile = [Tile::B1, Tile::B8][color];
+                    let squares_between = ray_between(tile, dst_tile);
 
                     if (enemy_attacks & castling).is_empty()
                         && (squares_between & (friendlies | enemies)).is_empty()
@@ -781,9 +784,9 @@ impl Position {
             .or(bb.retreat_by(attacker_color, 1).west());
 
         attacks = attacks.or(pawn_moves.and(pawns));
-        attacks = attacks.or(knight_moves(tile).and(knights));
-        attacks = attacks.or(bishop_moves(tile, occupied).and(bishops));
-        attacks = attacks.or(rook_moves(tile, occupied).and(rooks));
+        attacks = attacks.or(knight_attacks(tile).and(knights));
+        attacks = attacks.or(bishop_attacks(tile, occupied).and(bishops));
+        attacks = attacks.or(rook_attacks(tile, occupied).and(rooks));
         attacks = attacks.or(queen_moves(tile, occupied).and(queens));
 
         attacks
@@ -935,7 +938,7 @@ impl Position {
                 let captured = self.bitboards_mut().take(to).unwrap();
 
                 // Disable castling, if necessary
-                if captured.is_rook() && to.rank().is_home_rank(captured.color()) {
+                if captured.is_rook() && to.rank() == Rank::first(captured.color()) {
                     // Disable castling if an unmoved rook was captured
                     let can_queenside = to != [Tile::A1, Tile::A8][captured.color()];
                     let can_kingside = to != [Tile::H1, Tile::H8][captured.color()];

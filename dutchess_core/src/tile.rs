@@ -202,6 +202,30 @@ impl Tile {
         Self(Self::MAX - self.0)
     }
 
+    /// Flips the [`File`] of this [`Tile`]..
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::A1.flipped_file(), Tile::H1);
+    /// assert_eq!(Tile::C4.flipped_file(), Tile::F4);
+    /// ```
+    pub const fn flipped_file(self) -> Self {
+        Self::new(self.file().flipped(), self.rank())
+    }
+
+    /// Flips the [`Rank`] of this [`Tile`]..
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Tile;
+    /// assert_eq!(Tile::A1.flipped_rank(), Tile::A8);
+    /// assert_eq!(Tile::C4.flipped_rank(), Tile::C5);
+    /// ```
+    pub const fn flipped_rank(self) -> Self {
+        Self::new(self.file(), self.rank().flipped())
+    }
+
     /// If `color` is Black, flips this [`Tile`].
     /// If `color` is White, does nothing.
     ///
@@ -217,6 +241,42 @@ impl Tile {
         match color {
             Color::White => self,
             Color::Black => self.flipped(),
+        }
+    }
+
+    /// If `color` is Black, flips the [`Rank`] of this [`Tile`].
+    /// If `color` is White, does nothing.
+    ///
+    /// See [`Tile::flipped_rank`] for more.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Color, Tile};
+    /// assert_eq!(Tile::E1.rank_relative_to(Color::White), Tile::E1);
+    /// assert_eq!(Tile::E1.rank_relative_to(Color::Black), Tile::E8);
+    /// ```
+    pub const fn rank_relative_to(self, color: Color) -> Self {
+        match color {
+            Color::White => self,
+            Color::Black => self.flipped_rank(),
+        }
+    }
+
+    /// If `color` is Black, flips the [`File`] of this [`Tile`].
+    /// If `color` is White, does nothing.
+    ///
+    /// See [`Tile::flipped_file`] for more.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Color, Tile};
+    /// assert_eq!(Tile::A1.file_relative_to(Color::White), Tile::A1);
+    /// assert_eq!(Tile::A1.file_relative_to(Color::Black), Tile::H1);
+    /// ```
+    pub const fn file_relative_to(self, color: Color) -> Self {
+        match color {
+            Color::White => self,
+            Color::Black => self.flipped_file(),
         }
     }
 
@@ -253,6 +313,17 @@ impl Tile {
         Rank(self.0 >> 3) // Same as / 8
     }
 
+    /// Fetches the [`File`] and [`Rank`] of this [`Tile`].
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{Tile, File, Rank};
+    /// assert_eq!(Tile::C4.parts(), (File::C, Rank::FOUR));
+    /// ```
+    pub const fn parts(&self) -> (File, Rank) {
+        (self.file(), self.rank())
+    }
+
     /// Fetches the inner index value of the [`Tile`], casted to a [`usize`].
     ///
     /// Useful when using a [`Tile`] to index into things.
@@ -265,36 +336,6 @@ impl Tile {
     pub const fn index(&self) -> usize {
         self.inner() as usize
     }
-
-    /// Converts this [`Tile`] into a [`u64`] mask, primarily for use with [`BitBoard`]s.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Tile;
-    /// assert_eq!(Tile::C4.to_u64_mask(), 1 << 26); // 1 << 26 = 67108864
-    /// ```
-    pub const fn to_u64_mask(&self) -> u64 {
-        1 << self.0
-    }
-
-    /// Fetches the [`File`] and [`Rank`] of this [`Tile`].
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::{Tile, File, Rank};
-    /// assert_eq!(Tile::C4.parts(), (File::C, Rank::FOUR));
-    /// ```
-    pub const fn parts(&self) -> (File, Rank) {
-        (self.file(), self.rank())
-    }
-
-    // pub fn diag_index(&self) -> usize {
-    //     (self.rank().index() - self.file().index()) & 15
-    // }
-
-    // pub fn anti_diag_index(&self) -> usize {
-    //     (self.rank().index() + self.file().index()) ^ 7
-    // }
 
     /// Returns `true` if this [`Tile`] is a light square.
     ///
@@ -353,14 +394,6 @@ impl Tile {
             Color::White
         } else {
             Color::Black
-        }
-    }
-
-    pub const fn is_king_start_square(&self, color: Color) -> bool {
-        if color.is_white() {
-            self.0 == Self::E1.0
-        } else {
-            self.0 == Self::E8.0
         }
     }
 
@@ -434,92 +467,22 @@ impl Tile {
             .min(self.distance_to(Self::D4).min(self.distance_to(Self::D5)))
     }
 
-    pub fn try_offset(&self, df: i8, dr: i8) -> Result<Self> {
-        let file_bits = self.file().0 as i8 + df;
-        let file = File::new(file_bits as u8)
-            .context(format!("Attempting to offset file {} by {df}", self.file()))?;
-
-        let rank_bits = self.rank().0 as i8 + dr;
-        let rank = Rank::new(rank_bits as u8)
-            .context(format!("Attempting to offset file {} by {df}", self.rank()))?;
-
-        Ok(Self::new(file, rank))
-    }
-
-    /// Increments this [`Tile`] "North" (+rank) by `n`, if possible.
+    /// Attempt to offset this [`Tile`] by the file and rank offsets.
     ///
-    /// Returns [`None`] if it is already at the maximum rank.
+    /// If `self + offset` would exceed the bounds of this [`File`], then `None` is returned.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::Tile;
-    /// assert_eq!(Tile::C4.north_by(1), Some(Tile::C5));
-    ///
-    /// assert_eq!(Tile::C8.north_by(1), None);
+    /// assert_eq!(Tile::C4.offset(1, 1), Some(Tile::D5));
+    /// assert_eq!(Tile::C4.offset(-1, -1), Some(Tile::B3));
+    /// assert_eq!(Tile::A1.offset(-1, -1), None);
     /// ```
-    pub const fn north_by(&self, n: u8) -> Option<Self> {
-        if let Some(next) = self.rank().increase_by(n) {
-            Some(Self::new(self.file(), next))
-        } else {
-            None
-        }
-    }
+    pub fn offset(&self, file_delta: i8, rank_delta: i8) -> Option<Self> {
+        let file = self.file().offset(file_delta)?;
+        let rank = self.rank().offset(rank_delta)?;
 
-    /// Increments this [`Tile`] "South" (-rank) by `n`, if possible.
-    ///
-    /// Returns [`None`] if it is already at the minimum rank.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Tile;
-    /// assert_eq!(Tile::C4.south_by(1), Some(Tile::C3));
-    ///
-    /// assert_eq!(Tile::C1.south_by(1), None);
-    /// ```
-    pub const fn south_by(&self, n: u8) -> Option<Self> {
-        if let Some(next) = self.rank().decrease_by(n) {
-            Some(Self::new(self.file(), next))
-        } else {
-            None
-        }
-    }
-
-    /// Increments this [`Tile`] "East" (+file) by one, if possible.
-    ///
-    /// Returns [`None`] if it is already at the maximum file.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Tile;
-    /// assert_eq!(Tile::C4.east(), Some(Tile::D4));
-    ///
-    /// assert_eq!(Tile::H4.east(), None);
-    /// ```
-    pub const fn east(&self) -> Option<Self> {
-        if let Some(next) = self.file().increase() {
-            Some(Self::new(next, self.rank()))
-        } else {
-            None
-        }
-    }
-
-    /// Increments this [`Tile`] "West" (-file) by one, if possible.
-    ///
-    /// Returns [`None`] if it is already at the minimum file.
-    ///
-    /// # Example
-    /// ```
-    /// # use dutchess_core::Tile;
-    /// assert_eq!(Tile::C4.west(), Some(Tile::B4));
-    ///
-    /// assert_eq!(Tile::A4.west(), None);
-    /// ```
-    pub const fn west(&self) -> Option<Self> {
-        if let Some(next) = self.file().decrease() {
-            Some(Self::new(next, self.rank()))
-        } else {
-            None
-        }
+        Some(Self::new(file, rank))
     }
 
     /// Increments (if `color` is [`White`]) or decrements (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
@@ -532,11 +495,8 @@ impl Tile {
     /// assert_eq!(Tile::C4.forward_by(Color::White, 1), Some(Tile::C5));
     /// assert_eq!(Tile::C4.forward_by(Color::Black, 1), Some(Tile::C3));
     /// ```
-    pub const fn forward_by(&self, color: Color, n: u8) -> Option<Self> {
-        match color {
-            Color::White => self.north_by(n),
-            Color::Black => self.south_by(n),
-        }
+    pub fn forward_by(&self, color: Color, n: u8) -> Option<Self> {
+        self.offset(0, n as i8 * color.negation_multiplier())
     }
 
     /// Decrements (if `color` is [`White`]) or increments (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
@@ -549,45 +509,36 @@ impl Tile {
     /// assert_eq!(Tile::C4.backward_by(Color::White, 1), Some(Tile::C3));
     /// assert_eq!(Tile::C4.backward_by(Color::Black, 1), Some(Tile::C5));
     /// ```
-    pub const fn backward_by(&self, color: Color, n: u8) -> Option<Self> {
-        match color {
-            Color::White => self.south_by(n),
-            Color::Black => self.north_by(n),
-        }
+    pub fn backward_by(&self, color: Color, n: u8) -> Option<Self> {
+        self.offset(0, n as i8 * color.opponent().negation_multiplier())
     }
 
-    /// Increments (if `color` is [`White`]) or decrements (if `color` is [`Black`]) the [`File`] of this [`Tile`] by one, if possible.
+    /// Increments (if `color` is [`White`]) or decrements (if `color` is [`Black`]) the [`File`] of this [`Tile`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::{Tile, Color};
-    /// assert_eq!(Tile::C4.right(Color::White), Some(Tile::D4));
-    /// assert_eq!(Tile::C4.right(Color::Black), Some(Tile::B4));
+    /// assert_eq!(Tile::C4.right_by(Color::White, 1), Some(Tile::D4));
+    /// assert_eq!(Tile::C4.right_by(Color::Black, 1), Some(Tile::B4));
     /// ```
-    pub const fn right(&self, color: Color) -> Option<Self> {
-        match color {
-            Color::White => self.east(),
-            Color::Black => self.west(),
-        }
+    pub fn right_by(&self, color: Color, n: u8) -> Option<Self> {
+        self.offset(n as i8 * color.negation_multiplier(), 0)
     }
 
-    /// Decrements (if `color` is [`White`]) or increments (if `color` is [`Black`]) the [`File`] of this [`Tile`] by one, if possible.
+    /// Decrements (if `color` is [`White`]) or increments (if `color` is [`Black`]) the [`File`] of this [`Tile`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
     /// # Example
     /// ```
     /// # use dutchess_core::{Tile, Color};
-    /// assert_eq!(Tile::C4.left(Color::White), Some(Tile::B4));
-    /// assert_eq!(Tile::C4.left(Color::Black), Some(Tile::D4));
+    /// assert_eq!(Tile::C4.left_by(Color::White, 1), Some(Tile::B4));
+    /// assert_eq!(Tile::C4.left_by(Color::Black, 1), Some(Tile::D4));
     /// ```
-    pub const fn left(&self, color: Color) -> Option<Self> {
-        match color {
-            Color::White => self.west(),
-            Color::Black => self.east(),
-        }
+    pub fn left_by(&self, color: Color, n: u8) -> Option<Self> {
+        self.offset(n as i8 * color.opponent().negation_multiplier(), 0)
     }
 }
 
@@ -724,82 +675,6 @@ impl fmt::Debug for Tile {
     }
 }
 
-/*
-#[macro_export]
-macro_rules! do_for_tiles {
-    ($id:ident in $code:expr) => {
-        do_for_tiles!($id = Tile::A1, $code);
-        do_for_tiles!($id = Tile::B1, $code);
-        do_for_tiles!($id = Tile::C1, $code);
-        do_for_tiles!($id = Tile::D1, $code);
-        do_for_tiles!($id = Tile::E1, $code);
-        do_for_tiles!($id = Tile::F1, $code);
-        do_for_tiles!($id = Tile::G1, $code);
-        do_for_tiles!($id = Tile::H1, $code);
-        do_for_tiles!($id = Tile::A2, $code);
-        do_for_tiles!($id = Tile::B2, $code);
-        do_for_tiles!($id = Tile::C2, $code);
-        do_for_tiles!($id = Tile::D2, $code);
-        do_for_tiles!($id = Tile::E2, $code);
-        do_for_tiles!($id = Tile::F2, $code);
-        do_for_tiles!($id = Tile::G2, $code);
-        do_for_tiles!($id = Tile::H2, $code);
-        do_for_tiles!($id = Tile::A3, $code);
-        do_for_tiles!($id = Tile::B3, $code);
-        do_for_tiles!($id = Tile::C3, $code);
-        do_for_tiles!($id = Tile::D3, $code);
-        do_for_tiles!($id = Tile::E3, $code);
-        do_for_tiles!($id = Tile::F3, $code);
-        do_for_tiles!($id = Tile::G3, $code);
-        do_for_tiles!($id = Tile::H3, $code);
-        do_for_tiles!($id = Tile::A4, $code);
-        do_for_tiles!($id = Tile::B4, $code);
-        do_for_tiles!($id = Tile::C4, $code);
-        do_for_tiles!($id = Tile::D4, $code);
-        do_for_tiles!($id = Tile::E4, $code);
-        do_for_tiles!($id = Tile::F4, $code);
-        do_for_tiles!($id = Tile::G4, $code);
-        do_for_tiles!($id = Tile::H4, $code);
-        do_for_tiles!($id = Tile::A5, $code);
-        do_for_tiles!($id = Tile::B5, $code);
-        do_for_tiles!($id = Tile::C5, $code);
-        do_for_tiles!($id = Tile::D5, $code);
-        do_for_tiles!($id = Tile::E5, $code);
-        do_for_tiles!($id = Tile::F5, $code);
-        do_for_tiles!($id = Tile::G5, $code);
-        do_for_tiles!($id = Tile::H5, $code);
-        do_for_tiles!($id = Tile::A6, $code);
-        do_for_tiles!($id = Tile::B6, $code);
-        do_for_tiles!($id = Tile::C6, $code);
-        do_for_tiles!($id = Tile::D6, $code);
-        do_for_tiles!($id = Tile::E6, $code);
-        do_for_tiles!($id = Tile::F6, $code);
-        do_for_tiles!($id = Tile::G6, $code);
-        do_for_tiles!($id = Tile::H6, $code);
-        do_for_tiles!($id = Tile::A7, $code);
-        do_for_tiles!($id = Tile::B7, $code);
-        do_for_tiles!($id = Tile::C7, $code);
-        do_for_tiles!($id = Tile::D7, $code);
-        do_for_tiles!($id = Tile::E7, $code);
-        do_for_tiles!($id = Tile::F7, $code);
-        do_for_tiles!($id = Tile::G7, $code);
-        do_for_tiles!($id = Tile::H7, $code);
-        do_for_tiles!($id = Tile::A8, $code);
-        do_for_tiles!($id = Tile::B8, $code);
-        do_for_tiles!($id = Tile::C8, $code);
-        do_for_tiles!($id = Tile::D8, $code);
-        do_for_tiles!($id = Tile::E8, $code);
-        do_for_tiles!($id = Tile::F8, $code);
-        do_for_tiles!($id = Tile::G8, $code);
-        do_for_tiles!($id = Tile::H8, $code);
-    };
-    ($id:ident = $val:expr, $expr:expr) => {
-        let $id = $val;
-        $expr
-    };
-}
- */
-
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Rank(pub(crate) u8);
@@ -819,6 +694,7 @@ impl Rank {
 
     pub const COUNT: usize = 8;
 
+    /// An array of all [`Rank`]s, in ascending order.
     pub fn all() -> [Self; Self::COUNT] {
         [
             Self::ONE,
@@ -843,9 +719,10 @@ impl Rank {
     /// assert_eq!(iter.last().unwrap(), Rank::EIGHT);
     /// ```
     pub fn iter() -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator<Item = Self> {
-        (Self::MIN..=Self::MAX).map(|i| Self(i))
+        Self::all().into_iter()
     }
 
+    /// Construct a new [`Rank`] from the provided value.
     pub fn new(rank: u8) -> Result<Self> {
         if rank > Self::MAX {
             bail!(
@@ -855,64 +732,60 @@ impl Rank {
             );
         }
 
-        Ok(Self(rank))
+        Ok(Self::new_unchecked(rank))
     }
 
+    /// Construct a new [`Rank`] from the provided value, ignoring safety checks.
+    ///
+    /// Do not use this unless you have previously guaranteed that the input value is within bounds.
     pub const fn new_unchecked(rank: u8) -> Self {
         Self(rank)
     }
 
-    pub const fn home_rank(color: Color) -> Self {
-        match color {
-            Color::White => Self::ONE,
-            Color::Black => Self::EIGHT,
-        }
+    /// First rank relative to `color`.
+    pub const fn first(color: Color) -> Self {
+        [Self::ONE, Self::EIGHT][color.index()]
     }
 
-    pub const fn pawn_rank(color: Color) -> Self {
-        match color {
-            Color::White => Self::TWO,
-            Color::Black => Self::SEVEN,
-        }
+    pub const fn second(color: Color) -> Self {
+        [Self::TWO, Self::SEVEN][color.index()]
     }
 
-    pub const fn pawn_double_push_rank(color: Color) -> Self {
-        match color {
-            Color::White => Self::FOUR,
-            Color::Black => Self::FIVE,
-        }
+    pub const fn third(color: Color) -> Self {
+        [Self::THREE, Self::SIX][color.index()]
     }
 
-    pub const fn is_home_rank(&self, color: Color) -> bool {
-        self.0 == Self::home_rank(color).0
+    pub const fn fourth(color: Color) -> Self {
+        [Self::FOUR, Self::FIVE][color.index()]
     }
 
-    pub const fn is_pawn_rank(&self, color: Color) -> bool {
-        self.0 == Self::pawn_rank(color).0
+    pub const fn fifth(color: Color) -> Self {
+        [Self::FIVE, Self::FOUR][color.index()]
     }
 
-    pub const fn is_pawn_double_push_rank(&self, color: Color) -> bool {
-        self.0 == Self::pawn_double_push_rank(color).0
+    pub const fn sixth(color: Color) -> Self {
+        [Self::SIX, Self::THREE][color.index()]
+    }
+
+    /// Rank just before promoting a pawn
+    pub const fn seventh(color: Color) -> Self {
+        [Self::SEVEN, Self::TWO][color.index()]
+    }
+
+    pub const fn eighth(color: Color) -> Self {
+        [Self::EIGHT, Self::ONE][color.index()]
     }
 
     pub fn from_char(rank: char) -> Result<Self> {
         debug_assert!(rank.is_ascii(), "Rank chars must be ASCII!");
 
-        let Some(rank_int) = rank.to_digit(10) else {
-            bail!(
-                "Invalid char for Rank: Must be between [{}, {}]. Got {rank}",
-                '1',
-                '8'
-            );
-        };
+        let rank_int = rank.to_digit(10).context(format!(
+            "Invalid char for Rank: Must be between [1, 8]. Got {rank}"
+        ))?;
 
-        let Some(rank) = rank_int.checked_sub(1) else {
-            bail!(
-                "Invalid char for Rank: Must be between [{}, {}]. Got {rank}",
-                '1',
-                '8'
-            );
-        };
+        let rank = rank_int.checked_sub(1).context(format!(
+            "Invalid char for Rank: Must be between [1, 8]. Got {rank}"
+        ))?;
 
         Self::new(rank as u8)
     }
@@ -929,7 +802,7 @@ impl Rank {
         (self.0 + '1' as u8) as char
     }
 
-    pub const fn str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self.0 {
             0 => "1",
             1 => "2",
@@ -958,61 +831,30 @@ impl Rank {
         BitBoard::from_rank(*self)
     }
 
-    /*
-    const fn offset(&self, offset: i8) -> Option<Self> {
-        let bits = self.0 as i8 + offset;
-        if bits.is_negative() || bits > 7 {
-            None
-        } else {
-            Some(Self(bits as u8))
-        }
-    }
-     */
-
-    pub const fn increase(&self) -> Option<Self> {
-        self.increase_by(1)
-    }
-
-    pub const fn increase_by(&self, n: u8) -> Option<Self> {
-        let val = self.0 + n;
-        if val > Self::MAX {
-            None
-        } else {
-            Some(Self(val))
-        }
+    /// Attempt to offset this [`Rank`] by the provided `delta`.
+    ///
+    /// If `self + delta` would exceed the bounds of this [`Rank`], then `None` is returned.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Rank;
+    /// assert_eq!(Rank::FOUR.offset(1), Some(Rank::FIVE));
+    /// assert_eq!(Rank::FOUR.offset(-1), Some(Rank::THREE));
+    /// assert_eq!(Rank::ONE.offset(-1), None);
+    /// ```
+    pub fn offset(self, delta: i8) -> Option<Self> {
+        let bits = self.0.checked_add_signed(delta)?;
+        (bits <= Self::MAX).then_some(Self::new_unchecked(bits))
     }
 
-    pub const fn decrease(&self) -> Option<Self> {
-        self.decrease_by(1)
+    pub const fn flipped(self) -> Self {
+        Self(Self::MAX - self.0)
     }
 
-    pub const fn decrease_by(&self, n: u8) -> Option<Self> {
-        if let Some(val) = self.0.checked_sub(n) {
-            Some(Self(val))
-        } else {
-            None
-        }
-    }
-
-    pub const fn first_rank(&self, color: Color) -> Self {
+    pub const fn relative_to(self, color: Color) -> Self {
         match color {
-            Color::White => Self::ONE,
-            Color::Black => Self::EIGHT,
-        }
-    }
-
-    pub const fn second_rank(&self, color: Color) -> Self {
-        match color {
-            Color::White => Self::TWO,
-            Color::Black => Self::SEVEN,
-        }
-    }
-
-    /// Rank just before promoting a pawn
-    pub const fn seventh_rank(&self, color: Color) -> Self {
-        match color {
-            Color::White => Self::SEVEN,
-            Color::Black => Self::TWO,
+            Color::White => self,
+            Color::Black => self.flipped(),
         }
     }
 }
@@ -1169,7 +1011,7 @@ impl<T> IndexMut<Rank> for [T; Rank::COUNT] {
 
 impl AsRef<str> for Rank {
     fn as_ref(&self) -> &str {
-        self.str()
+        self.as_str()
     }
 }
 
@@ -1203,6 +1045,20 @@ impl File {
 
     pub const COUNT: usize = 8;
 
+    /// An array of all [`File`]s, in ascending order.
+    pub fn all() -> [Self; Self::COUNT] {
+        [
+            Self::A,
+            Self::B,
+            Self::C,
+            Self::D,
+            Self::E,
+            Self::F,
+            Self::G,
+            Self::H,
+        ]
+    }
+
     /// Returns an iterator over all available files.
     ///
     /// # Example
@@ -1214,7 +1070,7 @@ impl File {
     /// assert_eq!(iter.last().unwrap(), File::H);
     /// ```
     pub fn iter() -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator<Item = Self> {
-        (Self::MIN..=Self::MAX).map(|i| Self(i))
+        Self::all().into_iter()
     }
 
     pub fn new(file: u8) -> Result<Self> {
@@ -1225,7 +1081,7 @@ impl File {
                 Self::MAX
             );
         }
-        Ok(Self(file))
+        Ok(Self::new_unchecked(file))
     }
 
     pub const fn new_unchecked(file: u8) -> Self {
@@ -1261,7 +1117,7 @@ impl File {
         (self.0 + 'a' as u8) as char
     }
 
-    pub const fn str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self.0 {
             0 => "a",
             1 => "b",
@@ -1290,29 +1146,25 @@ impl File {
         BitBoard::from_file(*self)
     }
 
-    pub const fn increase(&self) -> Option<Self> {
-        self.increase_by(1)
+    /// Attempt to offset this [`File`] by the provided `delta`.
+    ///
+    /// If `self + delta` would exceed the bounds of this [`File`], then `None` is returned.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::File;
+    /// assert_eq!(File::C.offset(1), Some(File::D));
+    /// assert_eq!(File::C.offset(-1), Some(File::B));
+    /// assert_eq!(File::A.offset(-1), None);
+    /// ```
+    pub fn offset(self, delta: i8) -> Option<Self> {
+        let bits = self.0.checked_add_signed(delta)?;
+        (bits <= Self::MAX).then_some(Self::new_unchecked(bits))
     }
 
-    pub const fn increase_by(&self, n: u8) -> Option<Self> {
-        let val = self.0 + n;
-        if val > Self::MAX {
-            None
-        } else {
-            Some(Self(val))
-        }
-    }
-
-    pub const fn decrease(&self) -> Option<Self> {
-        self.decrease_by(1)
-    }
-
-    pub const fn decrease_by(&self, n: u8) -> Option<Self> {
-        if let Some(val) = self.0.checked_sub(n) {
-            Some(Self(val))
-        } else {
-            None
-        }
+    /// Flips this [`File`].
+    pub const fn flipped(self) -> Self {
+        Self(Self::MAX - self.0)
     }
 }
 
@@ -1380,7 +1232,7 @@ impl<T> IndexMut<File> for [T; File::COUNT] {
 
 impl AsRef<str> for File {
     fn as_ref(&self) -> &str {
-        self.str()
+        self.as_str()
     }
 }
 

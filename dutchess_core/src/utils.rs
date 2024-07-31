@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::{BitBoard, Color, Tile};
+use super::{BitBoard, Color, Rank, Tile};
 
 pub const FEN_STARTPOS: &'static str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 pub const FEN_KIWIPETE: &'static str =
@@ -60,7 +60,7 @@ pub fn generate_ray_between_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
         for (df, dr) in ROOK_DELTAS {
             let mut ray = from.bitboard();
             let mut to = from;
-            while let Ok(shifted) = to.try_offset(df, dr) {
+            while let Some(shifted) = to.offset(df, dr) {
                 ray.set(shifted);
                 to = shifted;
                 ray_between[from][to] = ray;
@@ -71,7 +71,7 @@ pub fn generate_ray_between_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
         for (df, dr) in BISHOP_DELTAS {
             let mut ray = from.bitboard();
             let mut to = from;
-            while let Ok(shifted) = to.try_offset(df, dr) {
+            while let Some(shifted) = to.offset(df, dr) {
                 ray.set(shifted);
                 to = shifted;
                 ray_between[from][to] = ray;
@@ -120,14 +120,14 @@ pub fn generate_ray_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
                     // I'm too lazy to figure out the proper math, so I'm just going to cast rays in the diagonals
                     let mut tmp = from;
                     // First ray goes Northeast
-                    while let Ok(shifted) = tmp.try_offset(1, 1) {
+                    while let Some(shifted) = tmp.offset(1, 1) {
                         rays[from][to] |= shifted.bitboard();
                         tmp = shifted;
                     }
                     tmp = from;
                     // Second ray goes Southwest
                     // I'm intentionally not resetting tmp here, so that the tile for `from` gets OR'd in
-                    while let Ok(shifted) = tmp.try_offset(-1, -1) {
+                    while let Some(shifted) = tmp.offset(-1, -1) {
                         rays[from][to] |= shifted.bitboard();
                         tmp = shifted;
                     }
@@ -135,12 +135,12 @@ pub fn generate_ray_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
                     rays[from][to] |= from.bitboard();
                     // Do it again, in the Northwest / Southeast directions
                     let mut tmp = from;
-                    while let Ok(shifted) = tmp.try_offset(-1, 1) {
+                    while let Some(shifted) = tmp.offset(-1, 1) {
                         rays[from][to] |= shifted.bitboard();
                         tmp = shifted;
                     }
                     tmp = from;
-                    while let Ok(shifted) = tmp.try_offset(1, -1) {
+                    while let Some(shifted) = tmp.offset(1, -1) {
                         rays[from][to] |= shifted.bitboard();
                         tmp = shifted;
                     }
@@ -208,7 +208,7 @@ fn generate_pawn_pushes(color: Color) -> [BitBoard; 64] {
     for tile in Tile::iter() {
         let bb = BitBoard::from_tile(tile);
 
-        if tile.rank().is_pawn_rank(color) {
+        if tile.rank() == Rank::second(color) {
             boards[tile] = bb.advance_by(color, 1) | bb.advance_by(color, 2);
         } else {
             boards[tile] = bb.advance_by(color, 1);
@@ -246,7 +246,7 @@ fn generate_leaper_mobility(deltas: &[(i8, i8)]) -> [BitBoard; Tile::COUNT] {
         // Loop over every pair of deltas
         for (df, dr) in deltas {
             // If shifting this location by the delta results in a valid position, add it to the movement mask.
-            if let Ok(shifted) = tile.try_offset(*df, *dr) {
+            if let Some(shifted) = tile.offset(*df, *dr) {
                 movement.set(shifted);
             }
         }
@@ -277,7 +277,7 @@ fn generate_rider_mobility(deltas: &[(i8, i8)]) -> [BitBoard; Tile::COUNT] {
             let mut ray = tile;
 
             // Shift the ray and append it's movement, until we reach the end of the board.
-            while let Ok(shifted) = ray.try_offset(*df, *dr) {
+            while let Some(shifted) = ray.offset(*df, *dr) {
                 movement.set(shifted);
                 ray = shifted;
             }

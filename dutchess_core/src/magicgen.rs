@@ -36,7 +36,7 @@ impl SlidingPiece {
         let mut blockers = BitBoard::default();
         for (df, dr) in self.deltas {
             let mut ray = tile;
-            while let Ok(shifted) = ray.try_offset(df, dr) {
+            while let Some(shifted) = ray.offset(df, dr) {
                 blockers |= ray.bitboard();
                 ray = shifted;
             }
@@ -52,7 +52,7 @@ impl SlidingPiece {
         for (df, dr) in self.deltas {
             let mut ray = tile;
             while !blockers.get(ray) {
-                if let Ok(shifted) = ray.try_offset(df, dr) {
+                if let Some(shifted) = ray.offset(df, dr) {
                     ray = shifted;
                     moves |= ray.bitboard();
                 } else {
