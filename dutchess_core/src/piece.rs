@@ -405,12 +405,22 @@ impl Piece {
         }
     }
 
+    /// Fetches the [`Color`] and [`PieceKind`] of this [`Piece`].
+    pub const fn parts(&self) -> (Color, PieceKind) {
+        (self.color(), self.kind())
+    }
+
     /// Returns the index value of this [`Piece`], as a `usize`.
     ///
-    /// Useful for indexing into lists.
+    /// Useful for indexing into lists of size 6 or 12.
     pub const fn index(&self) -> usize {
-        let offset = if self.is_white() { 0 } else { 6 };
-        (self.kind().bits() + offset) as usize
+        let offset = if self.is_white() {
+            0
+        } else {
+            PieceKind::all().len()
+        };
+
+        self.kind().bits() as usize + offset
     }
 
     /// Creates a new [`Piece`] from a character, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.

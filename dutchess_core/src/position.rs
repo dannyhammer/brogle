@@ -122,6 +122,7 @@ impl fmt::Display for Game {
     }
 }
 
+/// Represents the castling rights of both players
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
 pub struct CastlingRights {
     pub(crate) kingside: [bool; 2],
@@ -386,8 +387,6 @@ impl Position {
     pub fn bitboards_mut(&mut self) -> &mut ChessBoard {
         &mut self.bitboards
     }
-
-    // pub fn pseudo_legal_moves(&self) -> &[Move] {}
 
     pub fn legal_moves(&self) -> &[Move] {
         &self.legal_moves[..self.num_legal_moves]
@@ -1173,7 +1172,9 @@ impl fmt::Debug for Position {
     }
 }
 
-/// Represents a full chess board at any given state.
+/// Represents all pieces and their locations on a chess board.
+///
+/// Has no knowledge of castling rights, en passant, or move counters.
 ///
 /// Internally uses a collection of [`BitBoards`] to keep track of piece locations, occupied/empty squares, and attack squares.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -1505,6 +1506,16 @@ impl ChessBoard {
         self.colors[color.index()]
     }
 
+    /// Fetches a [`BitBoard`] of all occupied squares on the board.
+    pub const fn occupied(&self) -> BitBoard {
+        self.occupied
+    }
+
+    /// Fetches a [`BitBoard`] of all non-occupied squares on the board.
+    pub const fn empty(&self) -> BitBoard {
+        self.occupied().not()
+    }
+
     /// Fetches the [`BitBoard`] corresponding to the supplied [`Piece`].
     ///
     /// The returned [`BitBoard`] will hold the locations of every occurrence of the supplied [`Piece`].
@@ -1521,22 +1532,26 @@ impl ChessBoard {
         self.piece_parts(piece.color(), piece.kind())
     }
 
+    /// Analogous to [`ChessBoard::piece`] with a [`Piece`]'s individual components
     pub const fn piece_parts(&self, color: Color, kind: PieceKind) -> BitBoard {
         let color = self.color(color);
         let kind = self.kind(kind);
         color.and(kind)
     }
 
+    /// Fetches a [`BitBoard`] containing the locations of all orthogonal sliding pieces (Rook, Queen).
     pub const fn orthogonal_sliders(&self, color: Color) -> BitBoard {
         (self.pieces[PieceKind::Rook.index()].or(self.pieces[PieceKind::Queen.index()]))
             .and(self.color(color))
     }
 
+    /// Fetches a [`BitBoard`] containing the locations of all diagonal sliding pieces (Bishop, Queen).
     pub const fn diagonal_sliders(&self, color: Color) -> BitBoard {
         (self.pieces[PieceKind::Bishop.index()].or(self.pieces[PieceKind::Queen.index()]))
             .and(self.color(color))
     }
 
+    /// Fetches a [`BitBoard`] containing the locations of all sliding pieces (Rook, Bishop, Queen).
     pub const fn sliders(&self, color: Color) -> BitBoard {
         (self.pieces[PieceKind::Rook.index()]
             .or(self.pieces[PieceKind::Bishop.index()])
@@ -1544,33 +1559,9 @@ impl ChessBoard {
         .and(self.color(color))
     }
 
-    /// Get a bitboard of all pieces that can be captured by `attacker`.
-    pub const fn possible_captures(&self, attacker_color: Color, attacks: BitBoard) -> BitBoard {
-        let opponent = self.color(attacker_color.opponent());
-
-        attacks.and(opponent)
-    }
-
+    /// Fetches the [`BitBoard`] for the King of the provided color.
     pub const fn king(&self, color: Color) -> BitBoard {
-        self.piece(Piece::new(color, PieceKind::King))
-    }
-
-    pub const fn in_check_by(&self, king_color: Color, attacks: BitBoard) -> bool {
-        attacks.and(self.king(king_color)).0 != 0
-    }
-
-    pub const fn blockers(&self, blocker_mask: BitBoard) -> BitBoard {
-        // All occupied squares within the blocker mask
-        self.occupied().and(blocker_mask)
-    }
-
-    pub const fn occupied(&self) -> BitBoard {
-        self.occupied
-        // BitBoard(self.colors[0].0 | self.colors[1].0)
-    }
-
-    pub const fn empty(&self) -> BitBoard {
-        self.occupied().not()
+        self.piece_parts(color, PieceKind::King)
     }
 
     /// Returns an instance of this [`ChessBoard`] that has all bits specified by `mask` cleared.
@@ -1596,25 +1587,23 @@ impl ChessBoard {
         }
     }
 
-    /*
-    pub const fn with_only(&self, piece: Piece) -> Self {
-        let piece_board = self.piece(piece);
+    /// Returns an instance of this [`ChessBoard`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
+    pub const fn with(&self, mask: BitBoard, piece: Piece) -> Self {
+        let occupied = self.occupied().or(mask);
+        let (color, kind) = piece.parts();
 
-        let occupied = self.occupied.xor(piece_board);
         let mut colors = self.colors;
-        colors[piece.color().index()] = colors[piece.color().index()].xor(piece_board);
+        colors[color.index()] = colors[color.index()].or(mask);
 
         let mut pieces = self.pieces;
-        pieces[piece.kind().index()] = pieces[piece.kind().index()].xor(piece_board);
+        pieces[kind.index()] = pieces[kind.index()].or(mask);
 
         Self {
             occupied,
-            empty: occupied.not(),
             colors,
             pieces,
         }
     }
-     */
 
     /// Get all squares that are either empty or occupied by the enemy
     ///
