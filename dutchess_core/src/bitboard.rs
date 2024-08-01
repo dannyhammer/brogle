@@ -347,12 +347,24 @@ impl BitBoard {
     /// let rank_1 = BitBoard::RANK_1;
     /// let rank_5 = BitBoard::RANK_5;
     /// let file_a = BitBoard::FILE_A;
-    /// assert_eq!(rank_1.contains(file_a), true);
-    /// assert_eq!(rank_1.contains(rank_5), false);
+    /// assert_eq!(rank_1.contains(&file_a), true);
+    /// assert_eq!(rank_1.contains(&rank_5), false);
     /// ```
-    pub const fn contains(&self, other: Self) -> bool {
-        (self.0 & other.0) != 0
+    pub const fn contains(&self, other: &Self) -> bool {
+        self.0 & other.0 != 0
     }
+
+    /*
+    /// Returns `true` if `self` contains every bit set in `other`.
+    pub const fn contains_all(&self, other: &Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Returns `true` if `self` contains none bits set in `other`.
+    pub const fn contains_none(&self, other: &Self) -> bool {
+        self.0 & other.0 != 0
+    }
+     */
 
     /// Toggles the bit corresponding to the location of the provided [`Tile`] to `1` (on).
     ///
@@ -484,16 +496,6 @@ impl BitBoard {
     /// ```
     pub const fn population(&self) -> u32 {
         self.0.count_ones()
-    }
-
-    /// Returns `true` if `self` contains every bit set in `other`.
-    pub const fn contains_all(&self, other: &Self) -> bool {
-        self.0 & other.0 == other.0
-    }
-
-    /// Returns `true` if `self` contains any bits set in `other`.
-    pub const fn contains_any(&self, other: &Self) -> bool {
-        self.0 & other.0 != Self::EMPTY_BOARD.0
     }
 
     /// Shifts this [`BitBoard`] forward by `n`, according to `color`.

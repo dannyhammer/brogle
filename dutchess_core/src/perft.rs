@@ -161,11 +161,11 @@ pub fn print_split_perft<const PRETTY: bool>(position: &Position, depth: usize) 
 
     if PRETTY {
         // Math
-        let nps = total_nodes as f64 / elapsed.as_secs_f64();
+        let nps = total_nodes as f32 / elapsed.as_secs_f32();
         let m_nps = nps / 1_000_000.0;
 
         println!("Moves at root:         {}", moves.len());
-        println!("Elapsed Time:          {elapsed:?}");
+        println!("Elapsed Time:          {elapsed:.1?}");
         println!("Total Nodes:           {total_nodes}");
         println!("Nodes / Sec:           {nps:.0}");
         println!("M Nodes / Sec:         {m_nps:.1}");
@@ -189,10 +189,10 @@ pub fn print_perft<const PRETTY: bool>(position: &Position, depth: usize) {
 
     if PRETTY {
         // Math
-        let nps = total_nodes as f64 / elapsed.as_secs_f64();
+        let nps = total_nodes as f32 / elapsed.as_secs_f32();
         let m_nps = nps / 1_000_000.0;
 
-        println!("Elapsed Time:          {elapsed:?}");
+        println!("Elapsed Time:          {elapsed:.1?}");
         println!("Total Nodes:           {total_nodes}");
         println!("Nodes / Sec:           {nps:.0}");
         println!("M Nodes / Sec:         {m_nps:.1}");

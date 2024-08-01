@@ -25,6 +25,10 @@ path = "src/magic_generator.rs"
 name = "arena"
 path = "src/arena/main.rs"
 
+[[bin]]
+name = "perft_bench"
+path = "src/perft_bench.rs"
+
 
 [dependencies]
 dutchess_engine = { path = "../dutchess_engine" }
