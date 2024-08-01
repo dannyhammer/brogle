@@ -223,7 +223,7 @@ impl Move {
     /// # Example
     /// ```
     /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind, Position, FEN_KIWIPETE};
-    /// let position = Position::new().from_fen(FEN_KIWIPETE).unwrap();
+    /// let position = Position::from_fen(FEN_KIWIPETE).unwrap();
     /// let e5f7 = Move::from_uci(&position, "e5f7").unwrap();
     /// assert_eq!(e5f7.is_capture(), true);
     /// ```
@@ -286,7 +286,7 @@ impl Move {
     /// ```
     /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind, Position};
     /// // An sample test position for discovering promotion bugs.
-    /// let position = Position::new().from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
+    /// let position = Position::from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
     /// let b7c8b = Move::from_uci(&position, "b7c8b").unwrap();
     /// assert_eq!(b7c8b.promotion(), Some(PieceKind::Bishop));
     /// ```
@@ -308,7 +308,7 @@ impl Move {
     /// ```
     /// # use dutchess_core::{Move, Tile, MoveKind, PieceKind, Position};
     /// // An sample test position for discovering promotion bugs.
-    /// let position = Position::new().from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
+    /// let position = Position::from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
     /// let b7c8b = Move::from_uci(&position, "b7c8b");
     /// assert!(b7c8b.is_ok());
     /// assert_eq!(b7c8b.unwrap(), Move::new(Tile::B7, Tile::C8, MoveKind::CaptureAndPromote(PieceKind::Bishop)));
@@ -326,7 +326,7 @@ impl Move {
         let to = Tile::from_uci(to)?;
 
         // Extract information about the piece being moved
-        let piece = position.bitboards().piece_at(from).ok_or(anyhow!(
+        let piece = position.board().piece_at(from).ok_or(anyhow!(
             "No piece found at {from} when parsing UCI move string."
         ))?;
         let color = piece.color();
@@ -336,12 +336,12 @@ impl Move {
             // Pawns have a lot of special moves they can do...
             if let Some(promote) = uci.get(4..5) {
                 // If this move also captures, it's a capture-promote
-                if position.bitboards().has(to) {
+                if position.board().has(to) {
                     MoveKind::CaptureAndPromote(PieceKind::from_str(promote)?)
                 } else {
                     MoveKind::Promote(PieceKind::from_str(promote)?)
                 }
-            } else if position.bitboards().has(to) {
+            } else if position.board().has(to) {
                 MoveKind::Capture
             } else if Some(to) == position.ep_tile() && piece.is_pawn() {
                 MoveKind::EnPassantCapture
@@ -356,7 +356,7 @@ impl Move {
                 MoveKind::KingsideCastle
             } else if uci == "e1c1" || uci == "e8c8" {
                 MoveKind::QueensideCastle
-            } else if position.bitboards().has(to) {
+            } else if position.board().has(to) {
                 MoveKind::Capture
             } else {
                 MoveKind::Quiet

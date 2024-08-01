@@ -65,7 +65,7 @@ impl Engine {
     }
 
     pub fn from_fen(fen: &str) -> Result<Self, String> {
-        let game = Position::new().from_fen(fen).map_err(|e| e.to_string())?;
+        let game = Position::from_fen(fen).map_err(|e| e.to_string())?;
         Ok(Self::new(game))
     }
 
@@ -183,12 +183,12 @@ impl Engine {
     fn parse_eval_command(&self, rest: &str) -> Result<EngineCommand, String> {
         let mut args = rest.split_ascii_whitespace();
 
-        let mut pos = self.game;
+        let mut pos = self.game.clone();
 
         if let Some(arg) = args.next() {
             if arg.to_ascii_lowercase() == "startpos" {
-                pos = pos.with_default_setup();
-            } else if let Ok(parsed) = pos.from_fen(arg) {
+                pos = Position::standard_setup();
+            } else if let Ok(parsed) = Position::from_fen(arg) {
                 pos = parsed;
             } else {
                 return Err(format!("usage: eval [FEN]"));
@@ -205,7 +205,7 @@ impl Engine {
         if let Some(arg) = args.next() {
             if arg.to_ascii_lowercase() == "startpos" {
                 fen = Some(FEN_STARTPOS.to_string());
-            } else if Position::new().from_fen(arg).is_ok() {
+            } else if Position::from_fen(arg).is_ok() {
                 fen = Some(arg.to_string());
             } else {
                 return Err(format!("usage: fen [FEN]"));
@@ -325,14 +325,14 @@ impl UciEngine for Engine {
             }
             EngineCommand::Fen(fen) => {
                 if let Some(fen) = fen {
-                    self.game = Position::new().from_fen(&fen).unwrap();
+                    self.game = Position::from_fen(&fen).unwrap();
                 }
                 println!("{}", self.game.to_fen())
             }
             EngineCommand::Eval(pos) => println!("{}", Evaluator::new(&pos).eval()),
             EngineCommand::Move(moves) => self.game.make_moves(moves),
             EngineCommand::Search(depth, _) => {
-                let search = Search::new(self.game, depth);
+                let search = Search::new(self.game.clone(), depth);
                 let res = search.start();
                 // let res = search(self.game, depth);
                 if let Some(bestmove) = res.bestmove {
@@ -398,7 +398,7 @@ impl UciEngine for Engine {
         // Apply the FEN to the game state
         // _ = self.setup(fen); // ignore any errors if they occur.
         // self.game = Game::from_fen(fen).unwrap();
-        self.game = Position::new().from_fen(fen).unwrap();
+        self.game = Position::from_fen(fen).unwrap();
 
         // Now, if there are any moves, apply them as well.
         // self.game
@@ -472,7 +472,7 @@ impl UciEngine for Engine {
                 && stopper.load(Ordering::Relaxed)
             {
                 // Obtain a result from the search
-                let mut search = Search::new(state, depth);
+                let mut search = Search::new(state.clone(), depth);
                 // Iterative deepening
                 if let Some(ponder) = bestmove {
                     search = search.with_ponder(ponder);
@@ -590,10 +590,11 @@ impl UciEngine for Engine {
 impl Default for Engine {
     fn default() -> Self {
         Self {
-            // game: Position::new().with_default_setup(),
-            game: Position::new()
-                .from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1")
-                .unwrap(),
+            // game: Position::standard_setup(),
+            game: Position::from_fen(
+                "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            )
+            .unwrap(),
             // ttable: TranspositionTable::default(),
             // protocol: EngineProtocol::UCI,
             debug: false,

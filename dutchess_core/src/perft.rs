@@ -4,6 +4,8 @@ use std::{
     time::Instant,
 };
 
+use crate::MoveGenerator;
+
 use super::Position;
 
 /// A result from a perft function.
@@ -144,10 +146,11 @@ pub fn print_split_perft<const PRETTY: bool>(position: &Position, depth: usize) 
 
     let now = Instant::now();
     let mut total_nodes = 0;
-    let moves = position.legal_moves();
+    let movegen = MoveGenerator::new_legal(position);
+    let moves = movegen.legal_moves();
     for i in 0..moves.len() {
         let mv = moves[i];
-        let new_pos = position.with_move_made(mv);
+        let new_pos = position.clone().with_move_made(mv);
 
         let nodes = perft(&new_pos, depth - 1);
 
@@ -204,14 +207,15 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
 
     if depth == 0 {
         res.nodes = 1;
-        res.captures = 32 - position.bitboards().occupied().population() as u64; // TODO: Fetch original number of pieces
-        res.castles = position.times_castled() as u64;
-        res.checks = position.is_check() as u64;
-        res.checkmates = position.is_checkmate() as u64;
+        // res.captures = 32 - position.bitboards().occupied().population() as u64; // TODO: Fetch original number of pieces
+        // res.castles = position.times_castled() as u64;
+        // res.checks = position.is_check() as u64;
+        // res.checkmates = position.is_checkmate() as u64;
         return res;
     }
 
-    let moves = position.legal_moves();
+    let movegen = MoveGenerator::new_legal(position);
+    let moves = movegen.legal_moves();
 
     if depth == 1 {
         res.nodes = moves.len() as u64;
@@ -221,7 +225,7 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
 
     for i in 0..moves.len() {
         let mv = moves[i];
-        let new_pos = position.with_move_made(mv);
+        let new_pos = position.clone().with_move_made(mv);
         res += perft_full(&new_pos, depth - 1);
     }
 
@@ -232,7 +236,8 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
 pub fn perft(position: &Position, depth: usize) -> u64 {
     // Bulk counting; no need to recurse again just to apply a singular move and return 1.
     if depth == 1 {
-        return position.legal_moves().len() as u64;
+        let movegen = MoveGenerator::new_legal(position);
+        return movegen.legal_moves().len() as u64;
     }
 
     // Recursion limit; return 1, since we're fathoming this node.
@@ -241,11 +246,12 @@ pub fn perft(position: &Position, depth: usize) -> u64 {
     }
 
     let mut nodes = 0;
-    let moves = position.legal_moves();
+    let movegen = MoveGenerator::new_legal(position);
+    let moves = movegen.legal_moves();
 
     for i in 0..moves.len() {
         let mv = moves[i];
-        let new_pos = position.with_move_made(mv);
+        let new_pos = position.clone().with_move_made(mv);
 
         nodes += perft(&new_pos, depth - 1);
     }

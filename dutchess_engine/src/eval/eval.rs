@@ -13,7 +13,7 @@ impl<'a> Evaluator<'a> {
 
     pub fn eval(self) -> i32 {
         let color = self.position.current_player();
-        material_difference(self.position.bitboards(), color)
+        material_difference(self.position.board(), color)
     }
 
     pub fn complex_eval(self) -> i32 {
@@ -22,7 +22,7 @@ impl<'a> Evaluator<'a> {
     }
 
     fn eval_for(self, color: Color) -> i32 {
-        let board = self.position.bitboards();
+        let board = self.position.board();
         let mat = material_difference(board, color);
         let game_percentage = material_remaining_percentage(board, color.opponent());
 

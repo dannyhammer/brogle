@@ -3,6 +3,6 @@ use dutchess_core::*;
 
 fn main() {
     let fen = FEN_STARTPOS;
-    let game = Game::from_fen(fen).unwrap();
-    println!("{game}\n\n");
+    let position = Position::from_fen(fen).unwrap();
+    println!("{position}");
 }

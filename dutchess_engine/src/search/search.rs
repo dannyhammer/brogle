@@ -1,6 +1,6 @@
 use std::{ops::Neg, time::Instant};
 
-use dutchess_core::{Move, Position};
+use dutchess_core::{Move, MoveGenerator, Position};
 use rand::{seq::SliceRandom, thread_rng};
 
 use crate::uci::SearchOptions;
@@ -81,7 +81,7 @@ impl<'a> Search<'a> {
 
     pub fn start(mut self) -> SearchResult {
         let now = Instant::now();
-        self.result = self.search(self.position, self.depth_to_search);
+        self.result = self.search(self.position.clone(), self.depth_to_search);
         let elapsed = now.elapsed();
 
         let nps = self.result.nodes_searched as f64 / elapsed.as_secs_f64();
@@ -92,10 +92,12 @@ impl<'a> Search<'a> {
         self.result
     }
 
+    // fn move_ordering() -> FnMut(&Move) -> i32 {}
+
     fn order_moves(&self, position: &Position, moves: &mut [Move]) {
-        let board = position.bitboards();
-        let opponent = position.current_player();
-        let attacks = position.attacks_by(opponent);
+        let board = position.board();
+        // let opponent = position.current_player();
+        // let attacks = position.attacks_by(opponent);
 
         moves.sort_by_cached_key(|mv| {
             if let Some(ponder) = self.result().ponder {
@@ -117,9 +119,9 @@ impl<'a> Search<'a> {
             }
 
             // Going somewhere attacked by an opponent is not a good idea
-            if attacks.get(mv.to()) {
-                score -= value_of(kind);
-            }
+            // if attacks.get(mv.to()) {
+            //     score -= value_of(kind);
+            // }
 
             -score // We're sorting, so a lower number is better
         })
@@ -138,14 +140,16 @@ impl<'a> Search<'a> {
             return self.result;
         }
 
-        let mut cloned = position.clone();
-        let moves = cloned.legal_moves_mut();
+        // let mut cloned = position.clone();
+        let mut movegen = MoveGenerator::new_legal(&position);
+        let moves = movegen.legal_moves_mut();
+        // let moves = cloned.legal_moves_mut();
         self.order_moves(&position, moves);
         // println!("MOVES: {moves:?}");
 
         for mv in moves.iter() {
             // Make the current move on the position, getting a new position in return
-            let new_pos = position.with_move_made(*mv);
+            let new_pos = position.clone().with_move_made(*mv);
 
             // Recursively search our opponent's responses
             let current = -self.negamax(new_pos, depth - 1, -beta, -alpha);
@@ -177,7 +181,7 @@ impl<'a> Search<'a> {
         if self.result.bestmove.is_none() {
             if moves.is_empty() {
                 // eprintln!("No legal moves available at: {position}\nRes: {best:?}");
-                if position.is_check() {
+                if movegen.is_in_check() {
                     self.result.score = i32::MIN + depth as i32; // Prefer earlier checkmates
                 } else {
                     self.result.score = 0;
@@ -201,10 +205,12 @@ impl<'a> Search<'a> {
             return self.quiescence(position, alpha, beta);
         }
 
-        let mut cloned = position.clone();
-        let moves = cloned.legal_moves_mut();
+        // let mut cloned = position.clone();
+        // let moves = cloned.legal_moves_mut();
+        let mut movegen = MoveGenerator::new_legal(&position);
+        let moves = movegen.legal_moves_mut();
         if moves.is_empty() {
-            if position.is_check() {
+            if movegen.is_in_check() {
                 return i32::MIN + depth as i32; // Prefer earlier checks
             } else {
                 return 0;
@@ -215,7 +221,7 @@ impl<'a> Search<'a> {
 
         for mv in moves.iter() {
             // Make the current move on the position, getting a new position in return
-            let new_pos = position.with_move_made(*mv);
+            let new_pos = position.clone().with_move_made(*mv);
 
             // Recursively search our opponent's responses
             let current = -self.negamax(new_pos, depth - 1, -beta, -alpha);
@@ -251,11 +257,13 @@ impl<'a> Search<'a> {
             alpha = stand_pat;
         }
 
-        let mut cloned = position.clone();
-        let moves = cloned.legal_moves_mut();
+        // let mut cloned = position.clone();
+        // let moves = cloned.legal_moves_mut();
+        let mut movegen = MoveGenerator::new_legal(&position);
+        let moves = movegen.legal_moves_mut();
         // Handle cases for checkmate and stalemate
         if moves.is_empty() {
-            if position.is_check() {
+            if movegen.is_in_check() {
                 return i32::MIN;
             } else {
                 return 0;
@@ -268,7 +276,7 @@ impl<'a> Search<'a> {
         // Only search captures
         for mv in moves.iter().filter(|mv| mv.is_capture()) {
             // Make the current move on the position, getting a new position in return
-            let new_pos = position.with_move_made(*mv);
+            let new_pos = position.clone().with_move_made(*mv);
             self.result.nodes_searched += 1;
 
             // Recursively search our opponent's responses

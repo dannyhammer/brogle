@@ -1,8 +1,8 @@
 use dutchess_core::{perft, Position};
 
 fn test_perft_fen_nodes(depth: usize, fen: &str, expected: u64) {
-    let position = Position::new().from_fen(fen).unwrap();
-    let res = perft(&position, depth);
+    let mut position = Position::from_fen(fen).unwrap();
+    let res = perft(&mut position, depth);
     assert_eq!(res, expected);
 }
 
@@ -20,9 +20,9 @@ fn test_standard_epd() {
             let expected = u64::from_str_radix(perft_data.get(3..).unwrap().trim(), 10).unwrap();
             // println!("perft({depth}, \"{fen}\") := {expected}");
 
-            let position = Position::new().from_fen(fen).unwrap();
+            let mut position = Position::from_fen(fen).unwrap();
 
-            let nodes = perft(&position, depth);
+            let nodes = perft(&mut position, depth);
 
             assert_eq!(
                 nodes, expected,
