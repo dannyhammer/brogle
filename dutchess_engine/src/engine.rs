@@ -92,11 +92,11 @@ impl Engine {
             // UciOption::combo("Style", "Normal", ["Solid", "Normal", "Risky"]),
             // UciOption::string("NalimovPath", "c:\\"),
             // UciOption::button("Clear Hash"),
+            UciOption::spin("Threads", 1, 1, 1),
+            UciOption::spin("Hash", 1, 1, 1),
         ]
         .into_iter()
     }
-
-    /// Non-blocking search
 
     /// Sets the flag that the search should stop.
     fn stop_search(&mut self) {
@@ -108,6 +108,7 @@ impl Engine {
         self.searching.store(true, Ordering::Relaxed);
     }
 
+    /// Yields `true` if the engine is currently searching.
     fn is_searching(&self) -> bool {
         self.searching.load(Ordering::Relaxed)
     }
@@ -389,7 +390,6 @@ impl UciEngine for Engine {
     }
 
     fn ucinewgame(&mut self) -> io::Result<()> {
-        // *self = Self::new();
         self.new_game();
         Ok(())
     }

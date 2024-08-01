@@ -26,14 +26,66 @@ impl Color {
         Self::all().into_iter()
     }
 
+    /// Creates a new [`Color`] from a set of bits.
+    ///
+    /// `bits` must be `[0,1]`.
+    ///
+    /// # Panics
+    /// If `bits` is greater than `1`.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Color;
+    /// let white = Color::from_bits(0);
+    /// assert!(white.is_ok());
+    /// assert_eq!(white.unwrap(), Color::White);
+    ///
+    /// let err = Color::from_bits(42);
+    /// assert!(err.is_err());
+    /// ```
+    pub fn from_bits(bits: u8) -> Result<Self> {
+        match bits {
+            0 => Ok(Self::White),
+            1 => Ok(Self::Black),
+            _ => bail!("Invalid bits for Color: Bits must be between [0,1]. Got {bits}."),
+        }
+    }
+
+    /// Creates a new [`Color`] from a set of bits, ignoring safety checks.
+    ///
+    /// `bits` must be `[0,1]`.
+    ///
+    /// # Panics
+    /// If `bits` is greater than `1` and debug assertions are enabled.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Color;
+    /// let white = Color::from_bits(0);
+    /// assert!(white.is_ok());
+    /// assert_eq!(white.unwrap(), Color::White);
+    ///
+    /// let err = Color::from_bits(42);
+    /// assert!(err.is_err());
+    /// ```
+    pub const fn from_bits_unchecked(bits: u8) -> Self {
+        debug_assert!(
+            bits <= 1,
+            "Invalid bits for Color: Bits must be between [0,1]"
+        );
+
+        // Safety: Since `Color` is a `repr(u8)` enum, we can cast safely here.
+        unsafe { std::mem::transmute(bits) }
+    }
+
     /// Returns `true` if this [`Color`] is White.
     pub const fn is_white(&self) -> bool {
-        matches!(self, Self::White)
+        *self as u8 & 1 == 0
     }
 
     /// Returns `true` if this [`Color`] is Black.
     pub const fn is_black(&self) -> bool {
-        matches!(self, Self::Black)
+        *self as u8 & 1 != 0
     }
 
     /// Returns a multiplier for negating numbers relative to this color.
@@ -69,19 +121,7 @@ impl Color {
     /// assert_eq!(Color::Black.opponent(), Color::White);
     /// ```
     pub const fn opponent(&self) -> Self {
-        // TODO: Which is faster?
-
-        // A: Match
-        // match self {
-        //     Self::White => Self::Black,
-        //     Self::Black => Self::White,
-        // }
-
-        // B: Transmute
-        // Safety: Since `Color` is a `repr(u8)` enum, it's values are guaranteed to be either 0 or 1.
-        // Thus, we can cast a 0 or 1 to a `Color` without fear.
-        // By XOR'ing, we flip the bit of this color, getting us the opposite color.
-        unsafe { std::mem::transmute(*self as u8 ^ 1) }
+        Self::from_bits_unchecked(self.bits() ^ 1)
     }
 
     /// Returns this [`Color`] as a `usize`.

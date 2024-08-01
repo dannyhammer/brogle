@@ -60,12 +60,12 @@ impl PieceKind {
         }
     }
 
-    /// Creates a new [`PieceKind`] from a set of bits.
+    /// Creates a new [`PieceKind`] from a set of bits, ignoring safety checks.
     ///
     /// `bits` must be `[0,5]`.
     ///
     /// # Panics
-    /// If `bits` is greater than `5`.
+    /// If `bits` is greater than `5` when debug assertions are enabled.
     ///
     /// # Example
     /// ```
@@ -73,16 +73,14 @@ impl PieceKind {
     /// let queen = PieceKind::from_bits_unchecked(4);
     /// assert_eq!(queen, PieceKind::Queen);
     /// ```
-    pub const fn from_bits_unchecked(bits: u8) -> PieceKind {
-        match bits {
-            0 => Self::Pawn,
-            1 => Self::Knight,
-            2 => Self::Bishop,
-            3 => Self::Rook,
-            4 => Self::Queen,
-            5 => Self::King,
-            _ => panic!("Invalid bits for PieceKind: Bits must be between [0,5]."),
-        }
+    pub const fn from_bits_unchecked(bits: u8) -> Self {
+        debug_assert!(
+            bits <= 5,
+            "Invalid bits for PieceKind: Bits must be between [0,5]"
+        );
+
+        // Safety: Since `PieceKind` is a `repr(u8)` enum, we can cast safely here.
+        unsafe { std::mem::transmute(bits) }
     }
 
     /// Fetches the internal bit value of this [`PieceKind`].
@@ -243,14 +241,14 @@ impl AsRef<str> for PieceKind {
 }
 
 impl fmt::Display for PieceKind {
-    /// By default, piece classes display as uppercase chars (white)
+    /// By default, piece classes display as lowercase chars.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_uci())
     }
 }
 
 impl fmt::Debug for PieceKind {
-    /// By default, piece classes display as uppercase chars (white)
+    /// Debug formatting displays piece kinds as their UCI char and inner index.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "\"{self}\" ({})", self.index())
     }
@@ -285,6 +283,11 @@ impl Piece {
     pub const BLACK_KNIGHT: Self = Self::new(Color::Black, PieceKind::Knight);
     pub const BLACK_BISHOP: Self = Self::new(Color::Black, PieceKind::Bishop);
 
+    /// Mask for the color bits.
+    const COLOR_MASK: u8 = 0b0000_1000;
+    /// Start index of color bits.
+    const COLOR_BITS: u8 = 3;
+
     /// Creates a new [`Piece`] from the given [`Color`] and [`PieceKind`].
     ///
     /// # Example
@@ -296,8 +299,7 @@ impl Piece {
     pub const fn new(color: Color, kind: PieceKind) -> Self {
         // 0000 0000 => white
         // 0000 1000 => black
-        let color = if color.is_white() { 0 } else { 8 };
-        Self(kind.bits() | color)
+        Self(color.bits() << Self::COLOR_BITS | kind.bits())
     }
 
     /// Fetches the [`Color`] of this [`Piece`].
@@ -309,22 +311,31 @@ impl Piece {
     /// assert_eq!(white_knight.color(), Color::White);
     /// ```
     pub const fn color(&self) -> Color {
-        // Check for the color bit for black
-        if self.0 & 8 == 0 {
-            Color::White
-        } else {
-            Color::Black
-        }
+        Color::from_bits_unchecked(self.0 >> Self::COLOR_BITS)
     }
 
-    /// Returns `true` if this [`Piece`]'s [`Color`] is `White`.
+    /// Returns `true` if this [`Piece`]'s [`Color`] is White.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Piece;
+    /// assert!(Piece::WHITE_KNIGHT.is_white());
+    /// assert!(!Piece::BLACK_KNIGHT.is_white());
+    /// ```
     pub const fn is_white(&self) -> bool {
-        self.0 & 8 == 0
+        self.0 >> Self::COLOR_BITS == 0
     }
 
-    /// Returns `true` if this [`Piece`]'s [`Color`] is `Black`.
+    /// Returns `true` if this [`Piece`]'s [`Color`] is Black.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::Piece;
+    /// assert!(Piece::BLACK_KNIGHT.is_black());
+    /// assert!(!Piece::WHITE_KNIGHT.is_black());
+    /// ```
     pub const fn is_black(&self) -> bool {
-        self.0 & 8 == 0
+        self.0 >> Self::COLOR_BITS != 0
     }
 
     /// Fetches the [`PieceKind`] of this [`Piece`].
@@ -337,7 +348,7 @@ impl Piece {
     /// ```
     pub const fn kind(&self) -> PieceKind {
         // Clear the color bit
-        PieceKind::from_bits_unchecked(self.0 & !8)
+        PieceKind::from_bits_unchecked(self.0 & !Self::COLOR_MASK)
     }
 
     /// Returns `true` if this [`Piece`] is a Pawn.
@@ -414,12 +425,9 @@ impl Piece {
     /// assert_eq!(white_knight.kind(), PieceKind::Knight);
     /// ```
     pub fn from_uci(piece: char) -> Result<Self> {
-        if let Ok(kind) = PieceKind::from_uci(piece) {
-            let color = Color::from_case(piece);
-            Ok(Self::new(color, kind))
-        } else {
-            bail!("Invalid char for Piece: Got {piece}.");
-        }
+        let kind = PieceKind::from_char(piece)?;
+        let color = Color::from_case(piece);
+        Ok(Self::new(color, kind))
     }
 
     /// Converts this [`Piece`] into a character, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
