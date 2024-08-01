@@ -733,6 +733,47 @@ impl ChessBoard {
         Ok(board)
     }
 
+    /// Returns an instance of this [`ChessBoard`] that has all bits specified by `mask` cleared.
+    pub const fn without(&self, mask: BitBoard) -> Self {
+        let not_mask = mask.not();
+        let occupied = self.occupied().and(not_mask);
+        let mut colors = self.colors;
+        colors[0] = colors[0].and(not_mask);
+        colors[1] = colors[1].and(not_mask);
+
+        let mut pieces = self.pieces;
+        pieces[0] = pieces[0].and(not_mask);
+        pieces[1] = pieces[1].and(not_mask);
+        pieces[2] = pieces[2].and(not_mask);
+        pieces[3] = pieces[3].and(not_mask);
+        pieces[4] = pieces[4].and(not_mask);
+        pieces[5] = pieces[5].and(not_mask);
+
+        Self {
+            occupied,
+            colors,
+            pieces,
+        }
+    }
+
+    /// Returns an instance of this [`ChessBoard`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
+    pub const fn with(&self, mask: BitBoard, piece: Piece) -> Self {
+        let occupied = self.occupied().or(mask);
+        let (color, kind) = piece.parts();
+
+        let mut colors = self.colors;
+        colors[color.index()] = colors[color.index()].or(mask);
+
+        let mut pieces = self.pieces;
+        pieces[kind.index()] = pieces[kind.index()].or(mask);
+
+        Self {
+            occupied,
+            colors,
+            pieces,
+        }
+    }
+
     /// Returns `true` if there is a piece at the given [`Tile`], else `false`.
     ///
     /// # Example
@@ -984,47 +1025,6 @@ impl ChessBoard {
     /// Fetches the [`BitBoard`] for the King of the provided color.
     pub const fn king(&self, color: Color) -> BitBoard {
         self.piece_parts(color, PieceKind::King)
-    }
-
-    /// Returns an instance of this [`ChessBoard`] that has all bits specified by `mask` cleared.
-    pub const fn without(&self, mask: BitBoard) -> Self {
-        let not_mask = mask.not();
-        let occupied = self.occupied().and(not_mask);
-        let mut colors = self.colors;
-        colors[0] = colors[0].and(not_mask);
-        colors[1] = colors[1].and(not_mask);
-
-        let mut pieces = self.pieces;
-        pieces[0] = pieces[0].and(not_mask);
-        pieces[1] = pieces[1].and(not_mask);
-        pieces[2] = pieces[2].and(not_mask);
-        pieces[3] = pieces[3].and(not_mask);
-        pieces[4] = pieces[4].and(not_mask);
-        pieces[5] = pieces[5].and(not_mask);
-
-        Self {
-            occupied,
-            colors,
-            pieces,
-        }
-    }
-
-    /// Returns an instance of this [`ChessBoard`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
-    pub const fn with(&self, mask: BitBoard, piece: Piece) -> Self {
-        let occupied = self.occupied().or(mask);
-        let (color, kind) = piece.parts();
-
-        let mut colors = self.colors;
-        colors[color.index()] = colors[color.index()].or(mask);
-
-        let mut pieces = self.pieces;
-        pieces[kind.index()] = pieces[kind.index()].or(mask);
-
-        Self {
-            occupied,
-            colors,
-            pieces,
-        }
     }
 
     /// Get all squares that are either empty or occupied by the enemy

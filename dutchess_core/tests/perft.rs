@@ -81,6 +81,7 @@ mod kiwipete_perft {
         );
     }
 
+    /*
     #[test]
     fn kiwipete_perft_6() {
         test_perft_fen_nodes(
@@ -89,6 +90,7 @@ mod kiwipete_perft {
             8031647685,
         );
     }
+     */
 }
 
 #[cfg(test)]

@@ -8,10 +8,10 @@ include!("blobs/magics.rs");
 
 pub struct MoveGenerator<'a> {
     position: &'a Position,
-    attacks: [BitBoard; NUM_COLORS],
+    attacks_by_color: [BitBoard; NUM_COLORS],
+    attacks_by_tile: [BitBoard; Tile::COUNT],
     pinmasks: (BitBoard, BitBoard),
     checkers: BitBoard,
-    // pseudo_legal_mobility: [BitBoard; Tile::COUNT],
     legal_mobility: [BitBoard; Tile::COUNT],
     legal_moves: [Move; MAX_NUM_MOVES],
     num_legal_moves: usize,
@@ -20,7 +20,7 @@ pub struct MoveGenerator<'a> {
 impl<'a> MoveGenerator<'a> {
     pub fn new(position: &'a Position) -> Self {
         let mut attacks = [BitBoard::default(); NUM_COLORS];
-        // let mut pseudo_legal_mobility = [BitBoard::default(); Tile::COUNT];
+        let mut attacks_by_tile = [BitBoard::default(); Tile::COUNT];
         let legal_mobility = [BitBoard::default(); Tile::COUNT];
         let checkers = BitBoard::default();
         let pinmasks = (BitBoard::default(), BitBoard::default());
@@ -31,16 +31,16 @@ impl<'a> MoveGenerator<'a> {
             let piece = position.board().piece_at(tile).unwrap();
             let color = piece.color();
 
-            // pseudo_legal_mobility[tile] = default_attacks_for(&piece, tile, blockers);
+            attacks_by_tile[tile] = default_attacks_for(&piece, tile, blockers);
             attacks[color] |= default_attacks_for(&piece, tile, blockers);
         }
 
         Self {
             position,
-            attacks,
+            attacks_by_color: attacks,
             pinmasks,
             checkers,
-            // pseudo_legal_mobility,
+            attacks_by_tile,
             legal_mobility,
             legal_moves: [Move::default(); MAX_NUM_MOVES],
             num_legal_moves: 0,
@@ -51,10 +51,12 @@ impl<'a> MoveGenerator<'a> {
         let mut movegen = Self::new(position);
         let color = position.current_player();
         let king_tile = position.board().king(color).to_tile_unchecked();
-        movegen.pinmasks = movegen.compute_pinmasks_for(position.board(), king_tile, color);
-        movegen.checkers = movegen.compute_checkers_for(position.board(), color);
 
-        let legal_mobility = movegen.compute_legal_mobility(&position);
+        movegen.checkers =
+            movegen.compute_attacks_to(position.board(), king_tile, color.opponent());
+        movegen.pinmasks = movegen.compute_pinmasks_for(position.board(), king_tile, color);
+
+        let legal_mobility = movegen.compute_legal_mobility();
         movegen.generate_moves_from_mobility(&legal_mobility);
         movegen.legal_mobility = legal_mobility;
         movegen
@@ -64,8 +66,12 @@ impl<'a> MoveGenerator<'a> {
         &self.position
     }
 
-    pub const fn attacks(&self, color: Color) -> BitBoard {
-        self.attacks[color.index()]
+    pub const fn attacks_by_color(&self, color: Color) -> BitBoard {
+        self.attacks_by_color[color.index()]
+    }
+
+    pub const fn attacks_by_tile(&self, tile: Tile) -> BitBoard {
+        self.attacks_by_tile[tile.index()]
     }
 
     pub const fn pinmasks(&self) -> (BitBoard, BitBoard) {
@@ -86,7 +92,7 @@ impl<'a> MoveGenerator<'a> {
 
     /// Returns `true` if `tile` is attacked by `color`.
     pub fn is_attacked_by(&self, tile: Tile, color: Color) -> bool {
-        (self.attacks(color.opponent()) & tile.bitboard()).is_nonempty()
+        (self.attacks_by_color(color.opponent()) & tile.bitboard()).is_nonempty()
     }
 
     pub const fn is_in_check(&self) -> bool {
@@ -200,30 +206,29 @@ impl<'a> MoveGenerator<'a> {
         }
     }
 
-    fn compute_legal_mobility(&self, position: &Position) -> [BitBoard; Tile::COUNT] {
-        let color = position.current_player();
+    fn compute_legal_mobility(&self) -> [BitBoard; Tile::COUNT] {
+        let color = self.position().current_player();
+        let board = self.position().board();
         let mut moves = [BitBoard::default(); Tile::COUNT];
-        let king_tile = position.board().king(color).to_tile_unchecked();
+        let king_tile = board.king(color).to_tile_unchecked();
 
         // If the king is in check, move generation is much more strict
-        let checkers = self.compute_checkers_for(position.board(), color);
-        let checkmask = match checkers.population() {
+        let checkmask = match self.checkers.population() {
             // Not in check; checkmask is irrelevant
             0 => BitBoard::FULL_BOARD,
             // In single-check, so something must capture or block the check, or the king must leave check
-            1 => ray_between(king_tile, checkers.to_tile_unchecked()) | checkers, // Need to OR so that the attacking piece appears in the checkmask (Knights)
+            1 => ray_between(king_tile, self.checkers.to_tile_unchecked()) | self.checkers, // Need to OR so that the attacking piece appears in the checkmask (Knights)
 
             // In double-check, so only the King can move, so move him somewhere not attacked
             _ => {
-                let unsafe_squares =
-                    self.compute_squares_attacked_by(position.board(), color.opponent());
-                let king_attacks = king_attacks(king_tile);
-                let enemy_or_empty = position.board().enemy_or_empty(color);
+                let unsafe_squares = self.attacks_by_color(color.opponent());
+                let king_attacks = self.attacks_by_tile(king_tile);
+                let enemy_or_empty = board.enemy_or_empty(color);
 
                 // These are the attack lines of the pieces checking the King. Don't move along them!
                 let mut discoverable_checks = BitBoard::EMPTY_BOARD;
-                for checker in checkers {
-                    let attacking_piece = position.board().piece_at(checker).unwrap();
+                for checker in self.checkers {
+                    let attacking_piece = board.piece_at(checker).unwrap();
                     if attacking_piece.is_pawn() {
                         discoverable_checks |=
                             ray_between(king_tile, checker) & !checker.bitboard();
@@ -241,27 +246,165 @@ impl<'a> MoveGenerator<'a> {
             }
         };
 
-        // Some pieces may be pinned, preventing them from moving freely without endangering the king
-        // let (pinmask_hv, pinmask_diag) = compute_pinmasks_for(position.board(), king_tile, color);
-        let (pinmask_hv, pinmask_diag) = self.pinmasks;
-
-        let not_enemy_king = !position.board().king(color.opponent());
+        let not_enemy_king = !board.king(color.opponent());
 
         // Assign legal moves to each piece
-        for tile in position.board().color(color) {
-            let piece = position.board().get(tile).unwrap();
+        for tile in board.color(color) {
+            let piece = board.get(tile).unwrap();
 
-            moves[tile.index()] = self.compute_legal_mobility_at(
-                position,
-                &piece,
-                tile,
-                checkmask,
-                pinmask_hv,
-                pinmask_diag,
-            ) & not_enemy_king;
+            moves[tile.index()] =
+                self.compute_legal_mobility_at(&piece, tile, checkmask) & not_enemy_king;
         }
 
         moves
+    }
+
+    fn compute_legal_mobility_at(
+        &self,
+        piece: &Piece,
+        tile: Tile,
+        checkmask: BitBoard,
+    ) -> BitBoard {
+        let color = piece.color();
+        let board = self.position().board();
+
+        // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
+        let attacks = self.attacks_by_tile(tile);
+
+        // Anything that isn't a friendly piece
+        let enemy_or_empty = board.enemy_or_empty(color);
+
+        // A BitBoard of this piece
+        let piece_bb = tile.bitboard();
+
+        // A BitBoard of our King
+        let king_bb = board.king(color);
+
+        // The File / Rank / Diagonal containing our King and this Piece
+        let pinning_ray = ray_containing(tile, king_bb.to_tile_unchecked());
+
+        // Check if this piece is pinned along any of the pinmasks
+        let (pinmask_ortho, pinmask_diag) = self.pinmasks();
+        let is_pinned = (pinmask_ortho | pinmask_diag).contains(piece_bb);
+        let pinmask = BitBoard::from_bool(!is_pinned) | pinning_ray;
+        // println!("PINMASK ({is_pinned}):\n{pinmask:?}");
+
+        match piece.kind() {
+            PieceKind::Pawn => {
+                // A pinned pawn's movement depends on its pin:
+                //  - If pinned on a file, it can only push
+                //  - If pinned on a rank, it cannot do anything
+                //  - If pinned on a diagonal, it can only capture, and only along that diagonal
+
+                // By default, a pawn can push forward two on it's starting rank, and one elsewhere
+                let unblocked_pushes = pawn_pushes(tile, color);
+
+                // If there is a piece in front of this pawn, we cannot push two
+                let pushes = if unblocked_pushes.contains(board.occupied()) {
+                    piece_bb.advance_by(color, 1) // Piece in front; Can only push one
+                } else {
+                    unblocked_pushes
+                };
+
+                // By default, a pawn can attack diagonally in front of it, if there's an enemy piece
+                // let attacks = pawn_attacks(tile, color);
+                let empty = board.empty();
+                let enemy = board.color(color.opponent());
+
+                let ep_bb = if let Some(ep_tile) = self.position().ep_tile() {
+                    // println!("{piece} at {tile} CAN capture EP at {ep_tile}. Should it?");
+                    // Construct a board without the EP target and EP capturer
+                    let ep_bb = ep_tile.bitboard();
+                    // println!("EP BB:\n{ep_bb}");
+                    let ep_pawn = ep_bb.advance_by(color.opponent(), 1);
+                    // println!("EP PAWN:\n{ep_pawn}");
+                    let board_after_ep = board
+                        .without(piece_bb | ep_pawn)
+                        .with_piece(*piece, ep_tile);
+                    // .with(ep_bb, *piece);
+                    // println!("AFTER EP:\n{board_after_ep}");
+
+                    // Get all enemy attacks on the board without these pieces
+                    let enemy_attacks =
+                        self.compute_squares_attacked_by(&board_after_ep, color.opponent());
+                    // println!("Enemy attacks:\n{enemy_attacks}");
+
+                    // If the enemy could now attack our King, en passant is not legal
+                    if enemy_attacks.contains(king_bb) {
+                        // println!("EN PASSANT IS NOT SAFE");
+                        BitBoard::EMPTY_BOARD
+                    } else {
+                        // println!("EN PASSANT IS SAFE:\n{ep_bb:?}");
+                        // println!("EN PASSANT IS SAFE");
+                        // Otherwise, en passant is safe
+                        ep_bb
+                    }
+
+                    // TODO this is equivalent to the above, just a one-liner
+                    // BitBoard::from_bool(!enemy_attacks.contains(king_bb)) & ep_bb
+                } else {
+                    BitBoard::EMPTY_BOARD
+                };
+
+                let pseudo_legal = (pushes & empty) | (attacks & (enemy | ep_bb));
+
+                // Note that we must OR with the checkmask just in case the king is being checked by a pawn that can be captured by EP
+                pseudo_legal & (checkmask | ep_bb) & pinmask
+            }
+            PieceKind::King => {
+                let friendlies = board.color(color) & !king_bb;
+                let enemies = board.color(color.opponent());
+
+                // A king can move anywhere that isn't attacked by the enemy
+                let safe_squares = !self.compute_attacks_without_king(board, color);
+
+                let castling_availability = |side: [bool; 2], rook_tile, dst_tile| {
+                    // Check if we can castle at all on this side
+                    let can_castle = BitBoard::from_bool(side[color]);
+
+                    // These squares must not be attacked by the enemy
+                    let castling = can_castle & ray_between(tile, rook_tile);
+
+                    // These squares must be empty
+                    let squares_between = ray_between(tile, dst_tile);
+
+                    if safe_squares.contains_all(&castling)
+                        && (squares_between & (friendlies | enemies)).is_empty()
+                    {
+                        castling
+                    } else {
+                        BitBoard::EMPTY_BOARD
+                    }
+                };
+
+                let kingside = castling_availability(
+                    self.position().castling_rights().kingside,
+                    Tile::G1.rank_relative_to(color),
+                    Tile::G1.rank_relative_to(color),
+                );
+                // println!("kingside:\n{kingside}\n");
+
+                let queenside = castling_availability(
+                    self.position().castling_rights().queenside,
+                    Tile::C1.rank_relative_to(color),
+                    Tile::B1.rank_relative_to(color),
+                );
+                // println!("queenside:\n{queenside}\n");
+
+                (attacks | kingside | queenside) & enemy_or_empty & safe_squares
+            }
+            PieceKind::Knight => {
+                // A knight can move to any non-friendly space within the checkmask.
+                // Unless it is pinned, in which case it cannot move
+                let pseudo_legal = attacks & enemy_or_empty;
+                pseudo_legal & checkmask & pinmask
+            }
+            PieceKind::Rook | PieceKind::Bishop | PieceKind::Queen => {
+                let pseudo_legal = attacks & enemy_or_empty;
+
+                pseudo_legal & checkmask & pinmask
+            }
+        }
     }
 
     /// Computes a [`BitBoard`] of all of the squares that can be attacked by [`Color`] pieces.
@@ -283,10 +426,10 @@ impl<'a> MoveGenerator<'a> {
 
     /// Removes the defending King from this board and computes the attacks of the `attacker_color` pieces,
     /// returning a [`BitBoard`] of all of the squares that can be attacked.
-    fn king_danger_squares(&self, board: &ChessBoard, attacker_color: Color) -> BitBoard {
-        let king_bb = board.king(attacker_color.opponent());
+    fn compute_attacks_without_king(&self, board: &ChessBoard, king_color: Color) -> BitBoard {
+        let king_bb = board.king(king_color);
         let kingless = board.without(king_bb);
-        self.compute_squares_attacked_by(&kingless, attacker_color)
+        self.compute_squares_attacked_by(&kingless, king_color.opponent())
     }
 
     /// Computes a [`BitBoard`] of all the pieces that attack the provided [`Tile`].
@@ -327,7 +470,7 @@ impl<'a> MoveGenerator<'a> {
         tile: Tile,
         color: Color,
     ) -> (BitBoard, BitBoard) {
-        let mut pinmask_hv = BitBoard::EMPTY_BOARD;
+        let mut pinmask_ortho = BitBoard::EMPTY_BOARD;
         let mut pinmask_diag = BitBoard::EMPTY_BOARD;
 
         let friendlies = board.color(color);
@@ -345,7 +488,7 @@ impl<'a> MoveGenerator<'a> {
         for attacker_tile in orthogonal_overlap {
             let ray = ray_between(tile, attacker_tile);
             if (ray & friendlies).population() <= 2 && (ray & enemies).population() <= 1 {
-                pinmask_hv |= ray;
+                pinmask_ortho |= ray;
             }
         }
 
@@ -357,174 +500,7 @@ impl<'a> MoveGenerator<'a> {
             }
         }
 
-        (pinmask_hv, pinmask_diag)
-    }
-
-    fn compute_checkers_for(&self, board: &ChessBoard, color: Color) -> BitBoard {
-        let king = board.king(color);
-        let tile = king.to_tile_unchecked();
-
-        self.compute_attacks_to(board, tile, color.opponent())
-    }
-
-    fn compute_legal_mobility_at(
-        &self,
-        position: &Position,
-        piece: &Piece,
-        tile: Tile,
-        checkmask: BitBoard,
-        pinmask_hv: BitBoard,
-        pinmask_diag: BitBoard,
-    ) -> BitBoard {
-        let color = piece.color();
-
-        // These are not yet pseudo-legal; they are just BitBoards of the default movement behavior for each piece
-        let attacks = default_attacks_for(piece, tile, position.board().occupied());
-
-        // Anything that isn't a friendly piece
-        let enemy_or_empty = position.board().enemy_or_empty(color);
-
-        // A BitBoard of this piece
-        let piece_bb = tile.bitboard();
-
-        // A BitBoard of our King
-        let king_bb = position.board().king(color);
-
-        // The File / Rank / Diagonal containing our King and this Piece
-        let pinning_ray = ray_containing(tile, king_bb.to_tile_unchecked());
-
-        // Check if this piece is pinned along any of the pinmasks
-        let is_pinned = (pinmask_hv | pinmask_diag).contains(piece_bb);
-        let pinmask = BitBoard::from_bool(!is_pinned) | pinning_ray;
-        // println!("PINMASK ({is_pinned}):\n{pinmask:?}");
-
-        match piece.kind() {
-            PieceKind::Pawn => {
-                // A pinned pawn's movement depends on its pin:
-                //  - If pinned on a file, it can only push
-                //  - If pinned on a rank, it cannot do anything
-                //  - If pinned on a diagonal, it can only capture, and only along that diagonal
-
-                // By default, a pawn can push forward two on it's starting rank, and one elsewhere
-                let unblocked_pushes = pawn_pushes(tile, color);
-
-                // If there is a piece in front of this pawn, we cannot push two
-                let pushes = if unblocked_pushes.contains(position.board().occupied()) {
-                    piece_bb.advance_by(color, 1) // Piece in front; Can only push one
-                } else {
-                    unblocked_pushes
-                };
-
-                // By default, a pawn can attack diagonally in front of it, if there's an enemy piece
-                let attacks = pawn_attacks(tile, color);
-                let empty = position.board().empty();
-                let enemy = position.board().color(color.opponent());
-
-                let ep_bb = if let Some(ep_tile) = position.ep_tile() {
-                    // println!("{piece} at {tile} CAN capture EP at {ep_tile}. Should it?");
-                    // Construct a board without the EP target and EP capturer
-                    let ep_bb = ep_tile.bitboard();
-                    // println!("EP BB:\n{ep_bb}");
-                    let ep_pawn = ep_bb.advance_by(color.opponent(), 1);
-                    // println!("EP PAWN:\n{ep_pawn}");
-                    let board_after_ep = position
-                        .board()
-                        .without(piece_bb | ep_pawn)
-                        .with_piece(*piece, ep_tile);
-                    // println!("AFTER EP:\n{board_after_ep}");
-
-                    // Get all enemy attacks on the board without these pieces
-                    let enemy_attacks =
-                        self.compute_squares_attacked_by(&board_after_ep, color.opponent());
-                    // println!("Enemy attacks:\n{enemy_attacks}");
-
-                    // If the enemy could now attack our King, en passant is not legal
-                    if enemy_attacks.contains(king_bb) {
-                        // println!("EN PASSANT IS NOT SAFE");
-                        BitBoard::EMPTY_BOARD
-                    } else {
-                        // println!("EN PASSANT IS SAFE:\n{ep_bb:?}");
-                        // println!("EN PASSANT IS SAFE");
-                        // Otherwise, en passant is safe
-                        ep_bb
-                    }
-
-                    // TODO this is equivalent to the above, just a one-liner
-                    // BitBoard::from_bool(!enemy_attacks.contains(king_bb)) & ep_bb
-                } else {
-                    BitBoard::EMPTY_BOARD
-                };
-
-                let pseudo_legal = (pushes & empty) | (attacks & (enemy | ep_bb));
-
-                // Note that we must OR with the checkmask just in case the king is being checked by a pawn that can be captured by EP
-                pseudo_legal & (checkmask | ep_bb) & pinmask
-            }
-            PieceKind::King => {
-                let friendlies = position.board().color(color) & !king_bb;
-                let enemies = position.board().color(color.opponent());
-
-                // A king can move anywhere that isn't attacked by the enemy
-                let enemy_attacks = self.king_danger_squares(position.board(), color.opponent());
-                // println!("ENEMY ATTACKS:\n{enemy_attacks}");
-
-                let kingside = if position.castling_rights().kingside[color] {
-                    // These squares must not be attacked by the enemy
-                    let rook_tile = [Tile::G1, Tile::G8][color];
-                    let castling = ray_between(tile, rook_tile);
-
-                    // These squares must be empty
-                    let squares_between = ray_between(tile, rook_tile);
-
-                    if (enemy_attacks & castling).is_empty()
-                        && (squares_between & (friendlies | enemies)).is_empty()
-                    {
-                        castling
-                    } else {
-                        BitBoard::EMPTY_BOARD
-                    }
-                } else {
-                    BitBoard::EMPTY_BOARD
-                };
-                // println!("kingside:\n{kingside}\n");
-
-                let queenside = if position.castling_rights().queenside[color] {
-                    // These squares must not be attacked by the enemy
-                    let rook_tile = [Tile::C1, Tile::C8][color];
-                    let castling = ray_between(tile, rook_tile);
-
-                    // These squares must be empty
-                    let dst_tile = [Tile::B1, Tile::B8][color];
-                    let squares_between = ray_between(tile, dst_tile);
-
-                    if (enemy_attacks & castling).is_empty()
-                        && (squares_between & (friendlies | enemies)).is_empty()
-                    {
-                        castling
-                    } else {
-                        BitBoard::EMPTY_BOARD
-                    }
-                } else {
-                    BitBoard::EMPTY_BOARD
-                };
-                // println!("queenside:\n{queenside}\n");
-
-                let castling = kingside | queenside;
-
-                (attacks | castling) & enemy_or_empty & !enemy_attacks
-            }
-            PieceKind::Knight => {
-                // A knight can move to any non-friendly space within the checkmask.
-                // Unless it is pinned, in which case it cannot move
-                let pseudo_legal = attacks & enemy_or_empty;
-                pseudo_legal & checkmask & pinmask
-            }
-            PieceKind::Rook | PieceKind::Bishop | PieceKind::Queen => {
-                let pseudo_legal = attacks & enemy_or_empty;
-
-                pseudo_legal & checkmask & pinmask
-            }
-        }
+        (pinmask_ortho, pinmask_diag)
     }
 }
 
