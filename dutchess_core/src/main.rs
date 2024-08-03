@@ -6,10 +6,10 @@ fn main() {
     let fen = "k6K/8/2P5/8/6n1/2nn4/P2P2P1/8 w - - 0 1";
     let position = Position::from_fen(fen).unwrap();
     println!("{position:?}");
-    let movegen = MoveGenerator::new_legal(position);
-    for mv in movegen.legal_moves() {
-        println!("{mv}");
-    }
+    // let movegen = MoveGenerator::new_legal(position);
+    // for mv in movegen.legal_moves() {
+    //     println!("{mv}");
+    // }
 
     /*
     generate_ray_table_blobs("dutchess_core/src/blobs").unwrap();

@@ -1,8 +1,12 @@
 use std::ops::Deref;
 
+use arrayvec::ArrayVec;
+
+use crate::MAX_NUM_MOVES;
+
 use super::{
     BitBoard, ChessBoard, Color, Move, MoveKind, Piece, PieceKind, Position, Rank, Tile,
-    MAX_NUM_MOVES, NUM_COLORS, NUM_PIECE_TYPES,
+    NUM_COLORS, NUM_PIECE_TYPES,
 };
 
 include!("blobs/magics.rs"); // TODO: Make these into blobs
@@ -16,8 +20,6 @@ pub struct MoveGenerator {
     checkers: BitBoard,
     discoverable_checks: BitBoard,
     legal_mobility: [BitBoard; Tile::COUNT],
-    pub(crate) legal_moves: [Move; MAX_NUM_MOVES],
-    pub(crate) num_legal_moves: usize,
 }
 
 impl MoveGenerator {
@@ -30,8 +32,6 @@ impl MoveGenerator {
             discoverable_checks: BitBoard::default(),
             attacks_by_tile: [BitBoard::default(); Tile::COUNT],
             legal_mobility: [BitBoard::default(); Tile::COUNT],
-            legal_moves: [Move::default(); MAX_NUM_MOVES],
-            num_legal_moves: 0,
         };
 
         movegen.generate_pseudo_legal();
@@ -91,28 +91,34 @@ impl MoveGenerator {
         self.checkers().population() > 1
     }
 
-    pub fn is_in_checkmate(&self) -> bool {
-        self.is_in_check() && self.num_legal_moves == 0
-    }
+    // pub fn is_in_checkmate(&self) -> bool {
+    //     self.is_in_check() && self.num_legal_moves == 0
+    // }
 
-    pub fn order_moves<K: Ord>(&mut self, f: impl FnMut(&Move) -> K) {
-        self.legal_moves[..self.num_legal_moves].sort_by_cached_key(f);
-    }
+    // pub fn order_moves<K: Ord>(&mut self, f: impl FnMut(&Move) -> K) {
+    //     self.legal_moves[..self.num_legal_moves].sort_by_cached_key(f);
+    // }
 
-    pub fn num_legal_moves(&self) -> usize {
-        self.num_legal_moves
-    }
+    // pub fn num_legal_moves(&self) -> usize {
+    //     self.num_legal_moves
+    // }
 
-    pub fn legal_moves(&self) -> &[Move] {
-        &self.legal_moves[..self.num_legal_moves]
-    }
+    // pub fn legal_moves(&self) -> &[Move] {
+    //     &self.legal_moves[..self.num_legal_moves]
+    // }
 
-    pub fn legal_moves_mut(&mut self) -> &mut [Move] {
-        &mut self.legal_moves[..self.num_legal_moves]
-    }
+    // pub fn legal_moves_mut(&mut self) -> &mut [Move] {
+    //     &mut self.legal_moves[..self.num_legal_moves]
+    // }
 
-    pub fn legal_captures(&self) -> impl Iterator<Item = Move> {
-        self.legal_moves.into_iter().filter(|mv| mv.is_capture())
+    // pub fn legal_captures(&self) -> impl Iterator<Item = Move> {
+    //     self.legal_moves.into_iter().filter(|mv| mv.is_capture())
+    // }
+
+    pub fn legal_moves(&self) -> ArrayVec<Move, MAX_NUM_MOVES> {
+        let mut moves = ArrayVec::new();
+        self.compute_legal_moves(&mut moves);
+        moves
     }
 
     pub fn generate_legal(&mut self) {
@@ -132,12 +138,11 @@ impl MoveGenerator {
 
         // Now generate and store the legal moves
         self.generate_legal_mobility();
-        self.generate_legal_moves_from_mobility();
+        // self.compute_legal_moves();
     }
 
-    fn generate_legal_moves_from_mobility(&mut self) {
+    pub fn compute_legal_moves(&self, moves: &mut ArrayVec<Move, MAX_NUM_MOVES>) {
         let color = self.position().current_player();
-        self.num_legal_moves = 0;
 
         // Loop over all tiles relevant to the current player
         for from in self.position().board().color(color) {
@@ -183,28 +188,22 @@ impl MoveGenerator {
                     if to.rank() == Rank::eighth(color) {
                         if let MoveKind::Capture = kind {
                             // The pawn can reach the enemy's home rank and become promoted
-                            self.legal_moves[self.num_legal_moves] =
-                                Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Knight));
-                            self.num_legal_moves += 1;
-                            self.legal_moves[self.num_legal_moves] =
-                                Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Rook));
-                            self.num_legal_moves += 1;
-                            self.legal_moves[self.num_legal_moves] =
-                                Move::new(from, to, MoveKind::CaptureAndPromote(PieceKind::Bishop));
-                            self.num_legal_moves += 1;
+                            kind = MoveKind::CaptureAndPromote(PieceKind::Knight);
+                            moves.push(Move::new(from, to, kind));
+                            kind = MoveKind::CaptureAndPromote(PieceKind::Bishop);
+                            moves.push(Move::new(from, to, kind));
+                            kind = MoveKind::CaptureAndPromote(PieceKind::Rook);
+                            moves.push(Move::new(from, to, kind));
                             // This gets pushed to the move list after this if-else chain
                             kind = MoveKind::CaptureAndPromote(PieceKind::Queen);
                         } else {
                             // The pawn can reach the enemy's home rank and become promoted
-                            self.legal_moves[self.num_legal_moves] =
-                                Move::new(from, to, MoveKind::Promote(PieceKind::Knight));
-                            self.num_legal_moves += 1;
-                            self.legal_moves[self.num_legal_moves] =
-                                Move::new(from, to, MoveKind::Promote(PieceKind::Rook));
-                            self.num_legal_moves += 1;
-                            self.legal_moves[self.num_legal_moves] =
-                                Move::new(from, to, MoveKind::Promote(PieceKind::Bishop));
-                            self.num_legal_moves += 1;
+                            kind = MoveKind::Promote(PieceKind::Knight);
+                            moves.push(Move::new(from, to, kind));
+                            kind = MoveKind::Promote(PieceKind::Bishop);
+                            moves.push(Move::new(from, to, kind));
+                            kind = MoveKind::Promote(PieceKind::Rook);
+                            moves.push(Move::new(from, to, kind));
                             // This gets pushed to the move list after this if-else chain
                             kind = MoveKind::Promote(PieceKind::Queen);
                         }
@@ -212,8 +211,7 @@ impl MoveGenerator {
                 }
 
                 // Everyone else is normal
-                self.legal_moves[self.num_legal_moves] = Move::new(from, to, kind);
-                self.num_legal_moves += 1;
+                moves.push(Move::new(from, to, kind));
             }
         }
     }
