@@ -1,7 +1,6 @@
 use std::{ops::Neg, time::Instant};
 
-use arrayvec::ArrayVec;
-use dutchess_core::{Game, Move, MAX_NUM_MOVES};
+use dutchess_core::{Game, Move};
 use rand::{prelude::SliceRandom, thread_rng};
 
 use crate::uci::SearchOptions;
@@ -145,8 +144,7 @@ impl<'a> Search<'a> {
         }
 
         self.game = game.clone();
-        let mut moves = ArrayVec::<Move, MAX_NUM_MOVES>::new();
-        game.compute_legal_moves(&mut moves);
+        let mut moves = game.legal_moves();
         moves.sort_by_cached_key(|mv| self.score_move(&game, mv));
 
         // println!("MOVES: {moves:?}");
@@ -210,8 +208,7 @@ impl<'a> Search<'a> {
             return self.quiescence(game, alpha, beta);
         }
 
-        let mut moves = ArrayVec::<Move, MAX_NUM_MOVES>::new();
-        game.compute_legal_moves(&mut moves);
+        let mut moves = game.legal_moves();
         if moves.len() == 0 {
             if game.is_in_check() {
                 return i32::MIN + depth as i32; // Prefer earlier checks
@@ -265,8 +262,7 @@ impl<'a> Search<'a> {
             alpha = stand_pat;
         }
 
-        let mut moves = ArrayVec::<Move, MAX_NUM_MOVES>::new();
-        game.compute_legal_moves(&mut moves);
+        let mut moves = game.legal_moves();
 
         // Handle cases for checkmate and stalemate
         if moves.len() == 0 {

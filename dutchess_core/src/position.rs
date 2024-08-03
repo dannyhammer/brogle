@@ -1106,6 +1106,11 @@ impl ChessBoard {
         self.piece_parts(color, PieceKind::King)
     }
 
+    /// Fetches the [`BitBoard`] for the Pawns of the provided color.
+    pub const fn pawns(&self, color: Color) -> BitBoard {
+        self.piece_parts(color, PieceKind::Pawn)
+    }
+
     /// Get all squares that are either empty or occupied by the enemy
     ///
     /// # Example

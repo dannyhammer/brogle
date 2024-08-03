@@ -1,9 +1,7 @@
 /*
-use std::process;
+use dutchess_core::{Move, MoveGenerator};
 
-use dutchess_core::{Move, Position};
-
-fn perft(position: Position, depth: usize) -> usize {
+fn perft(movegen: MoveGenerator, depth: usize) -> usize {
     if depth == 0 {
         return 1;
     }
@@ -13,7 +11,7 @@ fn perft(position: Position, depth: usize) -> usize {
 
     let mut nodes = 0;
 
-    let moves = position.legal_moves();
+    let moves = movegen.legal_moves();
     // eprintln!("LEGAL MOVES: {moves:?}");
     for chessmove in moves.iter() {
         let mut cloned = position.clone();
@@ -65,5 +63,43 @@ fn main() {
     println!("\n{nodes}");
 }
 
- */
-fn main() {}
+*/
+use std::process;
+
+use dutchess_core::{perft, Game, Move};
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() < 3 {
+        println!("Usage: {} <depth> <fen> [moves]", args[0]);
+        process::exit(1);
+    }
+
+    let depth: usize = args[1].parse().expect("Failed to parse depth value");
+    let fen = &args[2];
+    let moves = if args.len() > 3 { &args[3] } else { "" };
+
+    let mut game = Game::from_fen(fen).expect("Bad fen");
+    for move_str in moves.split_ascii_whitespace() {
+        let parsed = Move::from_uci(&game, move_str).unwrap();
+
+        eprintln!("Applying {parsed} to {}", game.position());
+        game.make_move(parsed);
+    }
+
+    let mut nodes = 0;
+    let moves = game.legal_moves();
+
+    for chessmove in moves.iter() {
+        let mut cloned = game.clone();
+        cloned.make_move(*chessmove);
+        let new_nodes = perft(&cloned, depth - 1);
+        // cloned.unmake_move(chessmove);
+        nodes += new_nodes;
+
+        println!("{chessmove} {new_nodes}");
+    }
+
+    println!("\n{nodes}");
+}

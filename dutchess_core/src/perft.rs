@@ -4,9 +4,7 @@ use std::{
     time::Instant,
 };
 
-use arrayvec::ArrayVec;
-
-use crate::{Move, MoveGenerator, MAX_NUM_MOVES};
+use crate::MoveGenerator;
 
 use super::Position;
 
@@ -149,8 +147,7 @@ pub fn print_split_perft<const PRETTY: bool>(position: &Position, depth: usize) 
     let now = Instant::now();
     let mut total_nodes = 0;
     let movegen = MoveGenerator::new_legal(position.clone());
-    let mut moves = ArrayVec::<Move, MAX_NUM_MOVES>::new();
-    movegen.compute_legal_moves(&mut moves);
+    let moves = movegen.legal_moves();
     for i in 0..moves.len() {
         let mv = moves[i];
         let new_pos = position.clone().with_move_made(mv);
@@ -218,8 +215,7 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
     }
 
     let movegen = MoveGenerator::new_legal(position.clone());
-    let mut moves = ArrayVec::<Move, MAX_NUM_MOVES>::new();
-    movegen.compute_legal_moves(&mut moves);
+    let moves = movegen.legal_moves();
 
     if depth == 1 {
         res.nodes = moves.len() as u64;
@@ -241,8 +237,7 @@ pub fn perft(position: &Position, depth: usize) -> u64 {
     // Bulk counting; no need to recurse again just to apply a singular move and return 1.
     if depth == 1 {
         let movegen = MoveGenerator::new_legal(position.clone());
-        let mut moves = ArrayVec::<Move, MAX_NUM_MOVES>::new();
-        movegen.compute_legal_moves(&mut moves);
+        let moves = movegen.legal_moves();
         return moves.len() as u64;
     }
 
@@ -253,8 +248,7 @@ pub fn perft(position: &Position, depth: usize) -> u64 {
 
     let mut nodes = 0;
     let movegen = MoveGenerator::new_legal(position.clone());
-    let mut moves = ArrayVec::<Move, MAX_NUM_MOVES>::new();
-    movegen.compute_legal_moves(&mut moves);
+    let moves = movegen.legal_moves();
 
     for i in 0..moves.len() {
         let mv = moves[i];
