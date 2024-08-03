@@ -5,6 +5,8 @@ use std::{
 
 use anyhow::{anyhow, bail, Result};
 
+use crate::MoveGenerator;
+
 use super::{
     utils::FEN_STARTPOS, BitBoard, Color, File, Move, MoveKind, Piece, PieceKind, Rank, Tile,
     NUM_COLORS, NUM_PIECE_TYPES,
@@ -28,14 +30,14 @@ pub enum GameResult {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Game {
-    position: Position,
+    movegen: MoveGenerator,
     history: Vec<Position>,
 }
 
 impl Game {
     pub fn new() -> Self {
         Self {
-            position: Position::new(),
+            movegen: MoveGenerator::new_legal(Position::new()),
             history: Vec::with_capacity(128),
         }
     }
@@ -43,19 +45,20 @@ impl Game {
     pub fn from_fen(fen: &str) -> Result<Self> {
         let position = Position::from_fen(fen)?;
         Ok(Self {
-            position,
+            movegen: MoveGenerator::new_legal(position),
             history: Vec::with_capacity(128),
         })
     }
 
-    pub fn with_move_made(mut self, chessmove: Move) -> Self {
-        self.position_mut().make_move(chessmove);
-        self
+    pub fn with_move_made(&self, chessmove: Move) -> Self {
+        let mut new = self.clone();
+        new.make_move(chessmove);
+        new
     }
 
     pub fn is_repetition(&self) -> bool {
         for prev_pos in self.history.iter().rev().skip(1).step_by(2) {
-            if prev_pos == &self.position {
+            if prev_pos == self.position() {
                 return true;
             }
             // if prev_pos.halfmove == 0 {
@@ -65,19 +68,31 @@ impl Game {
         return false;
     }
 
-    pub fn position(&self) -> &Position {
-        &self.position
+    pub fn movegen(&self) -> &MoveGenerator {
+        &self.movegen
     }
 
-    pub fn position_mut(&mut self) -> &mut Position {
-        &mut self.position
+    pub fn movegen_mut(&mut self) -> &mut MoveGenerator {
+        &mut self.movegen
+    }
+
+    pub fn make_move(&mut self, chessmove: Move) {
+        self.history.push(self.position.clone());
+        let new_pos = self.position().clone().with_move_made(chessmove);
+        self.movegen = MoveGenerator::new_legal(new_pos);
+    }
+
+    pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
+        for chessmove in moves {
+            self.make_move(chessmove);
+        }
     }
 }
 
 impl Deref for Game {
-    type Target = Position;
+    type Target = MoveGenerator;
     fn deref(&self) -> &Self::Target {
-        self.position()
+        self.movegen()
     }
 }
 

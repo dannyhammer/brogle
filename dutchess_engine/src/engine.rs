@@ -10,7 +10,7 @@ use std::{
 
 use anyhow::Result;
 
-use crate::{
+use super::{
     search::{Search, SearchResult},
     uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
     Evaluator,
@@ -97,8 +97,8 @@ impl Engine {
             // UciOption::combo("Style", "Normal", ["Solid", "Normal", "Risky"]),
             // UciOption::string("NalimovPath", "c:\\"),
             // UciOption::button("Clear Hash"),
-            UciOption::spin("Threads", 1, 1, 1),
-            UciOption::spin("Hash", 1, 1, 1),
+            // UciOption::spin("Threads", 1, 1, 1),
+            // UciOption::spin("Hash", 1, 1, 1),
         ]
         .into_iter()
     }
@@ -124,9 +124,8 @@ impl Engine {
     //         .map(|handle| handle.join().unwrap())
     // }
 
-    fn new_game(&mut self) {
-        // *self = Self::new();
-    }
+    /// Called when `ucinewgame` command is received. Resets all game-specific options.
+    fn new_game(&mut self) {}
 
     /*
     fn send_bestmove(&self) -> io::Result<()> {
@@ -141,6 +140,8 @@ impl Engine {
         self.bestmove(bestmove, ponder)
     }
      */
+
+    /// Parses the custom `search` command
     fn parse_search_command(&self, rest: &str) -> Result<EngineCommand, String> {
         let mut args = rest.split_ascii_whitespace();
 
@@ -159,6 +160,7 @@ impl Engine {
         Ok(EngineCommand::Search(depth, iterative))
     }
 
+    /// Parses the custom `perft` command
     fn parse_perft_command(&self, rest: &str) -> Result<EngineCommand, String> {
         let mut args = rest.split_ascii_whitespace();
 
@@ -185,6 +187,7 @@ impl Engine {
         })
     }
 
+    /// Parses the custom `eval` command
     fn parse_eval_command(&self, rest: &str) -> Result<EngineCommand, String> {
         let mut args = rest.split_ascii_whitespace();
 
@@ -203,6 +206,7 @@ impl Engine {
         Ok(EngineCommand::Eval(pos))
     }
 
+    /// Parses the custom `fen` command
     fn parse_fen_command(&self, rest: &str) -> Result<EngineCommand, String> {
         let mut args = rest.split_ascii_whitespace();
 
@@ -220,6 +224,7 @@ impl Engine {
         Ok(EngineCommand::Fen(fen))
     }
 
+    /// Parses the custom `move` command
     fn parse_move_command(&self, rest: &str) -> Result<EngineCommand, String> {
         if rest.is_empty() {
             return Err(format!("usage: move <move1> [move2 move3 ...]"));
@@ -243,6 +248,7 @@ impl Engine {
         Ok(EngineCommand::Move(moves))
     }
 
+    /// Parses custom commands
     fn parse_custom_command(&self, input: &str) -> Result<EngineCommand, String> {
         let (cmd, rest) = if input.contains(' ') {
             input.split_once(' ').unwrap()
@@ -335,7 +341,7 @@ impl UciEngine for Engine {
                 println!("{}", self.game.position().to_fen())
             }
             EngineCommand::Eval(pos) => println!("{}", Evaluator::new(&pos).eval()),
-            EngineCommand::Move(moves) => self.game.position_mut().make_moves(moves),
+            EngineCommand::Move(moves) => self.game.make_moves(moves),
             EngineCommand::Search(depth, _) => {
                 let search = Search::new(self.game.clone(), depth);
                 let res = search.start();
@@ -411,7 +417,7 @@ impl UciEngine for Engine {
 
         for mv in moves {
             let mv = Move::from_uci(self.game.position(), mv).unwrap();
-            self.game.position_mut().make_move(mv);
+            self.game.make_move(mv);
         }
 
         Ok(())
@@ -483,6 +489,7 @@ impl UciEngine for Engine {
                     search = search.with_ponder(ponder);
                 }
                 let res = search.start();
+                let elapsed = starttime.elapsed();
                 bestmove = res.bestmove;
 
                 // Construct a new message to be sent
@@ -492,7 +499,7 @@ impl UciEngine for Engine {
                     // .multipv(multipv)
                     .score(format!("cp {}", res.score))
                     .nodes(res.nodes_searched)
-                    .nps((res.nodes_searched as f64 / starttime.elapsed().as_secs_f64()) as usize)
+                    .nps((res.nodes_searched as f64 / elapsed.as_secs_f64()) as usize)
                     // .tbhits(tbhits)
                     // .time(format!("{:?}", starttime.elapsed()))
                     .pv([format!("{}", res.bestmove.unwrap())]);
@@ -595,11 +602,11 @@ impl UciEngine for Engine {
 impl Default for Engine {
     fn default() -> Self {
         Self {
-            game: Game::from_fen(FEN_STARTPOS).unwrap(),
-            // game: Position::from_fen(
-            // "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
-            // )
-            // .unwrap(),
+            // game: Game::from_fen(FEN_STARTPOS).unwrap(),
+            game: Game::from_fen(
+                "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            )
+            .unwrap(),
             // ttable: TranspositionTable::default(),
             // protocol: EngineProtocol::UCI,
             debug: false,

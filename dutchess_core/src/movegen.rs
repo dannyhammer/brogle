@@ -7,70 +7,54 @@ use super::{
 
 include!("blobs/magics.rs"); // TODO: Make these into blobs
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MoveGenerator {
-    position: Position,
+    pub(crate) position: Position,
     attacks_by_color: [BitBoard; NUM_COLORS],
     attacks_by_tile: [BitBoard; Tile::COUNT],
     pinmask: BitBoard,
     checkers: BitBoard,
     discoverable_checks: BitBoard,
     legal_mobility: [BitBoard; Tile::COUNT],
-    legal_moves: [Move; MAX_NUM_MOVES],
-    num_legal_moves: usize,
+    pub(crate) legal_moves: [Move; MAX_NUM_MOVES],
+    pub(crate) num_legal_moves: usize,
 }
 
 impl MoveGenerator {
     pub fn new(position: Position) -> Self {
-        let mut attacks_by_color = [BitBoard::default(); NUM_COLORS];
-        let mut attacks_by_tile = [BitBoard::default(); Tile::COUNT];
-        let legal_mobility = [BitBoard::default(); Tile::COUNT];
-        let checkers = BitBoard::default();
-        let discoverable_checks = BitBoard::default();
-        let pinmask = BitBoard::default();
+        let mut movegen = Self {
+            position,
+            attacks_by_color: [BitBoard::default(); NUM_COLORS],
+            pinmask: BitBoard::default(),
+            checkers: BitBoard::default(),
+            discoverable_checks: BitBoard::default(),
+            attacks_by_tile: [BitBoard::default(); Tile::COUNT],
+            legal_mobility: [BitBoard::default(); Tile::COUNT],
+            legal_moves: [Move::default(); MAX_NUM_MOVES],
+            num_legal_moves: 0,
+        };
 
-        let blockers = position.board().occupied();
+        movegen.generate_pseudo_legal();
 
-        for tile in position.board().occupied() {
-            let piece = position.board().piece_at(tile).unwrap();
+        movegen
+    }
+
+    pub fn generate_pseudo_legal(&mut self) {
+        let blockers = self.position.board().occupied();
+
+        for tile in blockers {
+            let piece = self.position.board().piece_at(tile).unwrap();
             let color = piece.color();
 
             let default_attacks = pseudo_legal_movement_for(&piece, tile, blockers);
-            attacks_by_tile[tile] = default_attacks;
-            attacks_by_color[color] |= default_attacks;
-        }
-
-        Self {
-            position,
-            attacks_by_color,
-            pinmask,
-            checkers,
-            discoverable_checks,
-            attacks_by_tile,
-            legal_mobility,
-            legal_moves: [Move::default(); MAX_NUM_MOVES],
-            num_legal_moves: 0,
+            self.attacks_by_tile[tile] = default_attacks;
+            self.attacks_by_color[color] |= default_attacks;
         }
     }
 
     pub fn new_legal(position: Position) -> Self {
         let mut movegen = Self::new(position);
-        let color = movegen.position().current_player();
-        let king_tile = movegen.position().board().king(color).to_tile_unchecked();
-
-        movegen.checkers =
-            movegen.compute_attacks_to(movegen.position().board(), king_tile, color.opponent());
-        movegen.pinmask = movegen.compute_pinmask_for(movegen.position().board(), king_tile, color);
-
-        // These are the rays containing the King and his Checkers
-        // They are used to prevent the King from retreating along a line he is checked on!
-        // Note: A pawn can't generate a discoverable check, as it can only capture 1 square away.
-        for checker in movegen.checkers & !movegen.position().board().kind(PieceKind::Pawn) {
-            movegen.discoverable_checks |= ray_containing(king_tile, checker) ^ checker.bitboard();
-        }
-
-        // Now generate and store the legal moves
-        movegen.generate_legal_mobility();
-        movegen.generate_legal_moves_from_mobility();
+        movegen.generate_legal();
         movegen
     }
 
@@ -115,6 +99,10 @@ impl MoveGenerator {
         self.legal_moves[..self.num_legal_moves].sort_by_cached_key(f);
     }
 
+    pub fn num_legal_moves(&self) -> usize {
+        self.num_legal_moves
+    }
+
     pub fn legal_moves(&self) -> &[Move] {
         &self.legal_moves[..self.num_legal_moves]
     }
@@ -125,6 +113,26 @@ impl MoveGenerator {
 
     pub fn legal_captures(&self) -> impl Iterator<Item = Move> {
         self.legal_moves.into_iter().filter(|mv| mv.is_capture())
+    }
+
+    pub fn generate_legal(&mut self) {
+        let color = self.position().current_player();
+        let king_tile = self.position().board().king(color).to_tile_unchecked();
+
+        self.checkers =
+            self.compute_attacks_to(self.position().board(), king_tile, color.opponent());
+        self.pinmask = self.compute_pinmask_for(self.position().board(), king_tile, color);
+
+        // These are the rays containing the King and his Checkers
+        // They are used to prevent the King from retreating along a line he is checked on!
+        // Note: A pawn can't generate a discoverable check, as it can only capture 1 square away.
+        for checker in self.checkers & !self.position().board().kind(PieceKind::Pawn) {
+            self.discoverable_checks |= ray_containing(king_tile, checker) ^ checker.bitboard();
+        }
+
+        // Now generate and store the legal moves
+        self.generate_legal_mobility();
+        self.generate_legal_moves_from_mobility();
     }
 
     fn generate_legal_moves_from_mobility(&mut self) {

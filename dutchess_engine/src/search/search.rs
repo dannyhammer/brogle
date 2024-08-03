@@ -1,6 +1,6 @@
 use std::{ops::Neg, time::Instant};
 
-use dutchess_core::{Game, Move, MoveGenerator, Position};
+use dutchess_core::{Game, Move};
 use rand::{seq::SliceRandom, thread_rng};
 
 use crate::uci::SearchOptions;
@@ -82,8 +82,13 @@ impl<'a> Search<'a> {
     }
 
     pub fn start(mut self) -> SearchResult {
+        // eprintln!(
+        //     "Starting search of depth {} on {}",
+        //     self.depth_to_search,
+        //     self.game.fen()
+        // );
         let now = Instant::now();
-        self.result = self.search(self.game.clone(), self.depth_to_search).clone();
+        self.search(self.game.clone(), self.depth_to_search);
         let elapsed = now.elapsed();
 
         let nps = self.result.nodes_searched as f64 / elapsed.as_secs_f64();
@@ -95,42 +100,39 @@ impl<'a> Search<'a> {
         self.result
     }
 
-    // fn move_ordering() -> FnMut(&Move) -> i32 {}
-
-    fn order_moves(&self, position: &Position, moves: &mut [Move]) {
-        let board = position.board();
-        // let opponent = position.current_player();
-        // let attacks = position.attacks_by(opponent);
-
-        moves.sort_by_cached_key(|mv| {
-            if let Some(ponder) = self.result().ponder {
-                if *mv == ponder {
-                    return i32::MIN;
-                }
+    fn score_move(&self, mv: &Move) -> i32 {
+        if let Some(ponder) = self.result().ponder {
+            if *mv == ponder {
+                return i32::MIN;
             }
-            let mut score = 0;
-            let kind = board.kind_at(mv.from()).unwrap();
+        }
 
-            // Capturing a high-value piece with a low-value piece is a good idea
-            if let Some(captured) = board.kind_at(mv.to()) {
-                score += 10 * value_of(captured) - value_of(kind);
-            }
+        let mut score = 0;
+        let kind = self.game.kind_at(mv.from()).unwrap();
 
-            // Promoting is also a good idea
-            if let Some(promotion) = mv.promotion() {
-                score += value_of(promotion);
-            }
+        // Capturing a high-value piece with a low-value piece is a good idea
+        // TODO: Refactor this into its own function and verify that its values are good: https://discord.com/channels/719576389245993010/719576389690589244/1268914745298391071
+        if let Some(captured) = self.game.kind_at(mv.to()) {
+            score += 10 * value_of(captured) - value_of(kind);
+        }
 
-            // Going somewhere attacked by an opponent is not a good idea
-            // if attacks.get(mv.to()) {
-            //     score -= value_of(kind);
-            // }
+        // Promoting is also a good idea
+        if let Some(promotion) = mv.promotion() {
+            score += value_of(promotion);
+        }
 
-            -score // We're sorting, so a lower number is better
-        })
+        // Going somewhere attacked by an opponent is not a good idea
+        let attacks = self
+            .game
+            .attacks_by_color(self.game.current_player().opponent());
+        if attacks.get(mv.to()) {
+            score -= value_of(kind);
+        }
+
+        -score // We're sorting, so a lower number is better
     }
 
-    fn search(&mut self, game: Game, depth: u32) -> &SearchResult {
+    fn search(&mut self, mut game: Game, depth: u32) {
         // Start with a default (very bad) result.
         let mut alpha = INITIAL_SCORE;
         let beta = -INITIAL_SCORE;
@@ -140,19 +142,17 @@ impl<'a> Search<'a> {
             // Root nodes in negamax must be evaluated from the current player's perspective
             self.result.score = Evaluator::new(game.position()).eval();
             self.result.nodes_searched += 1;
-            return &self.result;
+            return;
         }
 
-        // let mut cloned = position.clone();
-        let mut movegen = MoveGenerator::new_legal(game.position().clone());
-        let moves = movegen.legal_moves_mut();
-        // let moves = cloned.legal_moves_mut();
-        self.order_moves(game.position(), moves);
+        self.game = game.clone();
+        game.movegen_mut().order_moves(|mv| self.score_move(mv));
+        let moves = game.legal_moves();
         // println!("MOVES: {moves:?}");
 
         for mv in moves.iter() {
             // Make the current move on the position, getting a new position in return
-            let new_pos = game.clone().with_move_made(*mv);
+            let new_pos = game.with_move_made(*mv);
 
             // Recursively search our opponent's responses
             let current = -self.negamax(new_pos, depth - 1, -beta, -alpha);
@@ -163,7 +163,7 @@ impl<'a> Search<'a> {
                 self.result.score = beta;
                 self.result.bestmove = Some(*mv);
                 self.result.pv.push(*mv);
-                return &self.result;
+                return;
             }
 
             // If we've found a better move than our current best, update our result
@@ -185,7 +185,7 @@ impl<'a> Search<'a> {
         if self.result.bestmove.is_none() {
             if moves.is_empty() {
                 // eprintln!("No legal moves available at: {position}\nRes: {best:?}");
-                if movegen.is_in_check() {
+                if game.is_in_check() {
                     self.result.score = i32::MIN + depth as i32; // Prefer earlier checkmates
                 } else {
                     self.result.score = 0;
@@ -196,36 +196,33 @@ impl<'a> Search<'a> {
                 self.result.bestmove = random;
             }
         }
-
-        &self.result
     }
 
-    fn negamax(&mut self, game: Game, depth: u32, mut alpha: i32, beta: i32) -> i32 {
+    fn negamax(&mut self, mut game: Game, depth: u32, mut alpha: i32, beta: i32) -> i32 {
         // Start with a default (very bad) result.
         let mut best = INITIAL_SCORE;
 
+        // println!("DEPTH");
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
-            return self.quiescence(game.position().clone(), alpha, beta);
+            return self.quiescence(game, alpha, beta);
         }
 
-        // let mut cloned = position.clone();
-        // let moves = cloned.legal_moves_mut();
-        let mut movegen = MoveGenerator::new_legal(game.position().clone());
-        let moves = movegen.legal_moves_mut();
-        if moves.is_empty() {
-            if movegen.is_in_check() {
+        if game.num_legal_moves() == 0 {
+            if game.is_in_check() {
                 return i32::MIN + depth as i32; // Prefer earlier checks
             } else {
                 return 0;
             }
         }
 
-        self.order_moves(game.position(), moves);
+        self.game = game.clone();
+        game.movegen_mut().order_moves(|mv| self.score_move(mv));
+        let moves = game.legal_moves();
 
         for mv in moves.iter() {
             // Make the current move on the position, getting a new position in return
-            let new_pos = game.clone().with_move_made(*mv);
+            let new_pos = game.with_move_made(*mv);
 
             // Recursively search our opponent's responses
             let current = -self.negamax(new_pos, depth - 1, -beta, -alpha);
@@ -253,40 +250,40 @@ impl<'a> Search<'a> {
         best
     }
 
-    fn quiescence(&mut self, position: Position, mut alpha: i32, beta: i32) -> i32 {
+    fn quiescence(&mut self, mut game: Game, mut alpha: i32, beta: i32) -> i32 {
+        // eprintln!("QSearch on {}", game.fen());
         // Root nodes in negamax must be evaluated from the current player's perspective
-        let stand_pat = Evaluator::new(&position).eval();
+        let stand_pat = Evaluator::new(game.position()).eval();
         if stand_pat >= beta {
             return beta;
         } else if stand_pat > alpha {
             alpha = stand_pat;
         }
 
-        // let mut cloned = position.clone();
-        // let moves = cloned.legal_moves_mut();
-        let mut movegen = MoveGenerator::new_legal(position.clone());
-        let moves = movegen.legal_moves_mut();
         // Handle cases for checkmate and stalemate
-        if moves.is_empty() {
-            if movegen.is_in_check() {
+        if game.num_legal_moves() == 0 {
+            if game.is_in_check() {
                 return i32::MIN;
             } else {
                 return 0;
             }
         }
 
-        self.order_moves(&position, moves);
+        self.game = game.clone();
+        game.movegen_mut().order_moves(|mv| self.score_move(mv));
+        let moves = game.legal_moves();
+
         // println!("MOVES: {moves:?}");
 
         // Only search captures
         for mv in moves.iter().filter(|mv| mv.is_capture()) {
             // Make the current move on the position, getting a new position in return
-            let new_pos = position.clone().with_move_made(*mv);
+            let new_pos = game.with_move_made(*mv);
             self.result.nodes_searched += 1;
 
             // Recursively search our opponent's responses
             let current = -self.quiescence(new_pos, -beta, -alpha);
-            // eprintln!("Evaluating {mv} to have score {}", new_res.score);
+            // eprintln!("Evaluating {mv} to have score {current}");
 
             // Fail soft beta-cutoff;
             if current >= beta {
