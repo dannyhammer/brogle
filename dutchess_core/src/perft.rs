@@ -146,7 +146,7 @@ pub fn print_split_perft<const PRETTY: bool>(position: &Position, depth: usize) 
 
     let now = Instant::now();
     let mut total_nodes = 0;
-    let movegen = MoveGenerator::new_legal(position);
+    let movegen = MoveGenerator::new_legal(position.clone());
     let moves = movegen.legal_moves();
     for i in 0..moves.len() {
         let mv = moves[i];
@@ -214,7 +214,7 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
         return res;
     }
 
-    let movegen = MoveGenerator::new_legal(position);
+    let movegen = MoveGenerator::new_legal(position.clone());
     let moves = movegen.legal_moves();
 
     if depth == 1 {
@@ -236,7 +236,7 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
 pub fn perft(position: &Position, depth: usize) -> u64 {
     // Bulk counting; no need to recurse again just to apply a singular move and return 1.
     if depth == 1 {
-        let movegen = MoveGenerator::new_legal(position);
+        let movegen = MoveGenerator::new_legal(position.clone());
         return movegen.legal_moves().len() as u64;
     }
 
@@ -246,7 +246,7 @@ pub fn perft(position: &Position, depth: usize) -> u64 {
     }
 
     let mut nodes = 0;
-    let movegen = MoveGenerator::new_legal(position);
+    let movegen = MoveGenerator::new_legal(position.clone());
     let moves = movegen.legal_moves();
 
     for i in 0..moves.len() {

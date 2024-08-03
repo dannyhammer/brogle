@@ -51,46 +51,67 @@ pub const KNIGHT_DELTAS: [(i8, i8); 8] = [
     (-2, -1),
 ];
 
-pub fn generate_ray_between_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
-    let mut ray_between = [[BitBoard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
+pub fn generate_ray_table_blobs<P: AsRef<Path>>(outdir: P) -> std::io::Result<()> {
+    // Generate the blobs
+    let ray_between_inclusive: [u8; 32_768] =
+        unsafe { std::mem::transmute(generate_ray_between_inclusive_table()) };
+    let ray_between_exclusive: [u8; 32_768] =
+        unsafe { std::mem::transmute(generate_ray_between_exclusive_table()) };
+    let ray_containing: [u8; 32_768] =
+        unsafe { std::mem::transmute(generate_ray_containing_table()) };
 
-    // let mut orthogonal_count = 0;
-    // let mut diagonal_count = 0;
+    // Write the blobs
+    let path = |name| {
+        let outfile = format!("{name}.blob");
+        PathBuf::from(outdir.as_ref()).join(outfile)
+    };
+
+    std::fs::write(path("ray_between_inclusive"), ray_between_inclusive)?;
+    std::fs::write(path("ray_between_exclusive"), ray_between_exclusive)?;
+    std::fs::write(path("ray_containing"), ray_containing)?;
+
+    Ok(())
+}
+
+pub fn generate_ray_between_inclusive_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
+    let mut rays = [[BitBoard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
+
     for from in Tile::iter() {
-        for (df, dr) in ROOK_DELTAS {
-            let mut ray = from.bitboard();
+        for (df, dr) in QUEEN_DELTAS {
+            let mut ray = from.bitboard(); // Include `from`
             let mut to = from;
             while let Some(shifted) = to.offset(df, dr) {
                 ray.set(shifted);
                 to = shifted;
-                ray_between[from][to] = ray;
-                // orthogonal_count += 1;
-                // println!("{from} -> {to}\n{ray}\n---------------");
-            }
-        }
-        for (df, dr) in BISHOP_DELTAS {
-            let mut ray = from.bitboard();
-            let mut to = from;
-            while let Some(shifted) = to.offset(df, dr) {
-                ray.set(shifted);
-                to = shifted;
-                ray_between[from][to] = ray;
-                // diagonal_count += 1;
-                // println!("{from} -> {to}\n{ray}\n---------------");
+                rays[from][to] = ray;
             }
         }
     }
-    // println!("Wrote {orthogonal_count} orthogonal rays and {diagonal_count} diagonals");
 
-    // println!("#[rustfmt::skip]\nconst RAYS: [[BitBoard; 64]; 64] = {rays:?};");
-    ray_between
+    rays
 }
 
-pub fn generate_ray_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
+pub fn generate_ray_between_exclusive_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
     let mut rays = [[BitBoard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
 
-    // let mut orthogonal_count = 0;
-    // let mut diagonal_count = 0;
+    for from in Tile::iter() {
+        for (df, dr) in QUEEN_DELTAS {
+            let mut ray = BitBoard::default(); // Do not include `from`
+            let mut to = from;
+            while let Some(shifted) = to.offset(df, dr) {
+                ray.set(shifted);
+                to = shifted;
+                rays[from][to] = ray ^ to.bitboard(); // Do not include `to`
+            }
+        }
+    }
+
+    rays
+}
+
+pub fn generate_ray_containing_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
+    let mut rays = [[BitBoard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
+
     for from in Tile::iter() {
         let fr = from.rank();
         let ff = from.file();
@@ -149,7 +170,6 @@ pub fn generate_ray_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
         }
     }
 
-    print!("#[rustfmt::skip]\nconst RAYS: [[BitBoard; 64]; 64] = {rays:?};");
     rays
 }
 
@@ -165,6 +185,7 @@ pub fn generate_ray_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
 ///     * `black_pawn_push_mobility.blob`
 ///     * `white_pawn_attack_mobility.blob`
 ///     * `black_pawn_attack_mobility.blob`
+///     * `dragon_mobility.blob` (queen + knight)
 ///
 /// You can use `include_bytes!()` to read from these blobs like so:
 /// ```compile_fail
@@ -181,6 +202,7 @@ pub fn generate_mobility_blobs<P: AsRef<Path>>(outdir: P) -> std::io::Result<()>
     let bpp: [u8; 512] = unsafe { std::mem::transmute(generate_pawn_pushes(Color::Black)) };
     let wpa: [u8; 512] = unsafe { std::mem::transmute(generate_pawn_attacks(Color::White)) };
     let bpa: [u8; 512] = unsafe { std::mem::transmute(generate_pawn_attacks(Color::Black)) };
+    let dragon: [u8; 512] = unsafe { std::mem::transmute(generate_dragon_mobility()) };
 
     // Write the blobs
     let path = |name| {
@@ -196,6 +218,7 @@ pub fn generate_mobility_blobs<P: AsRef<Path>>(outdir: P) -> std::io::Result<()>
     std::fs::write(path("black_pawn_push"), bpp)?;
     std::fs::write(path("white_pawn_attack"), wpa)?;
     std::fs::write(path("black_pawn_attack"), bpa)?;
+    std::fs::write(path("dragon"), dragon)?;
 
     Ok(())
 }
@@ -313,4 +336,16 @@ fn generate_bishop_mobility() -> [BitBoard; Tile::COUNT] {
 /// Generates the default mobility for the Queen.
 fn generate_queen_mobility() -> [BitBoard; Tile::COUNT] {
     generate_rider_mobility(&QUEEN_DELTAS)
+}
+
+/// Generates the default mobility for the Dragon (Queen + Knight).
+fn generate_dragon_mobility() -> [BitBoard; Tile::COUNT] {
+    let mut dragon = generate_rider_mobility(&QUEEN_DELTAS);
+    let knight = generate_leaper_mobility(&KNIGHT_DELTAS);
+
+    for tile in Tile::iter() {
+        dragon[tile] |= knight[tile];
+    }
+
+    dragon
 }

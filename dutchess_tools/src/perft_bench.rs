@@ -28,7 +28,7 @@ fn main() {
 
             assert_eq!(
                 nodes, expected,
-                "\n{i} Perft({depth}, \"{fen}\") failed\nExpected: {expected}\nGot: {nodes}"
+                "\n{i} Perft({depth}, \"{fen}\") failed\nExpected: {expected}\nGot     : {nodes}",
             );
         }
 

@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    ops::{Index, IndexMut},
+    ops::{Deref, Index, IndexMut},
 };
 
 use anyhow::{anyhow, bail, Result};
@@ -24,6 +24,61 @@ pub enum GameResult {
     Checkmate(Color),
     Stalemate,
     Draw,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Game {
+    position: Position,
+    history: Vec<Position>,
+}
+
+impl Game {
+    pub fn new() -> Self {
+        Self {
+            position: Position::new(),
+            history: Vec::with_capacity(128),
+        }
+    }
+
+    pub fn from_fen(fen: &str) -> Result<Self> {
+        let position = Position::from_fen(fen)?;
+        Ok(Self {
+            position,
+            history: Vec::with_capacity(128),
+        })
+    }
+
+    pub fn with_move_made(mut self, chessmove: Move) -> Self {
+        self.position_mut().make_move(chessmove);
+        self
+    }
+
+    pub fn is_repetition(&self) -> bool {
+        for prev_pos in self.history.iter().rev().skip(1).step_by(2) {
+            if prev_pos == &self.position {
+                return true;
+            }
+            // if prev_pos.halfmove == 0 {
+            //     return false;
+            // }
+        }
+        return false;
+    }
+
+    pub fn position(&self) -> &Position {
+        &self.position
+    }
+
+    pub fn position_mut(&mut self) -> &mut Position {
+        &mut self.position
+    }
+}
+
+impl Deref for Game {
+    type Target = Position;
+    fn deref(&self) -> &Self::Target {
+        self.position()
+    }
 }
 
 /// Represents the castling rights of both players
@@ -541,6 +596,13 @@ impl Position {
     // }
 }
 
+impl Deref for Position {
+    type Target = ChessBoard;
+    fn deref(&self) -> &Self::Target {
+        self.board()
+    }
+}
+
 impl Default for Position {
     fn default() -> Self {
         Self::new()
@@ -757,6 +819,8 @@ impl ChessBoard {
     }
 
     /// Returns an instance of this [`ChessBoard`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
+    ///
+    /// If `mask` contains only 1 tile, use [`ChessBoard::with_piece`] instead, as it is likely to be faster.
     pub const fn with(&self, mask: BitBoard, piece: Piece) -> Self {
         let occupied = self.occupied().or(mask);
         let (color, kind) = piece.parts();

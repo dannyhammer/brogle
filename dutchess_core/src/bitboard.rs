@@ -334,7 +334,7 @@ impl BitBoard {
         self.population() <= n
     }
 
-    /// Returns `true` if this [`BitBoard`] has at most 1 bit on.
+    /// Returns `true` if this [`BitBoard`] has exactly 1 bit set.
     pub const fn is_only_one(&self) -> bool {
         self.population() == 1
     }

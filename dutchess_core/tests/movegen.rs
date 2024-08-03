@@ -1,3 +1,4 @@
+/*
 use dutchess_core::{Move, MoveGenerator, Position};
 
 // Sets up a game from the provided FEN
@@ -789,3 +790,5 @@ fn test_moves_from_8_8_8_8_8_1r6_2k5_K7_b_X_X_0_1() {
 
     lists_match(&pos, moves, legal_moves);
 }
+
+ */

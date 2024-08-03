@@ -8,12 +8,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::Result;
+
 use crate::{
     search::{Search, SearchResult},
     uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
     Evaluator,
 };
-use dutchess_core::{print_perft, print_split_perft, Move, Position, FEN_STARTPOS};
+use dutchess_core::{print_perft, print_split_perft, Game, Move, Position, FEN_STARTPOS};
 
 // type TranspositionTable = ();
 
@@ -41,8 +43,8 @@ pub struct Engine {
     /// State of the game, including castling rights, piece placement, etc.
     ///
     /// This is analogous to a FEN string.
-    // game: Game,
-    game: Position,
+    game: Game,
+
     /// Transposition table for game states.
     // ttable: TranspositionTable,
 
@@ -57,16 +59,19 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(game: Position) -> Self {
+    pub fn new() -> Self {
         Self {
-            game,
+            game: Game::new(),
             ..Default::default()
         }
     }
 
-    pub fn from_fen(fen: &str) -> Result<Self, String> {
-        let game = Position::from_fen(fen).map_err(|e| e.to_string())?;
-        Ok(Self::new(game))
+    pub fn from_fen(fen: &str) -> Result<Self> {
+        let game = Game::from_fen(fen)?;
+        Ok(Self {
+            game,
+            ..Default::default()
+        })
     }
 
     /// Main entrypoint of the engine
@@ -183,7 +188,7 @@ impl Engine {
     fn parse_eval_command(&self, rest: &str) -> Result<EngineCommand, String> {
         let mut args = rest.split_ascii_whitespace();
 
-        let mut pos = self.game.clone();
+        let mut pos = self.game.position().clone();
 
         if let Some(arg) = args.next() {
             if arg.to_ascii_lowercase() == "startpos" {
@@ -221,7 +226,7 @@ impl Engine {
         }
 
         let mut moves = vec![];
-        let mut pos = self.game.clone();
+        let mut pos = self.game.position().clone();
 
         for arg in rest.split_ascii_whitespace() {
             match Move::from_uci(&pos, arg) {
@@ -303,7 +308,7 @@ impl UciEngine for Engine {
             EngineCommand::Help => {
                 println!("available commands: help, perft, uci, bench, show, moves, undo, eval")
             }
-            EngineCommand::Show => println!("{:?}", self.game),
+            EngineCommand::Show => println!("{:?}", self.game.position()),
             EngineCommand::Perft {
                 depth,
                 pretty,
@@ -311,26 +316,26 @@ impl UciEngine for Engine {
             } => {
                 if split {
                     if pretty {
-                        print_split_perft::<true>(&self.game, depth);
+                        print_split_perft::<true>(self.game.position(), depth);
                     } else {
-                        print_split_perft::<false>(&self.game, depth);
+                        print_split_perft::<false>(self.game.position(), depth);
                     }
                 } else {
                     if pretty {
-                        print_perft::<true>(&self.game, depth);
+                        print_perft::<true>(self.game.position(), depth);
                     } else {
-                        print_perft::<false>(&self.game, depth);
+                        print_perft::<false>(self.game.position(), depth);
                     }
                 }
             }
             EngineCommand::Fen(fen) => {
                 if let Some(fen) = fen {
-                    self.game = Position::from_fen(&fen).unwrap();
+                    self.game = Game::from_fen(&fen).unwrap();
                 }
-                println!("{}", self.game.to_fen())
+                println!("{}", self.game.position().to_fen())
             }
             EngineCommand::Eval(pos) => println!("{}", Evaluator::new(&pos).eval()),
-            EngineCommand::Move(moves) => self.game.make_moves(moves),
+            EngineCommand::Move(moves) => self.game.position_mut().make_moves(moves),
             EngineCommand::Search(depth, _) => {
                 let search = Search::new(self.game.clone(), depth);
                 let res = search.start();
@@ -398,15 +403,15 @@ impl UciEngine for Engine {
         // Apply the FEN to the game state
         // _ = self.setup(fen); // ignore any errors if they occur.
         // self.game = Game::from_fen(fen).unwrap();
-        self.game = Position::from_fen(fen).unwrap();
+        self.game = Game::from_fen(fen).unwrap();
 
         // Now, if there are any moves, apply them as well.
         // self.game
         //     .apply_moves(moves.into_iter().map(|m| Move::from_uci(m).unwrap()));
 
         for mv in moves {
-            let mv = Move::from_uci(&self.game, mv).unwrap();
-            self.game.make_move(mv);
+            let mv = Move::from_uci(self.game.position(), mv).unwrap();
+            self.game.position_mut().make_move(mv);
         }
 
         Ok(())
@@ -440,7 +445,7 @@ impl UciEngine for Engine {
             }
             UciSearchMode::Timed(search_opt) => {
                 if let (Some(wtime), Some(btime)) = (search_opt.w_time, search_opt.b_time) {
-                    let remaining = if self.game.current_player().is_white() {
+                    let remaining = if self.game.position().current_player().is_white() {
                         wtime
                     } else {
                         btime
@@ -459,7 +464,7 @@ impl UciEngine for Engine {
         let state = self.game.clone();
 
         let starttime = Instant::now();
-        eprintln!("TIMEOUT: {timeout:?}");
+        // eprintln!("TIMEOUT: {timeout:?}");
 
         let mut depth = 1;
         let max_depth = 10;
@@ -485,12 +490,12 @@ impl UciEngine for Engine {
                     .depth(depth)
                     // .seldepth(seldepth)
                     // .multipv(multipv)
-                    // .score(score)
+                    .score(format!("cp {}", res.score))
                     .nodes(res.nodes_searched)
-                    // .nps(res.nodes_searched as f64 / starttime.elapsed().as_secs_f64())
+                    .nps((res.nodes_searched as f64 / starttime.elapsed().as_secs_f64()) as usize)
                     // .tbhits(tbhits)
-                    .time(format!("{:?}", starttime.elapsed()));
-                // .pv(pv);
+                    // .time(format!("{:?}", starttime.elapsed()))
+                    .pv([format!("{}", res.bestmove.unwrap())]);
                 let resp = UciResponse::Info(info);
 
                 // Now send the info to the GUI
@@ -590,16 +595,17 @@ impl UciEngine for Engine {
 impl Default for Engine {
     fn default() -> Self {
         Self {
-            // game: Position::standard_setup(),
-            game: Position::from_fen(
-                "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
-            )
-            .unwrap(),
+            game: Game::from_fen(FEN_STARTPOS).unwrap(),
+            // game: Position::from_fen(
+            // "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            // )
+            // .unwrap(),
             // ttable: TranspositionTable::default(),
             // protocol: EngineProtocol::UCI,
             debug: false,
             searching: Arc::default(),
             search_result: Arc::default(),
+            // protocol: EngineProtocol::default(),
         }
     }
 }
