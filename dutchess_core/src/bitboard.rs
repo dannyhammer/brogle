@@ -205,6 +205,19 @@ impl BitBoard {
         [Self::RANK_2, Self::RANK_7][color.index()]
     }
 
+    /// Returns a [`BitBoard`] of this [`Color`]'s third rank.
+    ///
+    /// # Example
+    /// ```
+    /// # use dutchess_core::{BitBoard, Color};
+    ///
+    /// assert_eq!(BitBoard::third_rank(Color::White), BitBoard::RANK_3);
+    /// assert_eq!(BitBoard::third_rank(Color::Black), BitBoard::RANK_6);
+    /// ```
+    pub const fn third_rank(color: Color) -> Self {
+        [Self::RANK_3, Self::RANK_6][color.index()]
+    }
+
     /// Returns a [`BitBoard`] of this [`Color`]'s seventh rank.
     ///
     /// # Example

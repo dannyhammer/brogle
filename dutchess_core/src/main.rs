@@ -3,13 +3,17 @@ use dutchess_core::*;
 
 fn main() {
     // let fen = FEN_STARTPOS;
-    let fen = "k6K/8/2P5/8/6n1/2nn4/P2P2P1/8 w - - 0 1";
-    let position = Position::from_fen(fen).unwrap();
-    println!("{position:?}");
-    // let movegen = MoveGenerator::new_legal(position);
-    // for mv in movegen.legal_moves() {
-    //     println!("{mv}");
-    // }
+    // let fen = "8/8/8/4P3/2k5/K7/P1P1P1P1/8 w - - 0 1";
+    // let fen = "K3b2k/3P4/8/5Pp1/8/1n1n4/2P5/8 w - g6 0 1";
+    let fen = "3q3k/8/8/8/b7/1P6/3P2P1/3K1PrP w - - 0 1";
+    let game = Game::from_fen(fen).unwrap();
+    println!("{:?}", game.position());
+    let moves = game.legal_moves();
+    for mv in moves {
+        if game.piece_at(mv.from()).unwrap().is_pawn() {
+            println!("{mv}");
+        }
+    }
 
     /*
     generate_ray_table_blobs("dutchess_core/src/blobs").unwrap();

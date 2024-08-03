@@ -16,7 +16,7 @@ pub struct MoveGenerator {
     pub(crate) position: Position,
     attacks_by_color: [BitBoard; NUM_COLORS],
     attacks_by_tile: [BitBoard; Tile::COUNT],
-    pinmask: BitBoard,
+    pinmasks: (BitBoard, BitBoard),
     checkers: BitBoard,
     discoverable_checks: BitBoard,
     legal_mobility: [BitBoard; Tile::COUNT],
@@ -27,7 +27,7 @@ impl MoveGenerator {
         let mut movegen = Self {
             position,
             attacks_by_color: [BitBoard::default(); NUM_COLORS],
-            pinmask: BitBoard::default(),
+            pinmasks: (BitBoard::default(), BitBoard::default()),
             checkers: BitBoard::default(),
             discoverable_checks: BitBoard::default(),
             attacks_by_tile: [BitBoard::default(); Tile::COUNT],
@@ -70,8 +70,20 @@ impl MoveGenerator {
         self.attacks_by_tile[tile.index()]
     }
 
+    pub const fn pinmasks(&self) -> (BitBoard, BitBoard) {
+        self.pinmasks
+    }
+
     pub const fn pinmask(&self) -> BitBoard {
-        self.pinmask
+        self.pinmask_ortho().or(self.pinmask_diag())
+    }
+
+    pub const fn pinmask_ortho(&self) -> BitBoard {
+        self.pinmasks().0
+    }
+
+    pub const fn pinmask_diag(&self) -> BitBoard {
+        self.pinmasks().1
     }
 
     pub const fn checkers(&self) -> BitBoard {
@@ -151,8 +163,7 @@ impl MoveGenerator {
             }
         };
 
-        // let pinmask = self.pinmask;
-
+        // let pinmask = self.pinmask();
         // eprintln!("PINMASK:\n{pinmask:?}");
         // eprintln!("CHECKMASK:\n{checkmask:?}");
         // eprintln!("ENEMY_OR_EMPTY:\n{enemy_or_empty:?}");
@@ -168,6 +179,89 @@ impl MoveGenerator {
 
         moves
     }
+
+    /*
+    fn compute_pawn_moves(
+        &self,
+        color: Color,
+        checkmask: BitBoard,
+        moves: &mut ArrayVec<Move, MAX_NUM_MOVES>,
+    ) {
+        // Fetch all pinned and unpinned pawns
+        let pinned_pawns = self.pawns(color) & self.pinmask();
+        let unpinned_pawns = self.pawns(color) & !self.pinmask();
+        // eprintln!("PINNED PAWNS:\n{pinned_pawns:?}");
+        // eprintln!("UNPINNED PAWNS:\n{unpinned_pawns:?}");
+
+        // Pinned pawns may push along their pin ray
+        let pinned_pushes = pinned_pawns.advance_by(color, 1) & self.pinmask();
+        // Unpinned pawns may push normally
+        let unpinned_pushes = unpinned_pawns.advance_by(color, 1);
+        let pushes = pinned_pushes | unpinned_pushes;
+        // eprintln!("PUSHES:\n{pushes:?}");
+
+        // Cannot push outside of checkmask or into an occupied spot
+        let legal_push_mask = !self.occupied() & checkmask;
+        let single_pushes = pushes & legal_push_mask;
+        // If it can push once, check if it's on the third rank. If so, it can push again.
+        let third_rank = BitBoard::third_rank(color);
+        let double_pushes = (single_pushes & third_rank).advance_by(color, 1) & legal_push_mask;
+
+        // eprintln!("DOUBLE PUSHES:\n{double_pushes:?}");
+
+        // Cannot capture outside of checkmask or into an empty or friendly spot
+        let legal_enemies = self.color(color.opponent()) & checkmask;
+        let east_captures = self.pawns(color).advance_by(color, 1).east() & legal_enemies;
+        let west_captures = self.pawns(color).advance_by(color, 1).west() & legal_enemies;
+
+        // Now generate the moves for these
+        for to in single_pushes {
+            let from = to.backward_by(color, 1).unwrap();
+            if to.rank() == Rank::eighth(color) {
+                moves.push(Move::new(from, to, MoveKind::Promote(PieceKind::Knight)));
+                moves.push(Move::new(from, to, MoveKind::Promote(PieceKind::Bishop)));
+                moves.push(Move::new(from, to, MoveKind::Promote(PieceKind::Rook)));
+                moves.push(Move::new(from, to, MoveKind::Promote(PieceKind::Queen)));
+            } else {
+                moves.push(Move::new(from, to, MoveKind::Quiet));
+            }
+        }
+
+        for to in double_pushes {
+            let from = to.backward_by(color, 2).unwrap();
+            moves.push(Move::new(from, to, MoveKind::Quiet));
+        }
+
+        for to in west_captures {
+            let from = to.backward_by(color, 1).unwrap().left_by(color, 1).unwrap();
+
+            if to.rank() == Rank::eighth(color) {
+                moves.push(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Knight)));
+                moves.push(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Bishop)));
+                moves.push(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Rook)));
+                moves.push(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)));
+            } else {
+                moves.push(Move::new(from, to, MoveKind::Quiet));
+            }
+        }
+
+        for to in east_captures {
+            let from = to
+                .backward_by(color, 1)
+                .unwrap()
+                .right_by(color, 1)
+                .unwrap();
+            if to.rank() == Rank::eighth(color) {
+                moves.push(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Knight)));
+                moves.push(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Bishop)));
+                moves.push(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Rook)));
+                moves.push(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)));
+            } else {
+                moves.push(Move::new(from, to, MoveKind::Quiet));
+            }
+        }
+    }
+     */
 
     fn compute_pawn_moves(
         &self,
@@ -237,8 +331,6 @@ impl MoveGenerator {
 
             // Note that we must OR with the checkmask just in case the king is being checked by a pawn that can be captured by EP
             let legal = pseudo_legal & (checkmask | ep_bb) & pinmask;
-            // (pushes | (attacks & (enemy | ep_bb))) & (checkmask | ep_bb) & pinmask
-            // attacks & enemy_or_empty & checkmask & pinmask // Everyone else has this
 
             for to in legal {
                 let mut kind = if self.position().board().has(to) {
@@ -260,14 +352,14 @@ impl MoveGenerator {
                 if to.rank() == Rank::eighth(color) {
                     if let MoveKind::Capture = kind {
                         // The pawn can reach the enemy's home rank and become promoted
-                        kind = MoveKind::CaptureAndPromote(PieceKind::Knight);
+                        kind = MoveKind::PromoCapt(PieceKind::Knight);
                         moves.push(Move::new(from, to, kind));
-                        kind = MoveKind::CaptureAndPromote(PieceKind::Bishop);
+                        kind = MoveKind::PromoCapt(PieceKind::Bishop);
                         moves.push(Move::new(from, to, kind));
-                        kind = MoveKind::CaptureAndPromote(PieceKind::Rook);
+                        kind = MoveKind::PromoCapt(PieceKind::Rook);
                         moves.push(Move::new(from, to, kind));
                         // This gets pushed to the move list after this if-else chain
-                        kind = MoveKind::CaptureAndPromote(PieceKind::Queen);
+                        kind = MoveKind::PromoCapt(PieceKind::Queen);
                     } else {
                         // The pawn can reach the enemy's home rank and become promoted
                         kind = MoveKind::Promote(PieceKind::Knight);
@@ -399,7 +491,7 @@ impl MoveGenerator {
 
         self.checkers =
             self.compute_attacks_to(self.position().board(), king_tile, color.opponent());
-        self.pinmask = self.compute_pinmask_for(self.position().board(), king_tile, color);
+        self.pinmasks = self.compute_pinmasks_for(self.position().board(), king_tile, color);
 
         // These are the rays containing the King and his Checkers
         // They are used to prevent the King from retreating along a line he is checked on!
@@ -449,8 +541,14 @@ impl MoveGenerator {
         attacks
     }
 
-    fn compute_pinmask_for(&self, board: &ChessBoard, tile: Tile, color: Color) -> BitBoard {
-        let mut pinmask = BitBoard::default();
+    fn compute_pinmasks_for(
+        &self,
+        board: &ChessBoard,
+        tile: Tile,
+        color: Color,
+    ) -> (BitBoard, BitBoard) {
+        let mut pinmask_ortho = BitBoard::default();
+        let mut pinmask_diag = BitBoard::default();
         let opponent = color.opponent();
         let occupied = board.occupied();
 
@@ -465,7 +563,7 @@ impl MoveGenerator {
 
             // A ray is a pin if there is only one piece along it
             if (ray & occupied).is_only_one() {
-                pinmask |= ray;
+                pinmask_ortho |= ray;
             }
         }
 
@@ -476,11 +574,11 @@ impl MoveGenerator {
         for attacker_tile in diagonal_attacks & enemy_diagonal_sliders {
             let ray = ray_between_exclusive(tile, attacker_tile);
             if (ray & occupied).is_only_one() {
-                pinmask |= ray;
+                pinmask_diag |= ray;
             }
         }
 
-        pinmask
+        (pinmask_ortho, pinmask_diag)
     }
 }
 
