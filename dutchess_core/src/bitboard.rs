@@ -343,7 +343,7 @@ impl BitBoard {
     }
 
     /// Returns `true` if this [`BitBoard`] has at most `n` bits on.
-    pub const fn has_at_most(&self, n: u32) -> bool {
+    pub const fn has_at_most(&self, n: u8) -> bool {
         self.population() <= n
     }
 
@@ -507,8 +507,8 @@ impl BitBoard {
     /// let board = BitBoard::RANK_1;
     /// assert_eq!(board.population(), 8);
     /// ```
-    pub const fn population(&self) -> u32 {
-        self.0.count_ones()
+    pub const fn population(&self) -> u8 {
+        self.0.count_ones() as u8
     }
 
     /// Shifts this [`BitBoard`] forward by `n`, according to `color`.
@@ -526,10 +526,10 @@ impl BitBoard {
     /// // Wrapping
     /// assert_eq!(rank4.advance_by(Color::White, 5), BitBoard::RANK_1);
     /// ```
-    pub const fn advance_by(self, color: Color, n: u32) -> Self {
+    pub const fn advance_by(self, color: Color, n: u8) -> Self {
         // Black magic: If `color` is White, this rotates left by 8, which is the same as "n ranks up"
         // If `color` is Black, this rotates left by 496, which is the same as rotating right by 8, or "n ranks down"
-        Self(self.0.rotate_left(n * 8 * (1 + color as u32 * 62)))
+        Self(self.0.rotate_left((n * 8 * (1 + color as u8 * 62)) as u32))
     }
 
     /// Shifts this [`BitBoard`] backward by `n`, according to `color`.
@@ -547,10 +547,10 @@ impl BitBoard {
     /// // Wrapping
     /// assert_eq!(rank4.retreat_by(Color::Black, 5), BitBoard::RANK_1);
     /// ```
-    pub const fn retreat_by(self, color: Color, n: u32) -> Self {
+    pub const fn retreat_by(self, color: Color, n: u8) -> Self {
         // Black magic: If `color` is White, this rotates right by 8, which is the same as "n ranks down"
         // If `color` is Black, this rotates right by 496, which is the same as rotating left by 8, or "n ranks up"
-        Self(self.0.rotate_right(n * 8 * (1 + color as u32 * 62)))
+        Self(self.0.rotate_right((n * 8 * (1 + color as u8 * 62)) as u32))
     }
 
     /// Shifts this [`BitBoard`] by one rank up.

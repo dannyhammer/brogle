@@ -2,28 +2,38 @@ use std::{
     io,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, RwLock,
     },
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
+use dutchess_core::{print_perft, print_split_perft, Game, Move, Position, FEN_STARTPOS};
 
 use super::{
     search::{Search, SearchResult},
-    uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchMode},
+    uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchOptions},
     Evaluator,
 };
-use dutchess_core::{print_perft, print_split_perft, Game, Move, Position, FEN_STARTPOS};
 
 // type TranspositionTable = ();
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
-pub enum EngineProtocol {
+enum EngineProtocol {
     #[default]
     UCI,
 }
+
+/*
+#[derive(PartialEq, Eq, Clone, Debug, Default)]
+pub(crate) enum SearchStatus {
+    #[default]
+    NotStarted,
+    InProgress,
+    Done,
+}
+ */
 
 /// A chess engine responds to inputs (such as from a GUI or terminal) and
 /// responds with computed outputs. The most common modern protocol is UCI.
@@ -52,10 +62,15 @@ pub struct Engine {
     // protocol: EngineProtocol,
     debug: bool,
 
-    searching: Arc<AtomicBool>,
+    /// Atomic boolean to determine whether the engine is currently running a search
+    // search_status: Arc<RwLock<SearchStatus>>,
+    is_searching: Arc<AtomicBool>,
 
-    search_result: Arc<Mutex<SearchResult>>,
+    /// Result of the last-executed search
+    search_result: Arc<RwLock<SearchResult>>,
     // search_handle: Option<JoinHandle<()>>,
+    info: Arc<RwLock<UciInfo>>,
+    // options: todo!(),
 }
 
 impl Engine {
@@ -84,7 +99,7 @@ impl Engine {
         self.uci_loop()
     }
 
-    fn get_uci_options(&self) -> impl Iterator<Item = UciOption> {
+    fn get_uci_options(&self) -> impl Iterator<Item = UciOption<&str>> {
         [
             // All available options will be defined here.
             // UciOption::check("TestOpt Check", false),
@@ -105,17 +120,20 @@ impl Engine {
 
     /// Sets the flag that the search should stop.
     fn stop_search(&mut self) {
-        self.searching.store(false, Ordering::Relaxed);
+        self.is_searching.store(false, Ordering::Relaxed);
+        // *self.search_status.write().unwrap() = SearchStatus::Done;
     }
 
     /// Sets the flag that the search should be started.
     fn start_search(&mut self) {
-        self.searching.store(true, Ordering::Relaxed);
+        self.is_searching.store(true, Ordering::Relaxed);
+        // *self.search_status.write().unwrap() = SearchStatus::InProgress;
     }
 
     /// Yields `true` if the engine is currently searching.
     fn is_searching(&self) -> bool {
-        self.searching.load(Ordering::Relaxed)
+        self.is_searching.load(Ordering::Relaxed)
+        // *self.search_status.read().unwrap() == SearchStatus::InProgress
     }
 
     // fn block_until_done(&mut self) -> Option<()> {
@@ -141,6 +159,7 @@ impl Engine {
     }
      */
 
+    /*
     /// Parses the custom `search` command
     fn parse_search_command(&self, rest: &str) -> Result<EngineCommand, String> {
         let mut args = rest.split_ascii_whitespace();
@@ -157,19 +176,20 @@ impl Engine {
             .split_ascii_whitespace()
             .any(|arg| arg.to_ascii_lowercase() == "iterative");
 
-        Ok(EngineCommand::Search(depth, iterative))
+        Ok(EngineCommand::Search { depth, iterative })
     }
+      */
 
     /// Parses the custom `perft` command
-    fn parse_perft_command(&self, rest: &str) -> Result<EngineCommand, String> {
+    fn parse_perft_command(&self, rest: &str) -> Result<EngineCommand> {
         let mut args = rest.split_ascii_whitespace();
 
         let Some(depth) = args.next() else {
-            return Err(format!("usage: perft <depth> [pretty] [split]"));
+            bail!("usage: perft <depth> [pretty] [split]");
         };
 
         let Ok(depth) = depth.parse() else {
-            return Err(format!("usage: perft <depth> [pretty] [split]"));
+            bail!("usage: perft <depth> [pretty] [split]");
         };
 
         let pretty = rest
@@ -188,26 +208,26 @@ impl Engine {
     }
 
     /// Parses the custom `eval` command
-    fn parse_eval_command(&self, rest: &str) -> Result<EngineCommand, String> {
+    fn parse_eval_command(&self, rest: &str) -> Result<EngineCommand> {
         let mut args = rest.split_ascii_whitespace();
 
-        let mut pos = self.game.position().clone();
+        let mut game = self.game.clone();
 
         if let Some(arg) = args.next() {
             if arg.to_ascii_lowercase() == "startpos" {
-                pos = Position::standard_setup();
-            } else if let Ok(parsed) = Position::from_fen(arg) {
-                pos = parsed;
+                game = Game::standard_setup();
+            } else if let Ok(parsed) = Game::from_fen(arg) {
+                game = parsed;
             } else {
-                return Err(format!("usage: eval [FEN]"));
+                bail!("usage: eval [FEN]");
             }
         }
 
-        Ok(EngineCommand::Eval(pos))
+        Ok(EngineCommand::Eval(game))
     }
 
     /// Parses the custom `fen` command
-    fn parse_fen_command(&self, rest: &str) -> Result<EngineCommand, String> {
+    fn parse_fen_command(&self, rest: &str) -> Result<EngineCommand> {
         let mut args = rest.split_ascii_whitespace();
 
         let mut fen = None;
@@ -217,7 +237,7 @@ impl Engine {
             } else if Position::from_fen(arg).is_ok() {
                 fen = Some(arg.to_string());
             } else {
-                return Err(format!("usage: fen [FEN]"));
+                bail!("usage: fen [FEN]");
             }
         }
 
@@ -225,9 +245,9 @@ impl Engine {
     }
 
     /// Parses the custom `move` command
-    fn parse_move_command(&self, rest: &str) -> Result<EngineCommand, String> {
+    fn parse_move_command(&self, rest: &str) -> Result<EngineCommand> {
         if rest.is_empty() {
-            return Err(format!("usage: move <move1> [move2 move3 ...]"));
+            bail!("usage: move <move1> [move2 move3 ...]");
         }
 
         let mut moves = vec![];
@@ -237,11 +257,11 @@ impl Engine {
             match Move::from_uci(&pos, arg) {
                 Ok(mv) => {
                     if let Err(err) = pos.make_move_checked(mv) {
-                        return Err(format!("Invalid move: {err}"));
+                        bail!("Invalid move: {err}");
                     }
                     moves.push(mv);
                 }
-                Err(err) => return Err(format!("{err}")),
+                Err(err) => bail!("{err}"),
             }
         }
 
@@ -249,7 +269,7 @@ impl Engine {
     }
 
     /// Parses custom commands
-    fn parse_custom_command(&self, input: &str) -> Result<EngineCommand, String> {
+    fn parse_custom_command(&self, input: &str) -> Result<EngineCommand> {
         let (cmd, rest) = if input.contains(' ') {
             input.split_once(' ').unwrap()
         } else {
@@ -259,18 +279,22 @@ impl Engine {
         match cmd {
             "help" => Ok(EngineCommand::Help),
             "show" => Ok(EngineCommand::Show),
-            "search" => self.parse_search_command(rest),
+            "history" => Ok(EngineCommand::History),
+            // "search" => self.parse_search_command(rest),
             "perft" => self.parse_perft_command(rest),
             "eval" => self.parse_eval_command(rest),
             "move" => self.parse_move_command(rest),
-            // "moves" => Ok(EngineCommand::Moves),
+            "moves" => Ok(EngineCommand::Moves),
             "fen" => self.parse_fen_command(rest),
-            _ => Err(format!("Failed to parse custom command: {input:?}")),
+            _ => bail!(
+                "{} does not recognize command {input:?}\nRun 'help' for a list of commands",
+                env!("CARGO_PKG_NAME")
+            ),
         }
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum EngineCommand {
     /// For displaying the list of available commands.
     Help,
@@ -285,36 +309,56 @@ enum EngineCommand {
     /// Pretty-print the current state of the board.
     Show,
 
+    /// Display the moves made during this game.
+    History,
+
     /// Show the current state of of the board as a FEN string.
     Fen(Option<String>),
 
     /// Make the list of moves applied to the board.
     Move(Vec<Move>),
 
-    /// Evaluates the current position.
-    Eval(Position),
+    /// Show all legal moves from the current position
+    Moves,
 
+    /// Evaluates the current position.
+    Eval(Game),
+    /*
     /// Search the current position up to the provided depth.
-    Search(u32, bool),
+    Search { depth: u32, iterative: bool },
+     */
 }
 
 impl UciEngine for Engine {
     /* GUI to Engine communication */
 
     fn custom_command(&mut self, input: &str) -> io::Result<()> {
-        let cmd = match self.parse_custom_command(input) {
-            Ok(cmd) => cmd,
-            Err(err) => {
-                eprintln!("{err}");
-                return Ok(());
-            }
-        };
+        // Parse the command, returning an `io::Error` on error
+        let cmd = self
+            .parse_custom_command(input)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
         match cmd {
             EngineCommand::Help => {
-                println!("available commands: help, perft, uci, bench, show, moves, undo, eval")
+                println!(
+                    "available commands: help, perft, uci, bench, show, move, moves, undo, eval"
+                )
             }
+
             EngineCommand::Show => println!("{:?}", self.game.position()),
+
+            // TODO: Replace with to_pgn function
+            EngineCommand::History => println!(
+                "{}",
+                self.game
+                    .history()
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, m)| format!("{}) {m}", i + 1))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+
             EngineCommand::Perft {
                 depth,
                 pretty,
@@ -334,25 +378,46 @@ impl UciEngine for Engine {
                     }
                 }
             }
+
             EngineCommand::Fen(fen) => {
                 if let Some(fen) = fen {
                     self.game = Game::from_fen(&fen).unwrap();
                 }
                 println!("{}", self.game.position().to_fen())
             }
-            EngineCommand::Eval(pos) => println!("{}", Evaluator::new(&pos).eval()),
+
+            EngineCommand::Eval(game) => println!("{}", Evaluator::new(&game).eval()),
+
             EngineCommand::Move(moves) => self.game.make_moves(moves),
-            EngineCommand::Search(depth, _) => {
-                let search = Search::new(self.game.clone(), depth);
-                let res = search.start();
-                // let res = search(self.game, depth);
-                if let Some(bestmove) = res.bestmove {
-                    println!("bestmove {bestmove} ({})", res.score);
-                } else {
-                    println!("No bestmove found in search. Score={}", res.score);
-                }
-                // println!("{:?}", search(&self.game, depth)),
-            } // EngineCommand::Moves => println!("{:?}", self.game),
+
+            EngineCommand::Moves => {
+                let mut moves = self
+                    .game
+                    .legal_moves()
+                    .into_iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>();
+                moves.sort();
+                println!("{}", moves.join(" "))
+            } /*
+              EngineCommand::Search {
+                  depth,
+                  iterative: _,
+              } => {
+                  let mut options = UciSearchOptions::default();
+                  options.depth = Some(depth);
+                  let search = Search::new(self.game.clone(), Arc::clone(&self.searching))
+                      .with_options(options);
+                  let res = search.start();
+                  // let res = search(self.game, depth);
+                  if let Some(bestmove) = res.bestmove {
+                      println!("bestmove {bestmove} ({})", res.score);
+                  } else {
+                      println!("No bestmove found in search. Score={}", res.score);
+                  }
+                  // println!("{:?}", search(&self.game, depth)),
+              } // EngineCommand::Moves => println!("{:?}", self.game),
+               */
         }
 
         Ok(())
@@ -378,7 +443,7 @@ impl UciEngine for Engine {
     }
 
     fn isready(&self) -> io::Result<()> {
-        let resp = UciResponse::ReadyOk;
+        let resp: UciResponse<&str> = UciResponse::ReadyOk;
         resp.send()
     }
 
@@ -423,7 +488,7 @@ impl UciEngine for Engine {
         Ok(())
     }
 
-    fn go(&mut self, mode: UciSearchMode) -> io::Result<()> {
+    fn go(&mut self, options: UciSearchOptions) -> io::Result<()> {
         // Arena sent this to our engine
         // go wtime 300000 btime 300000 winc 0 binc 0
 
@@ -435,108 +500,96 @@ impl UciEngine for Engine {
         // Flip the flag to signal a search has begun.
         self.start_search();
 
-        // Clone the arcs for whether we're searching and our found results
-        let stopper = Arc::clone(&self.searching);
-        let result = Arc::clone(&self.search_result);
-
-        // Parse the timeout duration
-        let timeout = match mode {
-            UciSearchMode::Infinite => Duration::MAX,
-            UciSearchMode::Ponder => {
-                // thread::spawn(move || {
-                //     println!("Pondering infinitely");
-                //     todo!()
-                // });
-                todo!("Implement ponder")
-            }
-            UciSearchMode::Timed(search_opt) => {
-                if let (Some(wtime), Some(btime)) = (search_opt.w_time, search_opt.b_time) {
-                    let remaining = if self.game.position().current_player().is_white() {
-                        wtime
-                    } else {
-                        btime
-                    };
-
-                    Duration::from_secs_f64(remaining.as_secs_f64() / 300.0)
-                } else if let Some(movetime) = search_opt.move_time {
-                    movetime
-                } else {
-                    eprintln!("Warning: No movetime specified. Defaulting to infinite.");
-                    Duration::MAX
-                }
-            }
+        // Compute remaining time
+        let time_remaining = if let Some(movetime) = options.move_time {
+            movetime
+        } else if self.game.current_player().is_white() {
+            options.w_time.unwrap_or(Duration::MAX)
+        } else if self.game.current_player().is_black() {
+            options.b_time.unwrap_or(Duration::MAX)
+        } else {
+            Duration::MAX
         };
 
-        let state = self.game.clone();
+        // Clone the arcs for whether we're searching and our found results
+        let is_searching = Arc::clone(&self.is_searching);
+        let timeout = Duration::from_secs_f32(time_remaining.as_secs_f32() / 20.0); // 5% time remaining
+                                                                                    // let timeout = Duration::from_secs(1);
+        let result = Arc::clone(&self.search_result);
+        let info = Arc::clone(&self.info);
 
-        let starttime = Instant::now();
-        // eprintln!("TIMEOUT: {timeout:?}");
-
-        let mut depth = 1;
-        let max_depth = 10;
-        let mut bestmove = None;
+        let game = self.game.clone();
+        let max_depth = options.depth.unwrap_or(10) as usize; // TODO: Increase to 127 or 255 once you have TT set up
 
         thread::spawn(move || {
-            // Search ends if we've timed out, been told to stop, or reached our depth limit
-            while starttime.elapsed() < timeout
-                && depth < max_depth
-                && stopper.load(Ordering::Relaxed)
-            {
-                // Obtain a result from the search
-                let mut search = Search::new(state.clone(), depth);
-                // Iterative deepening
-                if let Some(ponder) = bestmove {
-                    search = search.with_ponder(ponder);
-                }
-                let res = search.start();
-                let elapsed = starttime.elapsed();
-                bestmove = res.bestmove;
+            let mut depth = 1;
 
-                // Construct a new message to be sent
-                let info = UciInfo::new()
-                    .depth(depth)
-                    // .seldepth(seldepth)
-                    // .multipv(multipv)
-                    .score(format!("cp {}", res.score))
-                    .nodes(res.nodes_searched)
-                    .nps((res.nodes_searched as f64 / elapsed.as_secs_f64()) as usize)
-                    // .tbhits(tbhits)
-                    // .time(format!("{:?}", starttime.elapsed()))
-                    .pv([format!("{}", res.bestmove.unwrap())]);
-                let resp = UciResponse::Info(info);
+            while depth <= max_depth && is_searching.load(Ordering::Relaxed) {
+                let cloned_stopper = Arc::clone(&is_searching);
+                let cloned_result = Arc::clone(&result);
+                let cloned_info = Arc::clone(&info);
+
+                // Start the search
+                let mut search =
+                    Search::new(&game, timeout, cloned_stopper, cloned_result, cloned_info)
+                        .with_options(options.clone());
+
+                // Start the search
+                // let res = match search.start(depth) {
+                //     Ok(res) => res,
+                //     Err(e) => {
+                //         eprintln!("[depth={depth}] {e}");
+                //         break;
+                //     }
+                // };
+
+                // If we received an error, that means the search was stopped externally
+                if let Err(_err) = search.start(depth) {
+                    // eprintln!("[depth={depth}] {_err}");
+                    break;
+                }
+
+                // Send the updated info, now that the search has concluded
+                let info = info.read().unwrap();
 
                 // Now send the info to the GUI
-                resp.send()?;
-
-                // Finally, store the info from the search
-                *result.lock().unwrap() = res;
+                // Can't call `self.info` because we're inside a thread
+                let resp: UciResponse<&str> = UciResponse::Info(info.clone());
+                _ = resp.send();
 
                 depth += 1;
             }
 
-            let bestmove_string = bestmove.map(|m| m.to_string()).unwrap_or_default();
-            // let ponder = res.ponder.map(|p| p.to_string());
-            let ponder = None;
-            let resp = UciResponse::BestMove(bestmove_string, ponder);
-            resp.send()
+            // TODO: If this line of code is reached, it means the search has stopped on its own
+            // So, we need to store `false` in the stopper, and send bestmove.
+            // On the other hand, if the engine received `stop`, then we do NOT need to send bestmove here.
+
+            if is_searching.load(Ordering::Relaxed) {
+                is_searching.store(false, Ordering::Relaxed);
+                let res = result.read().unwrap();
+                let bestmove_string = res.bestmove.map(|mv| mv.to_string()).unwrap_or_default();
+                let ponder_string = res.ponder.map(|p| p.to_string());
+
+                let resp = UciResponse::BestMove(bestmove_string, ponder_string);
+                _ = resp.send();
+            }
         });
 
         Ok(())
     }
 
     fn stop(&mut self) -> io::Result<()> {
-        self.stop_search();
+        // Only need to stop if we're already searching. Otherwise, don't need to send anything new
+        if self.is_searching() {
+            self.stop_search();
 
-        // let bestmove = std::mem::take(&mut *self.bestmove.lock().unwrap());
-        // let ponder = self.ponder.lock().unwrap().take();
-        // let bestmove = self.bestmove.lock().unwrap().clone();
-        // let ponder = self.ponder.lock().unwrap().clone();
-        let res = self.search_result.lock().unwrap();
-        let bestmove = res.bestmove.map(|m| m.to_string()).unwrap_or_default();
-        // let ponder = res.ponder.map(|p| p.to_string());
-        let ponder = None;
+            let res = self.search_result.read().unwrap();
+            let bestmove = res.bestmove.unwrap_or_default().to_string(); // Default to illegal move
+            let ponder = res.ponder.map(|p| p.to_string());
 
-        self.bestmove(bestmove, ponder)
+            self.bestmove(bestmove, ponder)?;
+        }
+        Ok(())
     }
 
     fn ponderhit(&self) -> io::Result<()> {
@@ -544,30 +597,37 @@ impl UciEngine for Engine {
     }
 
     fn quit(&mut self) -> io::Result<()> {
-        // std::process::exit(0);
         Ok(())
     }
 
     /* Engine to GUI communication */
     fn id(&self) -> io::Result<()> {
         let name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-        let author = env!("CARGO_PKG_AUTHORS");
+        let author = format!("{}", env!("CARGO_PKG_AUTHORS"));
 
-        let resp = UciResponse::Id(&name, author);
+        let resp = UciResponse::Id(name, author);
         resp.send()
     }
+
     fn uciok(&self) -> io::Result<()> {
-        let resp = UciResponse::UciOk;
+        let resp: UciResponse<&str> = UciResponse::UciOk;
         resp.send()
     }
+
     fn readyok(&self) -> io::Result<()> {
-        let resp = UciResponse::ReadyOk;
+        let resp: UciResponse<&str> = UciResponse::ReadyOk;
         resp.send()
     }
+
     fn bestmove(&self, bestmove: String, ponder: Option<String>) -> io::Result<()> {
+        // https://backscattering.de/chess/uci/#engine-bestmove-info
+        let info = self.info.read().unwrap();
+        self.info(info.clone())?;
+
         let resp = UciResponse::BestMove(bestmove, ponder);
         resp.send()
     }
+
     fn copyprotection(&self) -> io::Result<()> {
         let resp = UciResponse::CopyProtection("checking");
         resp.send()?;
@@ -577,6 +637,7 @@ impl UciEngine for Engine {
         let resp = UciResponse::CopyProtection("ok");
         resp.send()
     }
+
     fn registration(&self) -> io::Result<()> {
         let resp = UciResponse::Registration("checking");
         resp.send()?;
@@ -586,10 +647,12 @@ impl UciEngine for Engine {
         let resp = UciResponse::Registration("ok");
         resp.send()
     }
+
     fn info(&self, info: UciInfo) -> io::Result<()> {
-        let resp = UciResponse::Info(info);
+        let resp: UciResponse<&str> = UciResponse::Info(info);
         resp.send()
     }
+
     fn option(&self) -> io::Result<()> {
         for opt in self.get_uci_options() {
             let resp = UciResponse::Option(opt);
@@ -602,16 +665,18 @@ impl UciEngine for Engine {
 impl Default for Engine {
     fn default() -> Self {
         Self {
-            // game: Game::from_fen(FEN_STARTPOS).unwrap(),
             game: Game::from_fen(
-                "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+                // "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+                FEN_STARTPOS,
             )
             .unwrap(),
             // ttable: TranspositionTable::default(),
             // protocol: EngineProtocol::UCI,
             debug: false,
-            searching: Arc::default(),
+            is_searching: Arc::default(),
+            // search_status: Arc::default(),
             search_result: Arc::default(),
+            info: Arc::default(),
             // protocol: EngineProtocol::default(),
         }
     }

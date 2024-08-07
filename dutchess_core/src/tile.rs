@@ -542,6 +542,12 @@ impl Tile {
     }
 }
 
+impl<T: AsRef<str>> PartialEq<T> for Tile {
+    fn eq(&self, other: &T) -> bool {
+        self.to_string().eq(other.as_ref())
+    }
+}
+
 impl FromStr for Tile {
     type Err = anyhow::Error;
 
@@ -675,7 +681,7 @@ impl fmt::Debug for Tile {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Rank(pub(crate) u8);
 
@@ -950,6 +956,12 @@ macro_rules! impl_binary_ops_with_num {
 impl_binary_ops_with_num!(Rank);
 impl_try_from_num!(Rank);
 
+impl<T: AsRef<str>> PartialEq<T> for Rank {
+    fn eq(&self, other: &T) -> bool {
+        self.as_ref().eq(other.as_ref())
+    }
+}
+
 impl TryFrom<char> for Rank {
     type Error = anyhow::Error;
     fn try_from(value: char) -> Result<Self, Self::Error> {
@@ -1027,7 +1039,7 @@ impl fmt::Debug for Rank {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash)]
 pub struct File(pub(crate) u8);
 
 impl File {
@@ -1170,6 +1182,12 @@ impl File {
 
 impl_binary_ops_with_num!(File);
 impl_try_from_num!(File);
+
+impl<T: AsRef<str>> PartialEq<T> for File {
+    fn eq(&self, other: &T) -> bool {
+        self.as_ref().eq(other.as_ref())
+    }
+}
 
 impl TryFrom<char> for File {
     type Error = anyhow::Error;

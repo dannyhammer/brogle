@@ -11,7 +11,7 @@ use super::{
 
 include!("blobs/magics.rs"); // TODO: Make these into blobs
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MoveGenerator {
     pub(crate) position: Position,
     attacks_by_color: [BitBoard; NUM_COLORS],

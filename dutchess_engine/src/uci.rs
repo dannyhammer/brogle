@@ -32,24 +32,72 @@ impl log::Log for UciLogger {
 pub type UciResult<T> = Result<T, UciError>;
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum UciSearchMode<'a> {
-    Infinite,
-    Ponder,
-    Timed(SearchOptions<'a>),
+pub struct UciSearchOptions {
+    /// Restrict search to this moves only.
+    ///
+    /// Example: After position startpos and go infinite searchmoves e2e4 d2d4 the engine should only search the two moves e2e4 and d2d4 in the initial position.
+    pub search_moves: Vec<String>,
+
+    /// start searching in pondering mode.
+    ///
+    /// Do not exit the search in ponder mode, even if it's mate!
+    ///
+    /// This means that the last move sent in in the position string is the ponder move. The engine can do what it wants to do, but after a ponderhit command it should execute the suggested move to ponder on. This means that the ponder move sent by the GUI can be interpreted as a recommendation about which move to ponder. However, if the engine decides to ponder on a different move, it should not display any mainlines as they are likely to be misinterpreted by the GUI because the GUI expects the engine to ponder on the suggested move.
+    pub ponder: bool,
+
+    /// White has x msec left on the clock
+    pub w_time: Option<Duration>,
+
+    /// Black has x msec left on the clock
+    pub b_time: Option<Duration>,
+
+    /// White increment per move in milliseconds if x > 0
+    pub w_inc: Option<u32>,
+
+    /// Black increment per move in milliseconds if x > 0
+    pub b_inc: Option<u32>,
+
+    /// There are x moves to the next time control,
+    ///
+    /// This will only be sent if x > 0,
+    ///
+    /// If you don't get this and get the wtime and btime it's sudden death
+    pub moves_to_go: Option<u32>,
+
+    /// Search x plies only.
+    pub depth: Option<u32>,
+
+    /// Search x nodes only,
+    pub nodes: Option<u64>,
+
+    /// Search for a mate in x moves
+    pub mate: Option<u32>,
+
+    /// Search exactly x milliseconds
+    pub move_time: Option<Duration>,
+
+    /// Search until the stop command. Do not exit the search without being told so in this mode!
+    pub infinite: bool,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
-pub struct SearchOptions<'a> {
-    pub moves: Vec<&'a str>,
-    pub w_time: Option<Duration>,
-    pub b_time: Option<Duration>,
-    pub w_inc: Option<u32>,
-    pub b_inc: Option<u32>,
-    pub moves_to_go: Option<u32>,
-    pub depth: Option<u32>,
-    pub nodes: Option<u64>,
-    pub mate: Option<u32>,
-    pub move_time: Option<Duration>,
+impl Default for UciSearchOptions {
+    /// A default search is analogous to `go infinite`.
+    fn default() -> Self {
+        Self {
+            search_moves: vec![],
+            ponder: false,
+            w_time: None,
+            b_time: None,
+            w_inc: None,
+            b_inc: None,
+            moves_to_go: None,
+            depth: None,
+            nodes: None,
+            mate: None,
+            move_time: None,
+            infinite: true,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
@@ -63,6 +111,12 @@ pub enum UciError {
 //     //
 // }
 
+// #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+// pub enum SearchStatus<T> {
+//     InProgress,
+//     Done(T),
+// }
+
 /// Represents a type that has implemented the Universal Chess Interface (UCI) protocol.
 pub trait UciEngine {
     /// The main I/O loop that handles communication between the engine and other program(s).
@@ -73,28 +127,29 @@ pub trait UciEngine {
         // For convenience, import the enum variants.
         use UciCommand::*;
 
-        let mut buffer = String::new();
+        let mut buffer = String::with_capacity(128); // seems like a good number
         loop {
+            // Clear the buffer, read input, and trim the trailing newline
             buffer.clear();
             let bytes = io::stdin().read_line(&mut buffer)?;
+            let buf = buffer.trim();
 
             if 0 == bytes {
-                break self.quit();
+                return self.quit();
             }
 
             // Attempt to parse the user input
-            let cmd = match UciCommand::new(buffer.trim()) {
+            let cmd = match UciCommand::new(buf) {
                 Ok(cmd) => cmd,
                 Err(err) => {
                     // This is an unrecognized command, so attempt to parse it through custom means
                     if matches!(err, UciError::UnrecognizedCommand) {
-                        if let Err(err) = self.custom_command(buffer.trim()) {
-                            println!("Unrecognized command: {buffer}");
-                            eprintln!("{err}");
+                        if let Err(err) = self.custom_command(buf) {
+                            eprintln!("Error when parsing custom command '{buf:}: {err}");
                         }
                     } else {
                         // UCI protocol states to continue running when invalid input is received.
-                        println!("Unrecognized command: {buffer}");
+                        eprintln!("Unrecognized UCI command: {buf:?}");
                     }
                     continue;
                 }
@@ -117,7 +172,10 @@ pub trait UciEngine {
         }
     }
 
-    fn custom_command(&mut self, cmd: &str) -> io::Result<()>;
+    fn custom_command(&mut self, cmd: &str) -> io::Result<()> {
+        _ = cmd;
+        Ok(())
+    }
 
     /* GUI to Engine communication */
 
@@ -290,7 +348,7 @@ pub trait UciEngine {
     /// * `infinite`
     ///
     /// Search until the `stop` command. Do not exit the search without being told so in this mode!
-    fn go(&mut self, mode: UciSearchMode) -> io::Result<()>;
+    fn go(&mut self, options: UciSearchOptions) -> io::Result<()>;
 
     /// Called when the engine receives `stop`.
     ///
@@ -309,7 +367,9 @@ pub trait UciEngine {
     /// Quit the program as soon as possible
     fn quit(&mut self) -> io::Result<()>;
 
-    /* Engine to GUI communication */
+    /******************************************************************/
+    /*                  Engine to GUI communication                   */
+    /******************************************************************/
 
     /// Send the `id` message to `stdout.`
     ///
@@ -384,7 +444,7 @@ pub enum UciCommand<'a> {
     // <fen> <moves>
     Position(&'a str, Vec<&'a str>),
 
-    Go(UciSearchMode<'a>),
+    Go(UciSearchOptions),
 
     Stop,
 
@@ -508,62 +568,59 @@ impl<'a> UciCommand<'a> {
     }
 
     fn parse_go(args: &'a str) -> UciResult<Self> {
-        let mode = if args.starts_with("infinite") || args.len() == 0 {
-            UciSearchMode::Infinite
-        } else if args.starts_with("ponder") {
-            UciSearchMode::Ponder
-        } else {
-            let mut opt = SearchOptions::default();
+        // Parse an argument
+        fn parse<T: FromStr>(input: Option<&str>) -> UciResult<T> {
+            input
+                .ok_or(UciError::NotEnoughArguments)?
+                .parse()
+                .map_err(|_| UciError::InvalidArgument)
+        }
+        // Parse a duration
+        fn parse_duration(input: Option<&str>) -> UciResult<Duration> {
+            let next = input.ok_or(UciError::NotEnoughArguments)?;
+            let millis = next.parse().map_err(|_| UciError::InvalidArgument)?;
+            Ok(Duration::from_millis(millis))
+        }
 
-            // reduces redundant code
-            fn parse<T: FromStr>(input: Option<&str>) -> UciResult<T> {
-                input
-                    .ok_or(UciError::NotEnoughArguments)?
-                    .parse()
-                    .map_err(|_| UciError::InvalidArgument)
-            }
+        // Start with some default options
+        let mut opt = UciSearchOptions::default();
 
-            fn parse_duration(input: Option<&str>) -> UciResult<Duration> {
-                let next = input.ok_or(UciError::NotEnoughArguments)?;
-                let millis = next.parse().map_err(|_| UciError::InvalidArgument)?;
-                Ok(Duration::from_millis(millis))
-            }
-
-            let mut args = args.split_whitespace();
-            while let Some(arg) = args.next() {
-                match arg {
-                    "searchmoves" => {
-                        // TODO: Can `searchmoves` come before anything else?
-                        opt.moves = args.collect();
-                        break;
-                    }
-                    // "ponder" => opt.ponder = true,
-                    "wtime" => opt.w_time = Some(parse_duration(args.next())?),
-                    "btime" => opt.b_time = Some(parse_duration(args.next())?),
-
-                    "winc" => opt.w_inc = Some(parse(args.next())?),
-                    "binc" => opt.b_inc = Some(parse(args.next())?),
-                    "movestogo" => opt.moves_to_go = Some(parse(args.next())?),
-                    "depth" => opt.depth = Some(parse(args.next())?),
-                    "nodes" => opt.nodes = Some(parse(args.next())?),
-                    "mate" => opt.mate = Some(parse(args.next())?),
-                    "movetime" => opt.move_time = Some(parse_duration(args.next())?),
-                    // "infinite" => opt.infinite = true,
-                    _ => return Err(UciError::InvalidArgument),
+        let mut args = args.split_whitespace();
+        while let Some(arg) = args.next() {
+            match arg {
+                "searchmoves" => {
+                    eprintln!("Warning: Current implementation assumes `searchmoves <list of moves>` is the last argument to `go`");
+                    // TODO: Can `searchmoves` come before anything else?
+                    opt.search_moves = args.map(|arg| arg.to_string()).collect();
+                    break;
                 }
-            }
-            UciSearchMode::Timed(opt)
-        };
+                // Our engine can think during the opponent's turn
+                "ponder" => opt.ponder = true,
+                "wtime" => opt.w_time = Some(parse_duration(args.next())?),
+                "btime" => opt.b_time = Some(parse_duration(args.next())?),
 
-        Ok(UciCommand::Go(mode))
+                "winc" => opt.w_inc = Some(parse(args.next())?),
+                "binc" => opt.b_inc = Some(parse(args.next())?),
+                "movestogo" => opt.moves_to_go = Some(parse(args.next())?),
+                "depth" => opt.depth = Some(parse(args.next())?),
+                "nodes" => opt.nodes = Some(parse(args.next())?),
+                "mate" => opt.mate = Some(parse(args.next())?),
+                "movetime" => opt.move_time = Some(parse_duration(args.next())?),
+                // Our engine can do whatever it wants, but must wait for `stop` before sending `bestmove`
+                "infinite" => opt.infinite = true,
+                _ => return Err(UciError::InvalidArgument),
+            }
+        }
+
+        Ok(UciCommand::Go(opt))
     }
 }
 
 /// # Responses sent from the Engine to the GUI via `stdout`.
 ///
 /// These are all the commands the interface gets from the engine.
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum UciResponse<'a> {
+#[derive(Clone, PartialEq, Debug, Hash)]
+pub enum UciResponse<T: fmt::Display = String> {
     /// `id`
     ///
     /// * `name <x>`
@@ -577,7 +634,7 @@ pub enum UciResponse<'a> {
     /// This must be sent after receiving the `uci` command to identify the engine,
     ///
     /// e.g. `id author Stefan MK\n`
-    Id(&'a str /* name */, &'a str /* author */),
+    Id(T /* name */, T /* author */),
 
     /// `uciok`
     ///
@@ -602,7 +659,7 @@ pub enum UciResponse<'a> {
     /// `stop` command, so for every `go` command a `bestmove` command is needed!
     /// Directly before that the engine should send a final "info" command with the final search information,
     /// the the GUI has the complete statistics about the last search.
-    BestMove(String /* bestmove */, Option<String> /* ponder */),
+    BestMove(T /* bestmove */, Option<T> /* ponder */),
 
     /// `copyprotection`
     ///
@@ -622,7 +679,7 @@ pub enum UciResponse<'a> {
     /// // else
     /// //     TellGUI("copyprotection error\n");
     /// ```
-    CopyProtection(&'static str),
+    CopyProtection(T),
 
     /// `registration`
     ///
@@ -642,7 +699,7 @@ pub enum UciResponse<'a> {
     /// and tell the user somehow that the engine is not registered.
     /// This way the engine knows that the GUI can deal with the registration procedure and the user
     /// will be informed that the engine is not properly registered.
-    Registration(&'static str),
+    Registration(T),
 
     /// `info`
     ///
@@ -844,12 +901,11 @@ pub enum UciResponse<'a> {
     ///    * `"option name Style type combo default Normal var Solid var Normal var Risky\n"`
     ///    * `"option name NalimovPath type string default c:\\n"`
     ///    * `"option name Clear Hash type button\n"`
-    Option(UciOption<'a>),
+    Option(UciOption<T>),
 }
 
-impl<'a> UciResponse<'a> {
+impl<T: fmt::Display> UciResponse<T> {
     pub fn send(&self) -> io::Result<()> {
-        // let resp = format!("{response}\n");
         let resp = self.to_string();
         let mut handle = io::stdout().lock();
         handle.write_all(resp.as_ref())?;
@@ -857,7 +913,7 @@ impl<'a> UciResponse<'a> {
     }
 }
 
-impl<'a> fmt::Display for UciResponse<'a> {
+impl<T: fmt::Display> fmt::Display for UciResponse<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let response = match self {
             Self::Id(name, author) => {
@@ -891,23 +947,24 @@ impl<'a> fmt::Display for UciResponse<'a> {
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct UciInfo {
-    depth: Option<String>,
-    seldepth: Option<String>,
-    time: Option<String>,
-    nodes: Option<String>,
-    pv: Vec<String>,
-    multipv: Option<String>,
-    score: Option<String>,
-    currmove: Option<String>,
-    currmovenumber: Option<String>,
-    hashfull: Option<String>,
-    nps: Option<String>,
-    tbhits: Option<String>,
-    sbhits: Option<String>,
-    cpuload: Option<String>,
-    string: Option<String>,
-    refutation: Vec<String>,
-    currline: Vec<String>,
+    pub depth: Option<String>,
+    pub seldepth: Option<String>,
+    pub time: Option<String>,
+    pub nodes: Option<String>,
+    pub pv: Vec<String>,
+    pub multipv: Option<String>,
+    // TODO: https://backscattering.de/chess/uci/#engine-info-score
+    pub score: Option<String>,
+    pub currmove: Option<String>,
+    pub currmovenumber: Option<String>,
+    pub hashfull: Option<String>,
+    pub nps: Option<String>,
+    pub tbhits: Option<String>,
+    pub sbhits: Option<String>,
+    pub cpuload: Option<String>,
+    pub string: Option<String>,
+    pub refutation: Vec<String>,
+    pub currline: Vec<String>,
 }
 
 impl UciInfo {
@@ -915,88 +972,88 @@ impl UciInfo {
         Self::default()
     }
 
-    pub fn depth(mut self, depth: impl ToString) -> Self {
+    pub fn depth(mut self, depth: impl fmt::Display) -> Self {
         self.depth = Some(depth.to_string());
         self
     }
 
-    pub fn seldepth(mut self, seldepth: impl ToString) -> Self {
+    pub fn seldepth(mut self, seldepth: impl fmt::Display) -> Self {
         self.seldepth = Some(seldepth.to_string());
         self
     }
 
-    pub fn time(mut self, time: impl ToString) -> Self {
+    pub fn time(mut self, time: impl fmt::Display) -> Self {
         self.time = Some(time.to_string());
         self
     }
 
-    pub fn nodes(mut self, nodes: impl ToString) -> Self {
+    pub fn nodes(mut self, nodes: impl fmt::Display) -> Self {
         self.nodes = Some(nodes.to_string());
         self
     }
 
-    pub fn multipv(mut self, multipv: impl ToString) -> Self {
+    pub fn multipv(mut self, multipv: impl fmt::Display) -> Self {
         self.multipv = Some(multipv.to_string());
         self
     }
 
-    pub fn score(mut self, score: impl ToString) -> Self {
+    pub fn score(mut self, score: impl fmt::Display) -> Self {
         self.score = Some(score.to_string());
         self
     }
 
-    pub fn currmove(mut self, currmove: impl ToString) -> Self {
+    pub fn currmove(mut self, currmove: impl fmt::Display) -> Self {
         self.currmove = Some(currmove.to_string());
         self
     }
 
-    pub fn currmovenumber(mut self, currmovenumber: impl ToString) -> Self {
+    pub fn currmovenumber(mut self, currmovenumber: impl fmt::Display) -> Self {
         self.currmovenumber = Some(currmovenumber.to_string());
         self
     }
 
-    pub fn hashfull(mut self, hashfull: impl ToString) -> Self {
+    pub fn hashfull(mut self, hashfull: impl fmt::Display) -> Self {
         self.hashfull = Some(hashfull.to_string());
         self
     }
 
-    pub fn nps(mut self, nps: impl ToString) -> Self {
+    pub fn nps(mut self, nps: impl fmt::Display) -> Self {
         self.nps = Some(nps.to_string());
         self
     }
 
-    pub fn tbhits(mut self, tbhits: impl ToString) -> Self {
+    pub fn tbhits(mut self, tbhits: impl fmt::Display) -> Self {
         self.tbhits = Some(tbhits.to_string());
         self
     }
 
-    pub fn sbhits(mut self, sbhits: impl ToString) -> Self {
+    pub fn sbhits(mut self, sbhits: impl fmt::Display) -> Self {
         self.sbhits = Some(sbhits.to_string());
         self
     }
 
-    pub fn cpuload(mut self, cpuload: impl ToString) -> Self {
+    pub fn cpuload(mut self, cpuload: impl fmt::Display) -> Self {
         self.cpuload = Some(cpuload.to_string());
         self
     }
 
-    pub fn string(mut self, string: impl ToString) -> Self {
+    pub fn string(mut self, string: impl fmt::Display) -> Self {
         self.string = Some(string.to_string());
         self
     }
 
-    pub fn pv(mut self, pv: impl Into<Vec<String>>) -> Self {
-        self.pv = pv.into();
+    pub fn pv<T: fmt::Display>(mut self, pv: impl IntoIterator<Item = T>) -> Self {
+        self.pv = pv.into_iter().map(|x| x.to_string()).collect();
         self
     }
 
-    pub fn refutation(mut self, refutation: impl Into<Vec<String>>) -> Self {
-        self.refutation = refutation.into();
+    pub fn refutation<T: fmt::Display>(mut self, refutation: impl IntoIterator<Item = T>) -> Self {
+        self.refutation = refutation.into_iter().map(|x| x.to_string()).collect();
         self
     }
 
-    pub fn currline(mut self, currline: impl Into<Vec<String>>) -> Self {
-        self.currline = currline.into();
+    pub fn currline<T: fmt::Display>(mut self, currline: impl IntoIterator<Item = T>) -> Self {
+        self.currline = currline.into_iter().map(|x| x.to_string()).collect();
         self
     }
 }
@@ -1019,7 +1076,7 @@ impl fmt::Display for UciInfo {
             write!(f, "multipv {x} ")?;
         }
         if let Some(x) = &self.score {
-            write!(f, "score {x} ")?;
+            write!(f, "score cp {x} ")?;
         }
         if let Some(x) = &self.currmove {
             write!(f, "currmove {x} ")?;
@@ -1063,41 +1120,41 @@ impl fmt::Display for UciInfo {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub struct UciOption<'a> {
-    pub name: &'a str,
-    pub opt_type: UciOptionType<'a>,
+pub struct UciOption<T: fmt::Display = String> {
+    pub name: T,
+    pub opt_type: UciOptionType<T>,
 }
 
-impl<'a> UciOption<'a> {
-    pub fn check(name: &'a str, default: bool) -> Self {
+impl<T: fmt::Display> UciOption<T> {
+    pub fn check(name: T, default: bool) -> Self {
         Self {
             name,
             opt_type: UciOptionType::Check(default),
         }
     }
 
-    pub fn spin(name: &'a str, default: i32, min: i32, max: i32) -> Self {
+    pub fn spin(name: T, default: i32, min: i32, max: i32) -> Self {
         Self {
             name,
             opt_type: UciOptionType::Spin(default, min, max),
         }
     }
 
-    pub fn combo(name: &'a str, default: &'a str, vars: impl IntoIterator<Item = &'a str>) -> Self {
+    pub fn combo(name: T, default: T, vars: impl IntoIterator<Item = T>) -> Self {
         Self {
             name,
             opt_type: UciOptionType::Combo(default, vars.into_iter().collect()),
         }
     }
 
-    pub fn button(name: &'a str) -> Self {
+    pub fn button(name: T) -> Self {
         Self {
             name,
             opt_type: UciOptionType::Button,
         }
     }
 
-    pub fn string(name: &'a str, default: &'a str) -> Self {
+    pub fn string(name: T, default: T) -> Self {
         Self {
             name,
             opt_type: UciOptionType::String(default),
@@ -1105,14 +1162,14 @@ impl<'a> UciOption<'a> {
     }
 }
 
-impl<'a> fmt::Display for UciOption<'a> {
+impl<T: fmt::Display> fmt::Display for UciOption<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "name {} type {}", self.name, self.opt_type)
     }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum UciOptionType<'a> {
+pub enum UciOptionType<T: fmt::Display = String> {
     /// Checkbox that can either be true or false
     Check(bool),
 
@@ -1120,16 +1177,16 @@ pub enum UciOptionType<'a> {
     Spin(i32, i32, i32),
 
     /// Combo box that can have pre-defined string values
-    Combo(&'a str, Vec<&'a str>),
+    Combo(T, Vec<T>),
 
     /// A button that can be pressed to send commands to the engine
     Button,
 
     /// Text field with a string value or empty string `""`.
-    String(&'a str),
+    String(T),
 }
 
-impl fmt::Display for UciOptionType<'_> {
+impl<T: fmt::Display> fmt::Display for UciOptionType<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UciOptionType::Check(check) => write!(f, "check default {check}"),
@@ -1137,7 +1194,11 @@ impl fmt::Display for UciOptionType<'_> {
                 write!(f, "spin default {default} min {min} max {max}",)
             }
             UciOptionType::Combo(default, vars) => {
-                write!(f, "combo default {default} var {}", vars.join(" var "))
+                write!(f, "combo default {default}")?;
+                for var in vars {
+                    write!(f, " var {var}")?;
+                }
+                Ok(())
             }
             UciOptionType::Button => write!(f, "button",),
             UciOptionType::String(default) => write!(f, "string default {default}"),
@@ -1331,19 +1392,19 @@ mod test {
 
     #[test]
     fn test_option_types() {
-        let check = UciResponse::Option(UciOption::check("Nullmove", true));
+        let check: UciResponse<&str> = UciResponse::Option(UciOption::check("Nullmove", true));
         assert_eq!(
             format!("{check}"),
             "option name Nullmove type check default true\n"
         );
 
-        let spin = UciResponse::Option(UciOption::spin("Selectivity", 2, 0, 4));
+        let spin: UciResponse<&str> = UciResponse::Option(UciOption::spin("Selectivity", 2, 0, 4));
         assert_eq!(
             format!("{spin}"),
             "option name Selectivity type spin default 2 min 0 max 4\n"
         );
 
-        let combo = UciResponse::Option(UciOption::combo(
+        let combo: UciResponse<&str> = UciResponse::Option(UciOption::combo(
             "Style",
             "Normal",
             ["Solid", "Normal", "Risky"],
@@ -1353,13 +1414,14 @@ mod test {
             "option name Style type combo default Normal var Solid var Normal var Risky\n"
         );
 
-        let string = UciResponse::Option(UciOption::string("NalimovPath", "c:\\"));
+        let string: UciResponse<&str> =
+            UciResponse::Option(UciOption::string("NalimovPath", "c:\\"));
         assert_eq!(
             format!("{string}"),
             "option name NalimovPath type string default c:\\\n"
         );
 
-        let button = UciResponse::Option(UciOption::button("Clear Hash"));
+        let button: UciResponse<&str> = UciResponse::Option(UciOption::button("Clear Hash"));
         assert_eq!(format!("{button}"), "option name Clear Hash type button\n");
     }
 }

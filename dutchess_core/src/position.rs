@@ -28,10 +28,11 @@ pub enum GameResult {
     Draw,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Game {
     movegen: MoveGenerator,
     history: Vec<Position>,
+    moves: Vec<Move>,
 }
 
 impl Game {
@@ -39,7 +40,12 @@ impl Game {
         Self {
             movegen: MoveGenerator::new_legal(Position::new()),
             history: Vec::with_capacity(128),
+            moves: Vec::with_capacity(128),
         }
+    }
+
+    pub fn standard_setup() -> Self {
+        Self::from_fen(FEN_STARTPOS).unwrap()
     }
 
     pub fn from_fen(fen: &str) -> Result<Self> {
@@ -47,6 +53,7 @@ impl Game {
         Ok(Self {
             movegen: MoveGenerator::new_legal(position),
             history: Vec::with_capacity(128),
+            moves: Vec::with_capacity(128),
         })
     }
 
@@ -78,6 +85,7 @@ impl Game {
 
     pub fn make_move(&mut self, chessmove: Move) {
         self.history.push(self.position.clone());
+        self.moves.push(chessmove);
         let new_pos = self.position().clone().with_move_made(chessmove);
         self.movegen = MoveGenerator::new_legal(new_pos);
     }
@@ -86,6 +94,10 @@ impl Game {
         for chessmove in moves {
             self.make_move(chessmove);
         }
+    }
+
+    pub fn history(&self) -> &[Move] {
+        &self.moves
     }
 }
 
@@ -161,10 +173,10 @@ impl fmt::Display for CastlingRights {
 /// Represents the current state of the game, including move counters
 ///
 /// Analogous to a FEN string.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub struct Position {
     /// BitBoard representation of the game board.
-    bitboards: ChessBoard,
+    board: ChessBoard,
 
     /// Side to move.
     current_player: Color,
@@ -202,7 +214,7 @@ impl Position {
     /// ```
     pub fn new() -> Self {
         Self {
-            bitboards: ChessBoard::new(),
+            board: ChessBoard::new(),
             current_player: Color::White,
             castling_rights: CastlingRights::new(),
             ep_tile: None,
@@ -235,7 +247,7 @@ impl Position {
         let placements = split.next().ok_or(anyhow!(
             "Invalid FEN string: FEN string must have piece placements."
         ))?;
-        pos.bitboards = ChessBoard::from_fen(placements)?;
+        pos.board = ChessBoard::from_fen(placements)?;
 
         let active_color = split.next().unwrap_or_else(|| "w");
         pos.current_player = Color::from_str(active_color)?;
@@ -315,11 +327,11 @@ impl Position {
     }
 
     pub const fn board(&self) -> &ChessBoard {
-        &self.bitboards
+        &self.board
     }
 
     pub fn board_mut(&mut self) -> &mut ChessBoard {
-        &mut self.bitboards
+        &mut self.board
     }
 
     pub const fn can_castle(&self, color: Color) -> bool {
@@ -623,6 +635,20 @@ impl Default for Position {
         Self::new()
     }
 }
+
+impl PartialEq for Position {
+    /// Two positions are considered equal if they share the same piece layout, castling rights, and en passant square.
+    ///
+    /// Fullmove and Halfmove clocks are ignored.
+    fn eq(&self, other: &Self) -> bool {
+        self.board() == other.board()
+            && self.current_player() == other.current_player()
+            && self.castling_rights() == other.castling_rights()
+            && self.ep_tile() == other.ep_tile()
+    }
+}
+
+impl Eq for Position {}
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

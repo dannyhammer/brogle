@@ -1,28 +1,35 @@
-use dutchess_core::{BitBoard, ChessBoard, Color, PieceKind, Position, Tile};
+use dutchess_core::{BitBoard, ChessBoard, Color, Game, PieceKind, Tile};
 
 use super::piece_square_tables::{CONTROL_CENTER, KING_SAFETY, PAWN_PUSH};
 
+/// A struct to encapsulate the logic of evaluating a chess position.
 pub struct Evaluator<'a> {
-    position: &'a Position,
+    game: &'a Game,
 }
 
 impl<'a> Evaluator<'a> {
-    pub fn new(position: &'a Position) -> Self {
-        Self { position }
+    /// Create a new [`Evaluator`] instance to evaluate the supplied [`Game`].
+    pub fn new(game: &'a Game) -> Self {
+        Self { game }
     }
 
+    /// Run the evaluator, yielding a result that is positive if good for White and negative if good for Black.
+    ///
+    /// Presently, this just computes the material difference.
     pub fn eval(self) -> i32 {
-        let color = self.position.current_player();
-        material_difference(self.position.board(), color)
+        let color = self.game.current_player();
+        material_difference(self.game.board(), color)
     }
 
+    /// Run a complex evaluation, checking some basic Piece-Square Tables.
     pub fn complex_eval(self) -> i32 {
-        let color = self.position.current_player();
+        let color = self.game.current_player();
         self.eval_for(color)
     }
 
+    /// Evaluates the board from `color`'s perspective. A positive number is good here.
     fn eval_for(self, color: Color) -> i32 {
-        let board = self.position.board();
+        let board = self.game.board();
         let mat = material_difference(board, color);
         let game_percentage = material_remaining_percentage(board, color.opponent());
 
@@ -52,6 +59,11 @@ impl<'a> Evaluator<'a> {
     }
 }
 
+/// Computes the difference in material on the board.
+///
+/// If positive, White has more material.
+/// If negative, Black has more material.
+/// If zero, both sides have equal material.
 const fn material_difference(board: &ChessBoard, color: Color) -> i32 {
     let friendly = count_material(board, color);
     let enemy = count_material(board, color.opponent());
@@ -59,17 +71,21 @@ const fn material_difference(board: &ChessBoard, color: Color) -> i32 {
     friendly - enemy
 }
 
+/// Returns a value of the provided `PieceKind`.
+///
+/// Values are obtained from here: https://www.chessprogramming.org/Simplified_Evaluation_Function
 pub const fn value_of(kind: PieceKind) -> i32 {
-    match kind {
-        PieceKind::Pawn => 100,
-        PieceKind::Knight => 300,
-        PieceKind::Bishop => 310,
-        PieceKind::Rook => 500,
-        PieceKind::Queen => 900,
-        PieceKind::King => 2000,
-    }
+    [
+        100,    // Pawn
+        320,    // Knight
+        330,    // Bishop
+        500,    // Rook
+        900,    // Queen
+        20_000, // King
+    ][kind.index()]
 }
 
+/// Counts the material value of all pieces of the specified color.
 const fn count_material(board: &ChessBoard, color: Color) -> i32 {
     let mut score = 0;
     let color = board.color(color);
@@ -83,6 +99,7 @@ const fn count_material(board: &ChessBoard, color: Color) -> i32 {
     score
 }
 
+/// Counts the material value of the specified piece kind/color on the board.
 const fn count_material_of(board: &ChessBoard, color: BitBoard, kind: PieceKind) -> i32 {
     let value = value_of(kind);
     let pieces = color.and(board.kind(kind));
