@@ -108,7 +108,8 @@ impl<'a> Search<'a> {
 
         self.starttime = Instant::now();
         // Populate the PV list
-        self.pv = Vec::with_capacity(depth);
+        // self.pv = Vec::with_capacity(depth);
+        self.pv = vec![Vec::with_capacity(depth); depth];
         let result = self.search(depth)?;
 
         // If the search timed out, this result is garbage, so don't return it.
@@ -152,6 +153,7 @@ impl<'a> Search<'a> {
 
         // Clear the PV for current node
         self.pv.push(Vec::with_capacity(depth));
+        // self.pv[ply] = Vec::with_capacity(depth);
 
         // Reached the end of the depth; return board's evaluation.
         if depth == 0 {
@@ -195,7 +197,6 @@ impl<'a> Search<'a> {
                 // eprintln!("Search: current >= beta for {mv} at ply {ply}");
                 result.score = beta;
                 result.bestmove = Some(mv);
-                // self.pv[ply] = mv;
                 return Ok(result);
             }
 
@@ -204,7 +205,6 @@ impl<'a> Search<'a> {
                 // eprintln!("Search: current > best for {mv} at ply {ply}");
                 result.score = current;
                 result.bestmove = Some(mv);
-                // self.pv[ply] = mv;
             }
 
             // Keep increasing alpha
@@ -258,6 +258,7 @@ impl<'a> Search<'a> {
 
         // Clear the PV for current node
         self.pv.push(Vec::with_capacity(depth));
+        // self.pv[ply] = Vec::with_capacity(depth);
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {

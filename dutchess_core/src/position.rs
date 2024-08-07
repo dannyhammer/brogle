@@ -99,6 +99,18 @@ impl Game {
     pub fn history(&self) -> &[Move] {
         &self.moves
     }
+
+    pub fn unmake_move(&mut self) {
+        let Some(prev_pos) = self.history.pop() else {
+            return;
+        };
+
+        let Some(_mv) = self.moves.pop() else {
+            return;
+        };
+
+        self.movegen = MoveGenerator::new_legal(prev_pos);
+    }
 }
 
 impl Deref for Game {
@@ -109,7 +121,7 @@ impl Deref for Game {
 }
 
 /// Represents the castling rights of both players
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct CastlingRights {
     pub(crate) kingside: [bool; 2],
     pub(crate) queenside: [bool; 2],

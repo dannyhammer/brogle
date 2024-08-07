@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{
     io,
     sync::{
@@ -19,6 +20,9 @@ use super::{
 
 // type TranspositionTable = ();
 
+/// Represents the possible communication protocols supported by this engine.
+///
+/// Presently, only [UCI](https://backscattering.de/chess/uci/) is supported.
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
 enum EngineProtocol {
     #[default]
@@ -50,37 +54,39 @@ pub(crate) enum SearchStatus {
 /// is the best move to make.
 #[derive(Debug)]
 pub struct Engine {
-    /// State of the game, including castling rights, piece placement, etc.
-    ///
-    /// This is analogous to a FEN string.
+    /// State of the game, including castling rights, piece placement, move history, etc.
     game: Game,
 
-    /// Transposition table for game states.
+    // /// Transposition table for game states.
     // ttable: TranspositionTable,
+    /// Whether to display additional information in `info` commands.
+    ///
+    /// Defaults to `false`.`
+    debug: Arc<AtomicBool>,
 
-    /// Communication protocol
-    // protocol: EngineProtocol,
-    debug: bool,
-
-    /// Atomic boolean to determine whether the engine is currently running a search
+    /// Atomic boolean to determine whether the engine is currently running a search.
     // search_status: Arc<RwLock<SearchStatus>>,
     is_searching: Arc<AtomicBool>,
 
-    /// Result of the last-executed search
+    /// Result of the last-executed search.
     search_result: Arc<RwLock<SearchResult>>,
-    // search_handle: Option<JoinHandle<()>>,
+
+    /// Search-related info that can be sent to the GUI at any time.
     info: Arc<RwLock<UciInfo>>,
+    // /// List of available configuration options
     // options: todo!(),
 }
 
 impl Engine {
+    /// Construct a new [`Engine`] with default parameters.
     pub fn new() -> Self {
         Self {
-            game: Game::new(),
+            game: Game::standard_setup(),
             ..Default::default()
         }
     }
 
+    /// Construct a new [`Engine`] from provided FEN string.
     pub fn from_fen(fen: &str) -> Result<Self> {
         let game = Game::from_fen(fen)?;
         Ok(Self {
@@ -89,16 +95,20 @@ impl Engine {
         })
     }
 
-    /// Main entrypoint of the engine
-    pub fn run(&mut self) -> io::Result<()> {
+    /// Main entrypoint of the engine.
+    ///
+    /// This function launches the engine and awaits user input via `stdin`.
+    pub fn run(&mut self) -> Result<()> {
         let name = env!("CARGO_PKG_NAME");
         let version = env!("CARGO_PKG_VERSION");
         let authors = env!("CARGO_PKG_AUTHORS");
         println!("{name} {version} by {authors}");
 
-        self.uci_loop()
+        self.uci_loop()?;
+        Ok(())
     }
 
+    /// Returns an iterator over all UCI-compatible options for this engine.
     fn get_uci_options(&self) -> impl Iterator<Item = UciOption<&str>> {
         [
             // All available options will be defined here.
@@ -136,49 +146,10 @@ impl Engine {
         // *self.search_status.read().unwrap() == SearchStatus::InProgress
     }
 
-    // fn block_until_done(&mut self) -> Option<()> {
-    //     self.search_handle
-    //         .take()
-    //         .map(|handle| handle.join().unwrap())
-    // }
-
     /// Called when `ucinewgame` command is received. Resets all game-specific options.
-    fn new_game(&mut self) {}
-
-    /*
-    fn send_bestmove(&self) -> io::Result<()> {
-        // let bestmove = self.legal_moves().first().unwrap().to_string();
-        // let ponder = self.legal_moves().last().unwrap().to_string();
-
-        // let bestmove = std::mem::take(&mut *self.bestmove.lock().unwrap());
-        // let ponder = self.ponder.lock().unwrap().take();
-        let bestmove = self.bestmove.lock().unwrap().clone();
-        let ponder = self.ponder.lock().unwrap().clone();
-
-        self.bestmove(bestmove, ponder)
+    fn new_game(&mut self) {
+        self.game = Game::standard_setup();
     }
-     */
-
-    /*
-    /// Parses the custom `search` command
-    fn parse_search_command(&self, rest: &str) -> Result<EngineCommand, String> {
-        let mut args = rest.split_ascii_whitespace();
-
-        let Some(depth) = args.next() else {
-            return Err(format!("usage: search <depth> [iterative]"));
-        };
-
-        let Ok(depth) = depth.parse() else {
-            return Err(format!("usage: search <depth> [iterative]"));
-        };
-
-        let iterative = rest
-            .split_ascii_whitespace()
-            .any(|arg| arg.to_ascii_lowercase() == "iterative");
-
-        Ok(EngineCommand::Search { depth, iterative })
-    }
-      */
 
     /// Parses the custom `perft` command
     fn parse_perft_command(&self, rest: &str) -> Result<EngineCommand> {
@@ -280,68 +251,26 @@ impl Engine {
             "help" => Ok(EngineCommand::Help),
             "show" => Ok(EngineCommand::Show),
             "history" => Ok(EngineCommand::History),
-            // "search" => self.parse_search_command(rest),
             "perft" => self.parse_perft_command(rest),
             "eval" => self.parse_eval_command(rest),
             "move" => self.parse_move_command(rest),
             "moves" => Ok(EngineCommand::Moves),
             "fen" => self.parse_fen_command(rest),
+            "undo" => Ok(EngineCommand::Undo),
+            "bench" => Ok(EngineCommand::Bench),
             _ => bail!(
                 "{} does not recognize command {input:?}\nRun 'help' for a list of commands",
                 env!("CARGO_PKG_NAME")
             ),
         }
     }
-}
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-enum EngineCommand {
-    /// For displaying the list of available commands.
-    Help,
-
-    /// Run a perft at the provided depth.
-    Perft {
-        depth: usize,
-        pretty: bool,
-        split: bool,
-    },
-
-    /// Pretty-print the current state of the board.
-    Show,
-
-    /// Display the moves made during this game.
-    History,
-
-    /// Show the current state of of the board as a FEN string.
-    Fen(Option<String>),
-
-    /// Make the list of moves applied to the board.
-    Move(Vec<Move>),
-
-    /// Show all legal moves from the current position
-    Moves,
-
-    /// Evaluates the current position.
-    Eval(Game),
-    /*
-    /// Search the current position up to the provided depth.
-    Search { depth: u32, iterative: bool },
-     */
-}
-
-impl UciEngine for Engine {
-    /* GUI to Engine communication */
-
-    fn custom_command(&mut self, input: &str) -> io::Result<()> {
-        // Parse the command, returning an `io::Error` on error
-        let cmd = self
-            .parse_custom_command(input)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-
+    /// Executes the supplied [`EngineCommand`].
+    fn run_custom_command(&mut self, cmd: EngineCommand) {
         match cmd {
             EngineCommand::Help => {
                 println!(
-                    "available commands: help, perft, uci, bench, show, move, moves, undo, eval"
+                    "available commands: help, perft, show, history, fen, move, moves, eval, uci, bench, undo"
                 )
             }
 
@@ -399,78 +328,82 @@ impl UciEngine for Engine {
                     .collect::<Vec<_>>();
                 moves.sort();
                 println!("{}", moves.join(" "))
-            } /*
-              EngineCommand::Search {
-                  depth,
-                  iterative: _,
-              } => {
-                  let mut options = UciSearchOptions::default();
-                  options.depth = Some(depth);
-                  let search = Search::new(self.game.clone(), Arc::clone(&self.searching))
-                      .with_options(options);
-                  let res = search.start();
-                  // let res = search(self.game, depth);
-                  if let Some(bestmove) = res.bestmove {
-                      println!("bestmove {bestmove} ({})", res.score);
-                  } else {
-                      println!("No bestmove found in search. Score={}", res.score);
-                  }
-                  // println!("{:?}", search(&self.game, depth)),
-              } // EngineCommand::Moves => println!("{:?}", self.game),
-               */
+            }
+            EngineCommand::Bench => todo!("Implement `bench` command"),
+            EngineCommand::Undo => self.game.unmake_move(),
         }
+    }
+}
 
+/// Represents a custom command that can be sent to this engine.
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum EngineCommand {
+    /// For displaying the list of available commands.
+    Help,
+
+    /// Run a perft at the provided depth.
+    Perft {
+        depth: usize,
+        pretty: bool,
+        split: bool,
+    },
+
+    /// Pretty-print the current state of the board.
+    Show,
+
+    /// Display the moves made during this game.
+    History,
+
+    /// Show the current state of of the board as a FEN string.
+    Fen(Option<String>),
+
+    /// Make the list of moves applied to the board.
+    Move(Vec<Move>),
+
+    /// Show all legal moves from the current position.
+    Moves,
+
+    /// Evaluates the current position.
+    Eval(Game),
+
+    /// Benchmark this engine.
+    Bench,
+
+    /// Undo the last move made.
+    Undo,
+}
+
+impl UciEngine for Engine {
+    /* GUI to Engine communication */
+
+    fn custom_command(&mut self, input: &str) -> Result<()> {
+        // Parse the command, returning an `io::Error` on error
+        let cmd = self
+            .parse_custom_command(input)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+        self.run_custom_command(cmd);
         Ok(())
     }
 
-    // Engine receive a `uci` command
-    fn uci(&mut self) -> io::Result<()> {
-        // The engine must now identify itself
-        self.id()?;
-
-        // And send all available options
-        self.option()?;
-
-        // Engine has sent all parameters and is ready
-        self.uciok()?;
-
+    fn debug(&mut self, status: bool) -> Result<()> {
+        self.debug.store(status, Ordering::Relaxed);
         Ok(())
     }
 
-    fn debug(&mut self, status: bool) -> io::Result<()> {
-        self.debug = status;
-        Ok(())
-    }
-
-    fn isready(&self) -> io::Result<()> {
-        let resp: UciResponse<&str> = UciResponse::ReadyOk;
-        resp.send()
-    }
-
-    fn setoption(&mut self, name: &str, value: &str) -> io::Result<()> {
+    fn setoption(&mut self, name: &str, value: &str) -> Result<()> {
         match name {
-            _ => eprintln!("Unrecognized option `{name}` with value `{value}`"),
+            _ => eprintln!("Unrecognized option {name:?} with value {value:?}"),
         }
         Ok(())
     }
 
-    fn register(&mut self, registration: Option<(&str, &str)>) -> io::Result<()> {
-        // No registration necessary :)
-        _ = registration;
-
-        // match registration {
-        //     UciRegistration::Later => {}
-        //     UciRegistration::Now(name, code) => {}
-        // }
-        Ok(())
-    }
-
-    fn ucinewgame(&mut self) -> io::Result<()> {
+    fn ucinewgame(&mut self) -> Result<()> {
         self.new_game();
         Ok(())
     }
 
-    fn position(&mut self, fen: &str, moves: Vec<&str>) -> io::Result<()> {
+    fn position(&mut self, fen: &str, moves: Vec<&str>) -> Result<()> {
         // Apply the FEN to the game state
         // _ = self.setup(fen); // ignore any errors if they occur.
         // self.game = Game::from_fen(fen).unwrap();
@@ -488,7 +421,7 @@ impl UciEngine for Engine {
         Ok(())
     }
 
-    fn go(&mut self, options: UciSearchOptions) -> io::Result<()> {
+    fn go(&mut self, options: UciSearchOptions) -> Result<()> {
         // Arena sent this to our engine
         // go wtime 300000 btime 300000 winc 0 binc 0
 
@@ -578,7 +511,7 @@ impl UciEngine for Engine {
         Ok(())
     }
 
-    fn stop(&mut self) -> io::Result<()> {
+    fn stop(&mut self) -> Result<()> {
         // Only need to stop if we're already searching. Otherwise, don't need to send anything new
         if self.is_searching() {
             self.stop_search();
@@ -592,34 +525,13 @@ impl UciEngine for Engine {
         Ok(())
     }
 
-    fn ponderhit(&self) -> io::Result<()> {
+    fn ponderhit(&self) -> Result<()> {
         todo!("Handle ponderhit")
     }
 
-    fn quit(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-
     /* Engine to GUI communication */
-    fn id(&self) -> io::Result<()> {
-        let name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-        let author = format!("{}", env!("CARGO_PKG_AUTHORS"));
 
-        let resp = UciResponse::Id(name, author);
-        resp.send()
-    }
-
-    fn uciok(&self) -> io::Result<()> {
-        let resp: UciResponse<&str> = UciResponse::UciOk;
-        resp.send()
-    }
-
-    fn readyok(&self) -> io::Result<()> {
-        let resp: UciResponse<&str> = UciResponse::ReadyOk;
-        resp.send()
-    }
-
-    fn bestmove(&self, bestmove: String, ponder: Option<String>) -> io::Result<()> {
+    fn bestmove<T: fmt::Display>(&self, bestmove: T, ponder: Option<T>) -> Result<()> {
         // https://backscattering.de/chess/uci/#engine-bestmove-info
         let info = self.info.read().unwrap();
         self.info(info.clone())?;
@@ -628,32 +540,7 @@ impl UciEngine for Engine {
         resp.send()
     }
 
-    fn copyprotection(&self) -> io::Result<()> {
-        let resp = UciResponse::CopyProtection("checking");
-        resp.send()?;
-
-        // This engine isn't copy protected, so do nothing here.
-
-        let resp = UciResponse::CopyProtection("ok");
-        resp.send()
-    }
-
-    fn registration(&self) -> io::Result<()> {
-        let resp = UciResponse::Registration("checking");
-        resp.send()?;
-
-        // This engine requires no registration, so do nothing here.
-
-        let resp = UciResponse::Registration("ok");
-        resp.send()
-    }
-
-    fn info(&self, info: UciInfo) -> io::Result<()> {
-        let resp: UciResponse<&str> = UciResponse::Info(info);
-        resp.send()
-    }
-
-    fn option(&self) -> io::Result<()> {
+    fn option(&self) -> Result<()> {
         for opt in self.get_uci_options() {
             let resp = UciResponse::Option(opt);
             resp.send()?;
@@ -663,6 +550,7 @@ impl UciEngine for Engine {
 }
 
 impl Default for Engine {
+    /// Default engine starts with standard piece set up.
     fn default() -> Self {
         Self {
             game: Game::from_fen(
@@ -671,13 +559,11 @@ impl Default for Engine {
             )
             .unwrap(),
             // ttable: TranspositionTable::default(),
-            // protocol: EngineProtocol::UCI,
-            debug: false,
+            debug: Arc::default(),
             is_searching: Arc::default(),
             // search_status: Arc::default(),
             search_result: Arc::default(),
             info: Arc::default(),
-            // protocol: EngineProtocol::default(),
         }
     }
 }

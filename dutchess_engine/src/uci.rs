@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::{Context, Result};
 use log::{Level, Metadata, Record};
 
 const DEFAULT_FEN: &'static str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -107,15 +108,6 @@ pub enum UciError {
     NotEnoughArguments,
     InvalidArgument,
 }
-// impl Error for InvalidUciError {
-//     //
-// }
-
-// #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
-// pub enum SearchStatus<T> {
-//     InProgress,
-//     Done(T),
-// }
 
 /// Represents a type that has implemented the Universal Chess Interface (UCI) protocol.
 pub trait UciEngine {
@@ -123,7 +115,7 @@ pub trait UciEngine {
     ///
     /// Upon receiving `uci`, your engine should call this function, and will only leave this function
     /// when a `quit` message is received.
-    fn uci_loop(&mut self) -> io::Result<()> {
+    fn uci_loop(&mut self) -> Result<()> {
         // For convenience, import the enum variants.
         use UciCommand::*;
 
@@ -131,10 +123,13 @@ pub trait UciEngine {
         loop {
             // Clear the buffer, read input, and trim the trailing newline
             buffer.clear();
-            let bytes = io::stdin().read_line(&mut buffer)?;
+            let bytes = io::stdin()
+                .read_line(&mut buffer)
+                .with_context(|| "Failed to read stdin when parsing UCI commands")?;
             let buf = buffer.trim();
 
             if 0 == bytes {
+                eprintln!("WARNING: Engine received input of 0 bytes and is quitting");
                 return self.quit();
             }
 
@@ -160,10 +155,10 @@ pub trait UciEngine {
                 Uci => self.uci(),
                 Debug(status) => self.debug(status),
                 IsReady => self.isready(),
-                SetOption(name, value) => self.setoption(&name, &value),
+                SetOption { name, value } => self.setoption(&name, &value),
                 Register(registration) => self.register(registration),
                 UciNewGame => self.ucinewgame(),
-                Position(fen, moves) => self.position(fen, moves),
+                Position { fen, moves } => self.position(fen, moves),
                 Go(search_opt) => self.go(search_opt),
                 Stop => self.stop(),
                 PonderHit => self.ponderhit(),
@@ -172,7 +167,10 @@ pub trait UciEngine {
         }
     }
 
-    fn custom_command(&mut self, cmd: &str) -> io::Result<()> {
+    /// Parse and execute a non-UCI command.
+    ///
+    /// The default implementation of this method does nothing and returns `Ok(())`.
+    fn custom_command(&mut self, cmd: &str) -> Result<()> {
         _ = cmd;
         Ok(())
     }
@@ -189,7 +187,20 @@ pub trait UciEngine {
     /// and send the `option` commands to tell the GUI which engine settings the engine supports if any.
     /// After that the engine should send `uciok` to acknowledge the uci mode.
     /// If no uciok is sent within a certain time period, the engine task will be killed by the GUI.
-    fn uci(&mut self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method calls, in order: [`UciEngine::id`], [`UciEngine::option`], and finally [`UciEngine::uciok`].
+    fn uci(&mut self) -> Result<()> {
+        // The engine must now identify itself
+        self.id()?;
+
+        // And send all available options
+        self.option()?;
+
+        // Engine has sent all parameters and is ready
+        self.uciok()?;
+
+        Ok(())
+    }
 
     /// Called upon `debug [on | off]` where `on = true`.
     ///
@@ -199,7 +210,12 @@ pub trait UciEngine {
     /// to help debugging, e.g. the commands that the engine has received etc.
     /// This mode should be switched off by default and this command can be sent
     /// any time, also when the engine is thinking.
-    fn debug(&mut self, status: bool) -> io::Result<()>;
+    ///
+    /// The default implementation of this method does nothing and returns `Ok(())`.
+    fn debug(&mut self, status: bool) -> Result<()> {
+        _ = status;
+        Ok(())
+    }
 
     /// Called when the engine receives `isready`.
     ///
@@ -213,7 +229,11 @@ pub trait UciEngine {
     /// to wait for the engine to finish initializing.
     /// This command must always be answered with `readyok` and can be sent also when the engine is calculating
     /// in which case the engine should also immediately answer with `readyok` without stopping the search.
-    fn isready(&self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method simply immediately sends a response of `readyok`.
+    fn isready(&self) -> Result<()> {
+        UciResponse::<&str>::ReadyOk.send()
+    }
 
     /// Called when the engine receives `setoption name <name> [ value <value> ]`.
     /// `setoption name <id> [value <x>]`
@@ -233,7 +253,12 @@ pub trait UciEngine {
     /// * `setoption name Style value Risky\n`
     /// * `setoption name Clear Hash\n`
     /// * `setoption name NalimovPath value c:\chess\tb\4;c:\chess\tb\5\n`
-    fn setoption(&mut self, name: &str, value: &str) -> io::Result<()>;
+    ///
+    /// The default implementation of this method does nothing and returns `Ok(())`.
+    fn setoption(&mut self, name: &str, value: &str) -> Result<()> {
+        _ = (name, value);
+        Ok(())
+    }
 
     /// Called when the engine receives `registration [name <name> code <code> | later]`.
     ///
@@ -255,7 +280,13 @@ pub trait UciEngine {
     /// # Example:
     ///    `register later`
     ///    `register name Stefan MK code 4359874324`
-    fn register(&mut self, registration: Option<(&str, &str)>) -> io::Result<()>;
+    ///
+    /// The default implementation of this method does nothing and returns `Ok(())`.
+    fn register(&mut self, registration: Option<(&str, &str)>) -> Result<()> {
+        _ = registration;
+
+        Ok(())
+    }
 
     /// Called when the engine receives `ucinewgame`.
     ///
@@ -269,7 +300,11 @@ pub trait UciEngine {
     ///
     /// As the engine's reaction to `ucinewgame` can take some time the GUI should always send `isready`
     /// after `ucinewgame` to wait for the engine to finish its operation.
-    fn ucinewgame(&mut self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method does nothing and returns `Ok(())`.
+    fn ucinewgame(&mut self) -> Result<()> {
+        Ok(())
+    }
 
     /// Called when the engine receives `position [ startpos | fen <fen> ] move <move1> ... <movei>`
     ///
@@ -279,7 +314,7 @@ pub trait UciEngine {
     /// If the game was played  from the start position the string `startpos` will be sent
     /// Note: no `new` command is needed. However, if this position is from a different game than
     /// the last position sent to the engine, the GUI should have sent a `ucinewgame` in between.
-    fn position(&mut self, fen: &str, moves: Vec<&str>) -> io::Result<()>;
+    fn position(&mut self, fen: &str, moves: Vec<&str>) -> Result<()>;
 
     /// Called when the engine receives `go <search options>`.
     ///
@@ -348,24 +383,32 @@ pub trait UciEngine {
     /// * `infinite`
     ///
     /// Search until the `stop` command. Do not exit the search without being told so in this mode!
-    fn go(&mut self, options: UciSearchOptions) -> io::Result<()>;
+    fn go(&mut self, options: UciSearchOptions) -> Result<()>;
 
     /// Called when the engine receives `stop`.
     ///
     /// Stop calculating as soon as possible,
     /// don't forget the "bestmove" and possibly the "ponder" token when finishing the search
-    fn stop(&mut self) -> io::Result<()>;
+    fn stop(&mut self) -> Result<()>;
 
     /// Called when the engine receives `ponderhit`.
     ///
     /// The user has played the expected move. This will be sent if the engine was told to ponder on the same move
     /// the user has played. The engine should continue searching but switch from pondering to normal search.
-    fn ponderhit(&self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method does nothing and returns `Ok(())`.
+    fn ponderhit(&self) -> Result<()> {
+        Ok(())
+    }
 
     /// Called when the engine receives `quit`.
     ///
     /// Quit the program as soon as possible
-    fn quit(&mut self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method does nothing and returns `Ok(())`, as [`UciEngine::uci_loop`] exits its loop once `quit` is received.
+    fn quit(&mut self) -> Result<()> {
+        Ok(())
+    }
 
     /******************************************************************/
     /*                  Engine to GUI communication                   */
@@ -380,13 +423,32 @@ pub trait UciEngine {
     /// `id name Shredder\n`
     ///
     /// `id author Stefan MK\n`
-    fn id(&self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method sends the following:
+    /// ```text
+    /// id name <name> <version>\n
+    /// id author <authors>\n
+    /// ```
+    /// Where:
+    /// - `<name>` is fetched from the `CARGO_PKG_NAME` env var
+    /// - `<version>` is fetched from the `CARGO_PKG_VERSION` env var
+    /// - `<authors>` is fetched from the `CARGO_PKG_AUTHORS` env var
+    fn id(&self) -> Result<()> {
+        let name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        let author = format!("{}", env!("CARGO_PKG_AUTHORS"));
+
+        UciResponse::Id(name, author).send()
+    }
 
     /// Send the `uciok` message to `stdout.`
     ///
     /// Must be sent after the `id` and optional `option`s to tell the GUI that the engine
     /// has sent all infos and is ready in uci mode.
-    fn uciok(&self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method simply immediately sends a response of `uciok`.
+    fn uciok(&self) -> Result<()> {
+        UciResponse::<&str>::UciOk.send()
+    }
 
     /// Send the `readyok` message to `stdout.`
     ///
@@ -395,7 +457,11 @@ pub trait UciEngine {
     /// It is usually sent after a command that can take some time to be able to wait for the engine,
     /// but it can be used anytime, even when the engine is searching,
     /// and must always be answered with `isready`.
-    fn readyok(&self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method simply immediately sends a response of `readyok`.
+    fn readyok(&self) -> Result<()> {
+        UciResponse::<&str>::ReadyOk.send()
+    }
 
     /// Send the `bestmove <move1> [ ponder <move2> ]` message to `stdout.`
     ///
@@ -405,19 +471,41 @@ pub trait UciEngine {
     /// `stop` command, so for every `go` command a `bestmove` command is needed!
     /// Directly before that the engine should send a final "info" command with the final search information,
     /// the the GUI has the complete statistics about the last search.
-    fn bestmove(&self, bestmove: String, ponder: Option<String>) -> io::Result<()>;
+    ///
+    /// The default implementation of this method simply immediately sends a response of `bestmove <move> [ponder]`.
+    fn bestmove<T: fmt::Display>(&self, bestmove: T, ponder: Option<T>) -> Result<()> {
+        UciResponse::BestMove(bestmove, ponder).send()
+    }
 
     /// Send the `copyprotection [ checking | ok | error ]` message to `stdout.`
-    fn copyprotection(&self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method simply immediately sends a response of `checking` followed by `ok`.
+    fn copyprotection(&self) -> Result<()> {
+        UciResponse::CopyProtection("checking").send()?;
+        UciResponse::CopyProtection("ok").send()
+    }
 
     /// Send the `registration[ checking | ok | error ]` message to `stdout.`
-    fn registration(&self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method simply immediately sends a response of `checking` followed by `ok`.
+    fn registration(&self) -> Result<()> {
+        UciResponse::Registration("checking").send()?;
+        UciResponse::Registration("ok").send()
+    }
 
     /// Send the `info [ STUFF ]` message to `stdout.`
-    fn info(&self, info: UciInfo) -> io::Result<()>;
+    ///
+    /// The default implementation of this method simply immediately sends a response of `info [ STUFF ]`.
+    fn info(&self, info: UciInfo) -> Result<()> {
+        UciResponse::<String>::Info(info).send()
+    }
 
     /// Send the `option [ STUFF ]` message to `stdout.`
-    fn option(&self) -> io::Result<()>;
+    ///
+    /// The default implementation of this method does nothing and returns `Ok(())`.
+    fn option(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// # UCI Commands (GUI to Engine)
@@ -432,8 +520,7 @@ pub enum UciCommand<'a> {
 
     IsReady,
 
-    // <name> <value>
-    SetOption(&'a str, &'a str),
+    SetOption { name: &'a str, value: &'a str },
 
     // `None` -> `later`
     // `Some` -> `(name, code)`
@@ -441,8 +528,7 @@ pub enum UciCommand<'a> {
 
     UciNewGame,
 
-    // <fen> <moves>
-    Position(&'a str, Vec<&'a str>),
+    Position { fen: &'a str, moves: Vec<&'a str> },
 
     Go(UciSearchOptions),
 
@@ -454,6 +540,7 @@ pub enum UciCommand<'a> {
 }
 
 impl<'a> UciCommand<'a> {
+    /// Parses the input string into a [`UciCommand`], if possible.
     pub fn new(input: &'a str) -> UciResult<Self> {
         // Leading and trailing whitespace is ignored
         let input = input.trim();
@@ -504,7 +591,10 @@ impl<'a> UciCommand<'a> {
             .split_once("name")
             .ok_or(UciError::NotEnoughArguments)?;
 
-        Ok(UciCommand::SetOption(name.trim(), value.trim()))
+        Ok(UciCommand::SetOption {
+            name: name.trim(),
+            value: value.trim(),
+        })
     }
 
     fn parse_register(args: &'a str) -> UciResult<Self> {
@@ -528,27 +618,6 @@ impl<'a> UciCommand<'a> {
     }
 
     fn parse_position(args: &'a str) -> UciResult<Self> {
-        /*
-        // First, we check if there are any moves provided
-        let (pos, moves) = if let Some((pos, moves)) = args.split_once("moves") {
-            (pos, moves.split_whitespace().collect())
-        } else {
-            (args, vec![])
-        };
-
-        // Now, we parse the position, which is either `startpos` or `fen <str>`
-        let pos = if pos.starts_with("fen") {
-            let (_, fen) = pos
-                .split_once("fen")
-                .ok_or(InvalidUciError::NotEnoughArguments)?;
-            fen.trim()
-        } else if pos.starts_with("startpos") {
-            DEFAULT_FEN
-        } else {
-            return Err(InvalidUciError::InvalidArgument);
-        };
-         */
-
         let (mut pos, moves) = if let Some((pos, moves)) = args.split_once("moves") {
             (pos, moves.split_whitespace().collect())
         } else {
@@ -564,7 +633,7 @@ impl<'a> UciCommand<'a> {
             return Err(UciError::InvalidArgument);
         };
 
-        Ok(UciCommand::Position(pos, moves))
+        Ok(UciCommand::Position { fen: pos, moves })
     }
 
     fn parse_go(args: &'a str) -> UciResult<Self> {
@@ -598,7 +667,6 @@ impl<'a> UciCommand<'a> {
                 "ponder" => opt.ponder = true,
                 "wtime" => opt.w_time = Some(parse_duration(args.next())?),
                 "btime" => opt.b_time = Some(parse_duration(args.next())?),
-
                 "winc" => opt.w_inc = Some(parse(args.next())?),
                 "binc" => opt.b_inc = Some(parse(args.next())?),
                 "movestogo" => opt.moves_to_go = Some(parse(args.next())?),
@@ -905,15 +973,20 @@ pub enum UciResponse<T: fmt::Display = String> {
 }
 
 impl<T: fmt::Display> UciResponse<T> {
-    pub fn send(&self) -> io::Result<()> {
-        let resp = self.to_string();
+    /// Sends this [`UciResponse`] to `stdout`.
+    pub fn send(&self) -> Result<()> {
         let mut handle = io::stdout().lock();
-        handle.write_all(resp.as_ref())?;
-        handle.flush()
+        handle
+            .write_all(self.to_string().as_bytes())
+            .with_context(|| "Failed to write all bytes for {self:?} to stdout")?;
+        handle
+            .flush()
+            .with_context(|| "Failed to flush stdout when writing {self:?}")
     }
 }
 
 impl<T: fmt::Display> fmt::Display for UciResponse<T> {
+    /// Responses are formatted to display appropriately according to the UCI specifications.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let response = match self {
             Self::Id(name, author) => {
@@ -1059,6 +1132,7 @@ impl UciInfo {
 }
 
 impl fmt::Display for UciInfo {
+    /// An info command will only display data that it has; any `None` fields are not displayed.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(x) = &self.depth {
             write!(f, "depth {x} ")?;
@@ -1102,15 +1176,12 @@ impl fmt::Display for UciInfo {
         if let Some(x) = &self.string {
             write!(f, "string {x} ")?;
         }
-
         if !self.refutation.is_empty() {
             write!(f, "refutation {}", self.refutation.join(" "))?;
         }
-
         if !self.currline.is_empty() {
             write!(f, "currline {}", self.currline.join(" "))?;
         }
-
         if !self.pv.is_empty() {
             write!(f, "pv {}", self.pv.join(" "))?;
         }
@@ -1119,50 +1190,51 @@ impl fmt::Display for UciInfo {
     }
 }
 
+/// Represents a UCI-compatible option that can be modified for your Engine.
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct UciOption<T: fmt::Display = String> {
+    /// Name of the option.
     pub name: T,
+
+    /// What type of option it is.
     pub opt_type: UciOptionType<T>,
 }
 
 impl<T: fmt::Display> UciOption<T> {
+    /// Create a new [`UciOption`] with the provided name and type.
+    pub fn new(name: T, opt_type: UciOptionType<T>) -> Self {
+        Self { name, opt_type }
+    }
+
     pub fn check(name: T, default: bool) -> Self {
-        Self {
-            name,
-            opt_type: UciOptionType::Check(default),
-        }
+        Self::new(name, UciOptionType::Check { default })
     }
 
     pub fn spin(name: T, default: i32, min: i32, max: i32) -> Self {
-        Self {
-            name,
-            opt_type: UciOptionType::Spin(default, min, max),
-        }
+        Self::new(name, UciOptionType::Spin { default, min, max })
     }
 
     pub fn combo(name: T, default: T, vars: impl IntoIterator<Item = T>) -> Self {
-        Self {
+        Self::new(
             name,
-            opt_type: UciOptionType::Combo(default, vars.into_iter().collect()),
-        }
+            UciOptionType::Combo {
+                default,
+                vars: vars.into_iter().collect(),
+            },
+        )
     }
 
     pub fn button(name: T) -> Self {
-        Self {
-            name,
-            opt_type: UciOptionType::Button,
-        }
+        Self::new(name, UciOptionType::Button)
     }
 
     pub fn string(name: T, default: T) -> Self {
-        Self {
-            name,
-            opt_type: UciOptionType::String(default),
-        }
+        Self::new(name, UciOptionType::String { default })
     }
 }
 
 impl<T: fmt::Display> fmt::Display for UciOption<T> {
+    /// An option is displayed as `name <name> type <type>`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "name {} type {}", self.name, self.opt_type)
     }
@@ -1171,37 +1243,38 @@ impl<T: fmt::Display> fmt::Display for UciOption<T> {
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum UciOptionType<T: fmt::Display = String> {
     /// Checkbox that can either be true or false
-    Check(bool),
+    Check { default: bool },
 
     /// Spin wheel that can be an integer within a range.
-    Spin(i32, i32, i32),
+    Spin { default: i32, min: i32, max: i32 },
 
     /// Combo box that can have pre-defined string values
-    Combo(T, Vec<T>),
+    Combo { default: T, vars: Vec<T> },
 
     /// A button that can be pressed to send commands to the engine
     Button,
 
     /// Text field with a string value or empty string `""`.
-    String(T),
+    String { default: T },
 }
 
 impl<T: fmt::Display> fmt::Display for UciOptionType<T> {
+    /// Option types are displayed like [these examples](https://backscattering.de/chess/uci/#engine-option-examples).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UciOptionType::Check(check) => write!(f, "check default {check}"),
-            UciOptionType::Spin(default, min, max) => {
-                write!(f, "spin default {default} min {min} max {max}",)
+            UciOptionType::Check { default } => write!(f, "check default {default}"),
+            UciOptionType::Spin { default, min, max } => {
+                write!(f, "spin default {default} min {min} max {max}")
             }
-            UciOptionType::Combo(default, vars) => {
+            UciOptionType::Combo { default, vars } => {
                 write!(f, "combo default {default}")?;
                 for var in vars {
                     write!(f, " var {var}")?;
                 }
                 Ok(())
             }
-            UciOptionType::Button => write!(f, "button",),
-            UciOptionType::String(default) => write!(f, "string default {default}"),
+            UciOptionType::Button => write!(f, "button"),
+            UciOptionType::String { default } => write!(f, "string default {default}"),
         }
     }
 }
@@ -1320,22 +1393,34 @@ mod test {
     fn parse_position() {
         parse_test(
             "position startpos",
-            UciCommand::Position(DEFAULT_FEN, vec![]),
+            UciCommand::Position {
+                fen: DEFAULT_FEN,
+                moves: vec![],
+            },
         );
 
         parse_test(
             "position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-            UciCommand::Position(DEFAULT_FEN, vec![]),
+            UciCommand::Position {
+                fen: DEFAULT_FEN,
+                moves: vec![],
+            },
         );
 
         parse_test(
             "position startpos moves e2e4 e7e5",
-            UciCommand::Position(DEFAULT_FEN, vec!["e2e4", "e7e5"]),
+            UciCommand::Position {
+                fen: DEFAULT_FEN,
+                moves: vec!["e2e4", "e7e5"],
+            },
         );
 
         parse_test(
             "position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 moves e2e4 e7e5",
-            UciCommand::Position(DEFAULT_FEN, vec!["e2e4", "e7e5"]),
+            UciCommand::Position {
+                fen: DEFAULT_FEN,
+                moves: vec!["e2e4", "e7e5"],
+            },
         );
     }
 
@@ -1353,16 +1438,18 @@ mod test {
     fn parse_setoption() {
         parse_test(
             "setoption name Test Option value 0",
-            UciCommand::SetOption("Test Option", "0"),
+            UciCommand::SetOption {
+                name: "Test Option",
+                value: "0",
+            },
         );
     }
 
     #[test]
     fn parse_go() {
-        /*
         parse_test(
             "go infinite",
-            UciCommand::Go(SearchOptions {
+            UciCommand::Go(UciSearchOptions {
                 infinite: true,
                 ..Default::default()
             }),
@@ -1370,7 +1457,7 @@ mod test {
 
         parse_test(
             "go btime 30000 wtime 30000 winc 10 binc 42",
-            UciCommand::Go(SearchOptions {
+            UciCommand::Go(UciSearchOptions {
                 b_time: Some(Duration::from_millis(30_000)),
                 w_time: Some(Duration::from_millis(30_000)),
                 w_inc: Some(10),
@@ -1381,13 +1468,12 @@ mod test {
 
         parse_test(
             "go infinite searchmoves e2e4 d2d4",
-            UciCommand::Go(SearchOptions {
+            UciCommand::Go(UciSearchOptions {
                 infinite: true,
-                moves: vec!["e2e4", "d2d4"],
+                search_moves: vec![String::from("e2e4"), String::from("d2d4")],
                 ..Default::default()
             }),
         );
-         */
     }
 
     #[test]
