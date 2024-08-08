@@ -69,9 +69,11 @@ pub struct Search<'a> {
     pub(crate) starttime: Instant,
     pub(crate) nodes_searched: usize,
     pub(crate) info: Arc<RwLock<UciInfo>>,
+    /*
     /// Principle Variation of the search
     /// pv[i][j] is the PV at the i'th ply (0 is root), which has j descendants
     pub(crate) pv: Vec<Vec<Move>>,
+     */
 }
 
 impl<'a> Search<'a> {
@@ -92,7 +94,7 @@ impl<'a> Search<'a> {
             options: UciSearchOptions::default(),
             starttime: Instant::now(),
             nodes_searched: 0,
-            pv: Vec::default(),
+            // pv: Vec::default(),
         }
     }
 
@@ -109,14 +111,14 @@ impl<'a> Search<'a> {
         self.starttime = Instant::now();
         // Populate the PV list
         // self.pv = Vec::with_capacity(depth);
-        self.pv = vec![Vec::with_capacity(depth); depth];
+        // self.pv = vec![Vec::with_capacity(depth); depth];
         let result = self.search(depth)?;
 
         // If the search timed out, this result is garbage, so don't return it.
         *self.result.write().unwrap() = result.clone();
         let elapsed = self.starttime.elapsed();
 
-        let pv = self.pv[0].clone();
+        // let pv = self.pv[0].clone();
 
         let mut lock = self.info.write().unwrap();
         let mut info = lock.clone();
@@ -126,7 +128,8 @@ impl<'a> Search<'a> {
             .nodes(self.nodes_searched)
             .nps((self.nodes_searched as f64 / elapsed.as_secs_f64()) as usize)
             .time(elapsed.as_millis())
-            .pv(pv);
+            // .pv(pv)
+            ;
 
         *lock = info;
 
@@ -152,7 +155,7 @@ impl<'a> Search<'a> {
         let ply = 0;
 
         // Clear the PV for current node
-        self.pv.push(Vec::with_capacity(depth));
+        // self.pv.push(Vec::with_capacity(depth));
         // self.pv[ply] = Vec::with_capacity(depth);
 
         // Reached the end of the depth; return board's evaluation.
@@ -174,7 +177,7 @@ impl<'a> Search<'a> {
             // Make the current move on the position, getting a new position in return
             let new_pos = self.game.with_move_made(mv);
 
-            if new_pos.is_repetition() {
+            if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
                 // eprintln!("Repetition in Search after {mv} on {}", new_pos.fen());
                 continue;
             }
@@ -211,10 +214,10 @@ impl<'a> Search<'a> {
             // alpha = alpha.max(current);
             if current > alpha {
                 alpha = current;
-                self.pv[ply] = Vec::with_capacity(depth + 1);
-                self.pv[ply].push(mv);
-                let children_pvs = self.pv[ply + 1].clone();
-                self.pv[ply].extend(children_pvs);
+                // self.pv[ply] = Vec::with_capacity(depth + 1);
+                // self.pv[ply].push(mv);
+                // let children_pvs = self.pv[ply + 1].clone();
+                // self.pv[ply].extend(children_pvs);
             }
 
             // Opponent would never choose this branch, so we can prune
@@ -257,13 +260,13 @@ impl<'a> Search<'a> {
         let mut best = -INF;
 
         // Clear the PV for current node
-        self.pv.push(Vec::with_capacity(depth));
+        // self.pv.push(Vec::with_capacity(depth));
         // self.pv[ply] = Vec::with_capacity(depth);
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
-            // return self.quiescence(game, ply + 1, alpha, beta);
-            return Ok(Evaluator::new(game).eval());
+            return self.quiescence(game, ply + 1, alpha, beta);
+            // return Ok(Evaluator::new(game).eval());
         }
 
         let mut moves = game.legal_moves();
@@ -284,7 +287,7 @@ impl<'a> Search<'a> {
 
             // Make the current move on the position, getting a new position in return
             let new_pos = game.with_move_made(mv);
-            if new_pos.is_repetition() {
+            if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
                 // eprintln!("Repetition in Negamax after {mv} on {}", new_pos.fen());
                 continue;
             }
@@ -312,10 +315,10 @@ impl<'a> Search<'a> {
             // Update alpha.
             if current > alpha {
                 alpha = current;
-                self.pv[ply] = Vec::with_capacity(depth + 1);
-                self.pv[ply].push(mv);
-                let children_pvs = self.pv[ply + 1].clone();
-                self.pv[ply].extend(children_pvs);
+                // self.pv[ply] = Vec::with_capacity(depth + 1);
+                // self.pv[ply].push(mv);
+                // let children_pvs = self.pv[ply + 1].clone();
+                // self.pv[ply].extend(children_pvs);
             }
 
             // Opponent would never choose this branch, so we can prune
@@ -331,7 +334,7 @@ impl<'a> Search<'a> {
 
     fn quiescence(&mut self, game: &Game, ply: usize, mut alpha: i32, beta: i32) -> Result<i32> {
         // Clear the PV for current node
-        self.pv.push(Vec::with_capacity(8));
+        // self.pv.push(Vec::with_capacity(8));
 
         // eprintln!("QSearch on {}", game.fen());
         // Root nodes in negamax must be evaluated from the current player's perspective
@@ -391,10 +394,10 @@ impl<'a> Search<'a> {
             // Update alpha.
             if current > alpha {
                 alpha = current;
-                self.pv[ply] = Vec::with_capacity(8); // seems like a good number
-                self.pv[ply].push(mv);
-                let children_pvs = self.pv[ply + 1].clone();
-                self.pv[ply].extend(children_pvs);
+                // self.pv[ply] = Vec::with_capacity(8); // seems like a good number
+                // self.pv[ply].push(mv);
+                // let children_pvs = self.pv[ply + 1].clone();
+                // self.pv[ply].extend(children_pvs);
             }
 
             // Opponent would never choose this branch, so we can prune

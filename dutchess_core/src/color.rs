@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    ops::{Index, IndexMut, Not},
+    ops::{Index, IndexMut, Neg},
 };
 
 use anyhow::{bail, Result};
@@ -266,10 +266,10 @@ impl Default for Color {
     }
 }
 
-impl Not for Color {
+impl Neg for Color {
     type Output = Self;
     /// Negating [`Color::White`] yields [`Color::Black`] and vice versa.
-    fn not(self) -> Self::Output {
+    fn neg(self) -> Self::Output {
         self.opponent()
     }
 }

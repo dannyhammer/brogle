@@ -12,6 +12,7 @@ use super::{
     NUM_COLORS, NUM_PIECE_TYPES,
 };
 
+/*
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum GameState {
     Playing,
@@ -27,6 +28,7 @@ pub enum GameResult {
     Stalemate,
     Draw,
 }
+ */
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Game {
@@ -36,6 +38,7 @@ pub struct Game {
 }
 
 impl Game {
+    /// Creates a new, empty [`Game`].
     pub fn new() -> Self {
         Self {
             movegen: MoveGenerator::new_legal(Position::new()),
@@ -44,10 +47,12 @@ impl Game {
         }
     }
 
+    /// Creates a new [`Game`] with the standard piece setup.
     pub fn standard_setup() -> Self {
         Self::from_fen(FEN_STARTPOS).unwrap()
     }
 
+    /// Creates a new [`Game`] from the provided FEN string.
     pub fn from_fen(fen: &str) -> Result<Self> {
         let position = Position::from_fen(fen)?;
         Ok(Self {
@@ -57,12 +62,16 @@ impl Game {
         })
     }
 
+    /// Consumes `self` and returns a [`Game`] after having applied the provided [`Move`].
     pub fn with_move_made(&self, chessmove: Move) -> Self {
         let mut new = self.clone();
         new.make_move(chessmove);
         new
     }
 
+    /// Returns `true` if the game is in a position that is identical to the position it was in before.
+    ///
+    /// This is for checking "two-fold" repetition.
     pub fn is_repetition(&self) -> bool {
         for prev_pos in self.history.iter().rev().skip(1).step_by(2) {
             if prev_pos == self.position() {
@@ -72,17 +81,21 @@ impl Game {
             //     return false;
             // }
         }
-        return false;
+
+        false
     }
 
+    /// Fetches this game's [`MoveGenerator`].
     pub fn movegen(&self) -> &MoveGenerator {
         &self.movegen
     }
 
+    /// Mutably fetches this game's [`MoveGenerator`].
     pub fn movegen_mut(&mut self) -> &mut MoveGenerator {
         &mut self.movegen
     }
 
+    /// Applies the provided [`Move`]. No enforcement of legality.
     pub fn make_move(&mut self, chessmove: Move) {
         self.history.push(self.position.clone());
         self.moves.push(chessmove);
@@ -90,16 +103,19 @@ impl Game {
         self.movegen = MoveGenerator::new_legal(new_pos);
     }
 
+    /// Applies the provided [`Move`]s. No enforcement of legality.
     pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
         for chessmove in moves {
             self.make_move(chessmove);
         }
     }
 
+    /// Returns a list of all [`Move`]s made during this game.
     pub fn history(&self) -> &[Move] {
         &self.moves
     }
 
+    /// Undo the previously-made move, if there was one, and restore the position.
     pub fn unmake_move(&mut self) {
         let Some(prev_pos) = self.history.pop() else {
             return;
@@ -253,6 +269,7 @@ impl Position {
         Self::from_fen(FEN_STARTPOS).unwrap()
     }
 
+    /// Creates a new [`Position`] from the provided FEN string.
     pub fn from_fen(fen: &str) -> Result<Self> {
         let mut pos = Self::new();
         let mut split = fen.trim().split(' ');
@@ -286,6 +303,7 @@ impl Position {
         Ok(pos)
     }
 
+    /// Consumes `self` and returns a [`Position`] after having applied the provided [`Move`].
     pub fn with_move_made(mut self, chessmove: Move) -> Self {
         self.make_move(chessmove);
         self
@@ -309,57 +327,67 @@ impl Position {
         format!("{placements} {active_color} {castling} {en_passant_target} {halfmove} {fullmove}")
     }
 
+    /// Returns the current player as a [`Color`].
     pub const fn current_player(&self) -> Color {
         self.current_player
     }
 
+    /// If en passant can be performed, returns the en passant [`Tile`].
     pub const fn ep_tile(&self) -> Option<Tile> {
         self.ep_tile
     }
 
+    /// If en passant can be performed, returns the destination of a pawn that would perform en passant.
     pub fn ep_target_tile(&self) -> Option<Tile> {
         self.ep_tile()
             .map(|ep_tile| ep_tile.backward_by(self.current_player(), 1).unwrap())
     }
 
+    /// Returns the [`CastlingRights`] of the current position.
     pub const fn castling_rights(&self) -> &CastlingRights {
         &self.castling_rights
     }
 
+    /// Returns the half-move counter of the current position.
     pub const fn halfmove(&self) -> usize {
         self.halfmove
     }
 
+    /// Returns the full-move counter of the current position.
     pub const fn fullmove(&self) -> usize {
         self.fullmove
     }
 
+    /// Returns `true` if the half-move counter is 50 or greater.
+    pub const fn can_draw_by_fifty(&self) -> bool {
+        self.halfmove() >= 50
+    }
+
+    /// Toggles the current player from White to Black (or vice versa).
     pub fn toggle_current_player(&mut self) {
         self.current_player = self.current_player.opponent();
     }
 
+    /// Fetches this position's [`ChessBoard`]
     pub const fn board(&self) -> &ChessBoard {
         &self.board
     }
 
+    /// Mutably fetches this position's [`ChessBoard`]
     pub fn board_mut(&mut self) -> &mut ChessBoard {
         &mut self.board
     }
 
+    /// Returns `true` if `color` can castle (either Kingside or Queenside).
     pub const fn can_castle(&self, color: Color) -> bool {
         self.castling_rights().kingside[color.index()]
             || self.castling_rights().queenside[color.index()]
     }
 
-    pub const fn times_castled(&self) -> usize {
-        let [wk, bk] = self.castling_rights.kingside;
-        let [wq, bq] = self.castling_rights.queenside;
-
-        !wk as usize + !wq as usize + !bk as usize + !bq as usize
-    }
-
-    // Checks if the provided move is legal to perform
-    pub fn is_legal(&self, chessmove: Move) -> (bool, &str) {
+    /// Checks if the provided move is legal to perform
+    ///
+    /// TODO: Refactor this to not return a tuple. Maybe a result?
+    fn is_legal(&self, chessmove: Move) -> (bool, &str) {
         let (from, to, kind) = chessmove.parts();
 
         // If there's no piece here, illegal move
@@ -416,6 +444,7 @@ impl Position {
         (true, "")
     }
 
+    /// Applies the move, if it is legal to make. If it is not legal, returns an `Err` explaining why.
     pub fn make_move_checked(&mut self, chessmove: Move) -> Result<(), String> {
         let (is_legal, reason) = self.is_legal(chessmove);
         if is_legal {
@@ -425,6 +454,7 @@ impl Position {
         }
     }
 
+    /// Apply the provided `moves` to the board. No enforcement of legality.
     pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
         for chessmove in moves {
             self.make_move(chessmove);
@@ -488,13 +518,13 @@ impl Position {
             self.castling_rights.queenside[color] = false;
         }
 
-        // Next, handle special cases for pieces like the King
+        // Next, handle special cases for Pawn (halfmove), Rook, and King (castling)
         match piece.kind() {
             PieceKind::Pawn => self.halfmove = 0,
             PieceKind::Rook => {
                 // Disable castling if a rook moved
-                self.castling_rights.queenside[color] &= from != Tile::A1.rank_relative_to(color);
                 self.castling_rights.kingside[color] &= from != Tile::H1.rank_relative_to(color);
+                self.castling_rights.queenside[color] &= from != Tile::A1.rank_relative_to(color);
             }
             PieceKind::King => {
                 // Disable all castling
@@ -521,118 +551,6 @@ impl Position {
         //
     }
     */
-
-    /*
-    pub fn unmake_move(&mut self, chessmove: Move) {
-        // Safe unwrap because there is guaranteed to be a piece at the destination of a move.
-        let mut piece = self.bitboards_mut().take(chessmove.to()).unwrap();
-
-        let color = piece.color();
-
-        // Undo any special cases, like castling and en passant
-        match chessmove.kind() {
-            MoveKind::Quiet => {
-                match piece.kind() {
-                    PieceKind::Rook => {
-                        // Disable this side's castling
-                        let (queenside_rook_tile, kingside_rook_tile) = if color.is_white() {
-                            (Tile::A1, Tile::H1)
-                        } else {
-                            (Tile::A8, Tile::H8)
-                        };
-
-                        if chessmove.from() == queenside_rook_tile {
-                            // println!("{chessmove} moves a rook. Removing all queenside rights from {color}");
-                            self.castling_rights.queenside[color] = false;
-                        } else if chessmove.from() == kingside_rook_tile {
-                            // println!("{chessmove} moves a rook. Removing all kingside rights from {color}");
-                            self.castling_rights.kingside[color] = false;
-                        }
-                    }
-                    PieceKind::King => {
-                        // Disable all castling
-                        // println!(
-                        //     "{chessmove} moves a rook. Removing all castling rights from {color}"
-                        // );
-                        self.castling_rights.kingside[color] = false;
-                        self.castling_rights.queenside[color] = false;
-                    }
-                    _ => {}
-                }
-            }
-            // Put the captured piece back
-            MoveKind::Capture => unimplemented!(), // self.bitboards_mut().set(captured, chessmove.to()),
-            MoveKind::KingsideCastle => {
-                let (new_king_tile, old_king_tile, new_rook_tile, old_rook_tile) =
-                    if piece.color().is_white() {
-                        (Tile::E1, Tile::G1, Tile::H1, Tile::F1)
-                    } else {
-                        (Tile::E8, Tile::G8, Tile::H8, Tile::F8)
-                    };
-
-                // Swap king and rook
-                let king = self.bitboards_mut().take(old_king_tile).unwrap();
-                let rook = self.bitboards_mut().take(old_rook_tile).unwrap();
-                self.bitboards_mut().set(king, new_king_tile);
-                self.bitboards_mut().set(rook, new_rook_tile);
-
-                // Re-enable castling
-                self.castling_rights.kingside[piece.color()] = true;
-            }
-            MoveKind::QueensideCastle => {
-                let (new_king_tile, old_king_tile, new_rook_tile, old_rook_tile) =
-                    if piece.color().is_white() {
-                        (Tile::E1, Tile::C1, Tile::A1, Tile::D1)
-                    } else {
-                        (Tile::E8, Tile::C8, Tile::A8, Tile::D8)
-                    };
-
-                // Swap king and rook
-                let king = self.bitboards_mut().take(old_king_tile).unwrap();
-                let rook = self.bitboards_mut().take(old_rook_tile).unwrap();
-                self.bitboards_mut().set(king, new_king_tile);
-                self.bitboards_mut().set(rook, new_rook_tile);
-
-                // Re-enable castling
-                self.castling_rights.queenside[piece.color()] = true;
-            }
-            // A piece was removed from directly behind the pawn
-            MoveKind::EnPassantCapture => {
-                // Safe unwrap because the pawn is always guaranteed to be in front of this location
-                let ep_tile = chessmove.to();
-                let captured_tile = ep_tile.backward_by(piece.color(), 1).unwrap();
-                self.bitboards_mut().set(
-                    Piece::new(piece.color().opponent(), PieceKind::Pawn),
-                    captured_tile,
-                );
-                self.ep_tile = Some(ep_tile);
-            }
-            MoveKind::Promote(_) => piece = piece.demoted(),
-            MoveKind::PawnPushTwo => self.ep_tile = None,
-            _ => unimplemented!(""),
-        }
-
-        // Return the piece to it's original tile
-        self.bitboards_mut().set(piece, chessmove.from());
-
-        // Decrement move counters
-        self.halfmove -= 1;
-        self.fullmove -= self.current_player().index();
-
-        // Previous player's turn
-        self.toggle_current_player();
-
-        self.history.pop();
-    }
-     */
-
-    // pub fn game_state(&self) -> GameState {
-    //     if self.is_check() {
-
-    //     } else {
-    //         GameState::Playing
-    //     }
-    // }
 }
 
 impl Deref for Position {
@@ -644,7 +562,7 @@ impl Deref for Position {
 
 impl Default for Position {
     fn default() -> Self {
-        Self::new()
+        Self::standard_setup()
     }
 }
 
@@ -663,6 +581,7 @@ impl PartialEq for Position {
 impl Eq for Position {}
 
 impl fmt::Display for Position {
+    /// Display this position's FEN string
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_fen())
     }
@@ -752,10 +671,10 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::ChessBoard;
-    /// let board = ChessBoard::with_standard_setup();
+    /// let board = ChessBoard::standard_setup();
     /// assert_eq!(board.fen(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
     /// ```
-    pub fn with_standard_setup() -> Self {
+    pub fn standard_setup() -> Self {
         // Safe unwrap because the FEN for startpos is always valid
         Self::from_fen(FEN_STARTPOS).unwrap()
     }
@@ -896,7 +815,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, Tile};
-    /// let board = ChessBoard::with_standard_setup();
+    /// let board = ChessBoard::standard_setup();
     /// assert_eq!(board.has(Tile::B1), true);
     /// ```
     pub fn has(&self, tile: Tile) -> bool {
@@ -908,7 +827,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, Piece, PieceKind, Color, Tile};
-    /// let board = ChessBoard::with_standard_setup();
+    /// let board = ChessBoard::standard_setup();
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(board.get(Tile::B1), Some(white_knight));
     /// ```
@@ -974,12 +893,12 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::ChessBoard;
-    /// let mut board = ChessBoard::with_standard_setup();
+    /// let mut board = ChessBoard::standard_setup();
     /// board.clear_all();
     /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
     /// ```
     pub fn clear_all(&mut self) {
-        *self = Self::default();
+        *self = Self::new();
     }
 
     /// Fetches the [`Color`] of the piece at the provided [`Tile`], if there is one.
@@ -987,7 +906,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, Color, Tile};
-    /// let mut board = ChessBoard::with_standard_setup();
+    /// let mut board = ChessBoard::standard_setup();
     /// assert_eq!(board.color_at(Tile::A2), Some(Color::White));
     /// assert!(board.color_at(Tile::E4).is_none());
     /// ```
@@ -1011,7 +930,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, PieceKind, Tile};
-    /// let mut board = ChessBoard::with_standard_setup();
+    /// let mut board = ChessBoard::standard_setup();
     /// assert_eq!(board.kind_at(Tile::A2), Some(PieceKind::Pawn));
     /// assert!(board.kind_at(Tile::E4).is_none());
     /// ```
@@ -1043,7 +962,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, PieceKind, Color, Tile};
-    /// let mut board = ChessBoard::with_standard_setup();
+    /// let mut board = ChessBoard::standard_setup();
     /// assert_eq!(board.piece_at(Tile::A2).unwrap().kind(), PieceKind::Pawn);
     /// assert_eq!(board.piece_at(Tile::A2).unwrap().color(), Color::White);
     /// assert!(board.piece_at(Tile::E4).is_none());
@@ -1063,7 +982,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, PieceKind, BitBoard};
-    /// let board = ChessBoard::with_standard_setup();
+    /// let board = ChessBoard::standard_setup();
     /// let pawns = board.kind(PieceKind::Pawn);
     /// assert_eq!(pawns, BitBoard::RANK_2 | BitBoard::RANK_7);
     /// ```
@@ -1078,7 +997,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, Color, Piece, BitBoard};
-    /// let board = ChessBoard::with_standard_setup();
+    /// let board = ChessBoard::standard_setup();
     /// let white_pieces = board.color(Color::White);
     /// assert_eq!(white_pieces, BitBoard::RANK_1 | BitBoard::RANK_2);
     /// ```
@@ -1103,7 +1022,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{ChessBoard, PieceKind, Color, Piece, BitBoard};
-    /// let board = ChessBoard::with_standard_setup();
+    /// let board = ChessBoard::standard_setup();
     /// let white_pawn = Piece::new(Color::White, PieceKind::Pawn);
     /// let white_pawns = board.piece(white_pawn);
     /// assert_eq!(white_pawns, BitBoard::RANK_2);
@@ -1154,7 +1073,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use dutchess_core::{BitBoard, ChessBoard, Color};
-    /// let board = ChessBoard::with_standard_setup();
+    /// let board = ChessBoard::standard_setup();
     /// let not_white = board.enemy_or_empty(Color::White);
     /// assert_eq!(not_white.to_hex_string(), "0xFFFFFFFFFFFF0000");
     /// ```
@@ -1200,7 +1119,7 @@ impl ChessBoard {
 
 impl Default for ChessBoard {
     fn default() -> Self {
-        Self::new()
+        Self::standard_setup()
     }
 }
 

@@ -352,9 +352,14 @@ impl Move {
             }
         } else {
             // TODO: Support for castling in Chess960
-            if uci == "e1g1" || uci == "e8g8" {
+            if uci == "e1g1" && piece.is_king() && piece.is_white() {
+                // I don't think these color checks are necessary, as the Black King can't e1g1 anyway
                 MoveKind::KingsideCastle
-            } else if uci == "e1c1" || uci == "e8c8" {
+            } else if uci == "e8g8" && piece.is_king() && piece.is_black() {
+                MoveKind::KingsideCastle
+            } else if uci == "e1c1" && piece.is_king() && piece.is_white() {
+                MoveKind::QueensideCastle
+            } else if uci == "e8c8" && piece.is_king() && piece.is_black() {
                 MoveKind::QueensideCastle
             } else if position.board().has(to) {
                 MoveKind::Capture

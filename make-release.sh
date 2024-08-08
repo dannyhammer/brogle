@@ -4,7 +4,7 @@ count=$(ls ./releases/ | wc -l)
 name="engine-v$count"
 
 if [ $@ > 1 ]; then
-    name=$name:$1 # Tag it, if a tag was supplied
+    name="$name:$1" # Tag it, if a tag was supplied
 fi;
 
 echo "Building $name"

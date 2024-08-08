@@ -1,6 +1,5 @@
 use core::fmt;
 use std::{
-    io,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, RwLock,
@@ -239,6 +238,15 @@ impl Engine {
         Ok(EngineCommand::Move(moves))
     }
 
+    /// Parses the custom `moves` command
+    fn parse_moves_command(&self, rest: &str) -> Result<EngineCommand> {
+        let debug = rest
+            .split_ascii_whitespace()
+            .any(|arg| arg.to_ascii_lowercase() == "debug");
+
+        Ok(EngineCommand::Moves(debug))
+    }
+
     /// Parses custom commands
     fn parse_custom_command(&self, input: &str) -> Result<EngineCommand> {
         let (cmd, rest) = if input.contains(' ') {
@@ -254,7 +262,7 @@ impl Engine {
             "perft" => self.parse_perft_command(rest),
             "eval" => self.parse_eval_command(rest),
             "move" => self.parse_move_command(rest),
-            "moves" => Ok(EngineCommand::Moves),
+            "moves" => self.parse_moves_command(rest),
             "fen" => self.parse_fen_command(rest),
             "undo" => Ok(EngineCommand::Undo),
             "bench" => Ok(EngineCommand::Bench),
@@ -266,7 +274,7 @@ impl Engine {
     }
 
     /// Executes the supplied [`EngineCommand`].
-    fn run_custom_command(&mut self, cmd: EngineCommand) {
+    fn run_custom_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::Help => {
                 println!(
@@ -310,7 +318,7 @@ impl Engine {
 
             EngineCommand::Fen(fen) => {
                 if let Some(fen) = fen {
-                    self.game = Game::from_fen(&fen).unwrap();
+                    self.game = Game::from_fen(&fen)?;
                 }
                 println!("{}", self.game.position().to_fen())
             }
@@ -319,12 +327,18 @@ impl Engine {
 
             EngineCommand::Move(moves) => self.game.make_moves(moves),
 
-            EngineCommand::Moves => {
+            EngineCommand::Moves(debug) => {
                 let mut moves = self
                     .game
                     .legal_moves()
                     .into_iter()
-                    .map(|m| m.to_string())
+                    .map(|m| {
+                        if debug {
+                            format!("{m:?}")
+                        } else {
+                            format!("{m}")
+                        }
+                    })
                     .collect::<Vec<_>>();
                 moves.sort();
                 println!("{}", moves.join(" "))
@@ -332,6 +346,8 @@ impl Engine {
             EngineCommand::Bench => todo!("Implement `bench` command"),
             EngineCommand::Undo => self.game.unmake_move(),
         }
+
+        Ok(())
     }
 }
 
@@ -361,7 +377,7 @@ enum EngineCommand {
     Move(Vec<Move>),
 
     /// Show all legal moves from the current position.
-    Moves,
+    Moves(bool),
 
     /// Evaluates the current position.
     Eval(Game),
@@ -377,13 +393,11 @@ impl UciEngine for Engine {
     /* GUI to Engine communication */
 
     fn custom_command(&mut self, input: &str) -> Result<()> {
-        // Parse the command, returning an `io::Error` on error
-        let cmd = self
-            .parse_custom_command(input)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        // Parse the command, if possible
+        let cmd = self.parse_custom_command(input)?;
 
-        self.run_custom_command(cmd);
-        Ok(())
+        // Run the command!
+        self.run_custom_command(cmd)
     }
 
     fn debug(&mut self, status: bool) -> Result<()> {
@@ -405,16 +419,11 @@ impl UciEngine for Engine {
 
     fn position(&mut self, fen: &str, moves: Vec<&str>) -> Result<()> {
         // Apply the FEN to the game state
-        // _ = self.setup(fen); // ignore any errors if they occur.
-        // self.game = Game::from_fen(fen).unwrap();
-        self.game = Game::from_fen(fen).unwrap();
+        self.game = Game::from_fen(fen)?;
 
         // Now, if there are any moves, apply them as well.
-        // self.game
-        //     .apply_moves(moves.into_iter().map(|m| Move::from_uci(m).unwrap()));
-
         for mv in moves {
-            let mv = Move::from_uci(self.game.position(), mv).unwrap();
+            let mv = Move::from_uci(self.game.position(), mv)?;
             self.game.make_move(mv);
         }
 
@@ -516,7 +525,10 @@ impl UciEngine for Engine {
         if self.is_searching() {
             self.stop_search();
 
-            let res = self.search_result.read().unwrap();
+            let res = self
+                .search_result
+                .read()
+                .expect("Failed to acquire read access to engine.search_result");
             let bestmove = res.bestmove.unwrap_or_default().to_string(); // Default to illegal move
             let ponder = res.ponder.map(|p| p.to_string());
 
@@ -533,7 +545,10 @@ impl UciEngine for Engine {
 
     fn bestmove<T: fmt::Display>(&self, bestmove: T, ponder: Option<T>) -> Result<()> {
         // https://backscattering.de/chess/uci/#engine-bestmove-info
-        let info = self.info.read().unwrap();
+        let info = self
+            .info
+            .read()
+            .expect("Failed to acquire read access to engine.info");
         self.info(info.clone())?;
 
         let resp = UciResponse::BestMove(bestmove, ponder);

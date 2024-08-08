@@ -140,7 +140,7 @@ pub trait UciEngine {
                     // This is an unrecognized command, so attempt to parse it through custom means
                     if matches!(err, UciError::UnrecognizedCommand) {
                         if let Err(err) = self.custom_command(buf) {
-                            eprintln!("Error when parsing custom command '{buf:}: {err}");
+                            eprintln!("Error when parsing custom command {buf:?}: {err}");
                         }
                     } else {
                         // UCI protocol states to continue running when invalid input is received.

@@ -75,14 +75,14 @@ const fn material_difference(board: &ChessBoard, color: Color) -> i32 {
 ///
 /// Values are obtained from here: https://www.chessprogramming.org/Simplified_Evaluation_Function
 pub const fn value_of(kind: PieceKind) -> i32 {
-    [
-        100,    // Pawn
-        320,    // Knight
-        330,    // Bishop
-        500,    // Rook
-        900,    // Queen
-        20_000, // King
-    ][kind.index()]
+    match kind {
+        PieceKind::Pawn => 100,
+        PieceKind::Knight => 320,
+        PieceKind::Bishop => 330,
+        PieceKind::Rook => 500,
+        PieceKind::Queen => 900,
+        PieceKind::King => 20_000,
+    }
 }
 
 /// Counts the material value of all pieces of the specified color.
