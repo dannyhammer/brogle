@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "dutchess_engine",
-    "dutchess_core",
-    "dutchess_tools",
+    "brogle_engine",
+    "brogle_core",
+    "brogle_tools",
 ]

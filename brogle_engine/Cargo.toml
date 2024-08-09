@@ -1,0 +1,14 @@
+[package]
+name = "brogle_engine"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bill Cipher", "Dipper Pines"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4.19"
+brogle_core = { path = "../brogle_core" }
+anyhow = "1.0.86"
+arrayvec = "0.7.4"
+env_logger = "0.11.5"
