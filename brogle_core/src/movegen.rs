@@ -589,21 +589,19 @@ impl Deref for MoveGenerator {
     }
 }
 
-/*
-fn compute_pseudo_legal_mobility(board: &ChessBoard, color: Color) -> [BitBoard; Tile::COUNT] {
-    let mut pseudo_legal_mobility = [BitBoard::EMPTY_BOARD; Tile::COUNT];
-
-    let blockers = board.occupied();
-
-    for tile in board.color(color) {
-        // Safe unwrap because we're iterating over all pieces of this color
-        let piece = board.piece_at(tile).unwrap();
-        pseudo_legal_mobility[tile.index()] = default_attacks_for(&piece, tile, blockers);
+impl Default for MoveGenerator {
+    fn default() -> Self {
+        Self {
+            position: Position::default(),
+            attacks_by_color: Default::default(),
+            attacks_by_tile: [BitBoard::default(); Tile::COUNT],
+            pinmasks: Default::default(),
+            checkers: Default::default(),
+            discoverable_checks: Default::default(),
+            legal_mobility: [BitBoard::default(); Tile::COUNT],
+        }
     }
-
-    pseudo_legal_mobility
 }
- */
 
 const RAY_BETWEEN_EXCLUSIVE: [[BitBoard; Tile::COUNT]; Tile::COUNT] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/ray_between_exclusive.blob")) };

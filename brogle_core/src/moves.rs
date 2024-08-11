@@ -300,6 +300,31 @@ impl Move {
         }
     }
 
+    /// Returns `true` if this move is formatted properly according to [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_core::Move;
+    /// assert_eq!(Move::is_uci("b7c8b"), true);
+    /// assert_eq!(Move::is_uci("a1a1"), true);
+    /// assert_eq!(Move::is_uci("xj9"), false);
+    /// ```
+    pub fn is_uci(input: &str) -> bool {
+        let Some(from) = input.get(0..2) else {
+            return false;
+        };
+        let Some(to) = input.get(2..4) else {
+            return false;
+        };
+
+        let is_ok = Tile::from_uci(from).is_ok() && Tile::from_uci(to).is_ok();
+
+        if let Some(promote) = input.get(4..5) {
+            is_ok && PieceKind::from_str(promote).is_ok()
+        } else {
+            is_ok
+        }
+    }
     /// Creates a [`Move`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation, extracting extra info from the provided [`Position`]
     ///
     /// Will return a [`ChessError`] if the string is invalid in any way.
@@ -307,7 +332,7 @@ impl Move {
     /// # Example
     /// ```
     /// # use brogle_core::{Move, Tile, MoveKind, PieceKind, Position};
-    /// // An sample test position for discovering promotion bugs.
+    /// // A sample test position for discovering promotion bugs.
     /// let position = Position::from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
     /// let b7c8b = Move::from_uci(&position, "b7c8b");
     /// assert!(b7c8b.is_ok());

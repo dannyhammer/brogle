@@ -2,6 +2,7 @@ use std::{
     fmt,
     io::{stdin, stdout, BufRead, BufReader, Read, Write},
     str::FromStr,
+    sync::mpsc::Sender,
     time::Duration,
 };
 
@@ -102,7 +103,7 @@ pub trait UciEngine {
     ///
     /// Upon receiving `uci`, your engine should call this function, and will only leave this function
     /// when a `quit` message is received.
-    fn uci_loop(&mut self) -> Result<()> {
+    fn uci_input_handler(&mut self) -> Result<()> {
         let mut reader = BufReader::new(Self::read());
         let mut buffer = String::with_capacity(2048);
 
@@ -117,7 +118,7 @@ pub trait UciEngine {
             // For ctrl + d
             if 0 == bytes {
                 warn!("Engine received input of 0 bytes and is quitting");
-                return self.quit();
+                break;
             }
 
             // Ignore empty lines
@@ -126,7 +127,7 @@ pub trait UciEngine {
             }
 
             // Attempt to parse the user input
-            let cmd = match self.parse_input(buf) {
+            let cmd = match Self::parse_input(buf) {
                 Ok(cmd) => cmd,
                 Err(err) => {
                     // UCI protocol states to continue running when invalid input is received.
@@ -135,27 +136,113 @@ pub trait UciEngine {
                 }
             };
 
-            // Handle the command appropriately
-            use UciCommand::*;
-            match cmd {
-                Custom(custom) => self.non_uci_command(custom),
-                Uci => self.uci(),
-                Debug(status) => self.debug(status),
-                IsReady => self.isready(),
-                SetOption { name, value } => self.setoption(name, value),
-                Register(registration) => self.register(registration),
-                UciNewGame => self.ucinewgame(),
-                Position { fen, moves } => self.position(fen, moves),
-                Go(search_opt) => self.go(search_opt),
-                Stop => self.stop(),
-                PonderHit => self.ponderhit(),
-                Quit => return self.quit(),
-            }?;
+            let should_quit = cmd.is_quit();
+
+            self.execute_command(cmd)?;
+
+            if should_quit {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn uci_loop_with_channel(sender: Sender<UciCommand<Self::CustomCommand>>) -> Result<()> {
+        let mut reader = BufReader::new(Self::read());
+        let mut buffer = String::with_capacity(2048);
+
+        loop {
+            // Clear the buffer, read input, and trim the trailing newline
+            buffer.clear();
+            let bytes = reader
+                .read_line(&mut buffer)
+                .context("Failed to read line when parsing UCI commands")?;
+            let buf = buffer.trim();
+
+            // For ctrl + d
+            if 0 == bytes {
+                warn!("Engine received input of 0 bytes and is quitting");
+                if let Err(_) = sender.send(UciCommand::Quit) {
+                    bail!("Could not send command {buf} to engine");
+                }
+                return Ok(());
+            }
+
+            // Ignore empty lines
+            if buf.is_empty() {
+                continue;
+            }
+
+            // Attempt to parse the user input
+            let cmd = match Self::parse_input(buf) {
+                Ok(cmd) => cmd,
+                Err(err) => {
+                    // UCI protocol states to continue running when invalid input is received.
+                    eprintln!("{err}");
+                    continue;
+                }
+            };
+            let should_quit = cmd.is_quit();
+
+            if let Err(_) = sender.send(cmd) {
+                bail!("Could not send command {buf} to engine");
+            }
+
+            if should_quit {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    /*
+    fn get_input() -> Result<UciCommand<Self::CustomCommand>> {
+        let mut buffer = String::with_capacity(2048);
+        let bytes = BufReader::new(Self::read())
+            .read_line(&mut buffer)
+            .context("Failed to read line when parsing UCI commands")?;
+        let buf = buffer.trim();
+
+        // For ctrl + d
+        if 0 == bytes {
+            warn!("Engine received input of 0 bytes and is quitting");
+            return Ok(UciCommand::Quit);
+        }
+
+        // Ignore empty lines
+        if buf.is_empty() {
+            bail!("Engine received input of 0 bytes and is quitting");
+        }
+
+        Self::parse_input(buf)
+    }
+     */
+
+    /// Executes the provided [`UciCommand`].
+    ///
+    /// This is just a convenience method that `match`es on `cmd` and calls the appropriate method.
+    fn execute_command(&mut self, cmd: UciCommand<Self::CustomCommand>) -> Result<()> {
+        use UciCommand::*;
+        match cmd {
+            Custom(custom) => self.non_uci_command(custom),
+            Uci => self.uci(),
+            Debug(status) => self.debug(status),
+            IsReady => self.isready(),
+            SetOption { name, value } => self.setoption(name, value),
+            Register(registration) => self.register(registration),
+            UciNewGame => self.ucinewgame(),
+            Position { fen, moves } => self.position(fen, moves),
+            Go(search_opt) => self.go(search_opt),
+            Stop => self.stop(),
+            PonderHit => self.ponderhit(),
+            Quit => self.quit(),
         }
     }
 
     /// Parse a string of input, returning a [`UciCommand`], if possible.
-    fn parse_input<'a>(&self, input: &'a str) -> Result<UciCommand<'a, Self::CustomCommand>> {
+    fn parse_input(input: &str) -> Result<UciCommand<Self::CustomCommand>> {
         // Split into the first word and the remaining arguments
         let (first, rest) = input.split_once(' ').unwrap_or((input, ""));
         let rest = rest.trim();
@@ -174,9 +261,7 @@ pub trait UciEngine {
             "ponderhit" => Ok(UciCommand::PonderHit),
             "quit" => Ok(UciCommand::Quit),
             // If nothing else worked, try parsing it as a non-UCI command
-            _ => self
-                .parse_non_uci_command(input.trim())
-                .map(|args| UciCommand::Custom(args)),
+            _ => Self::parse_non_uci_command(input.trim()).map(|args| UciCommand::Custom(args)),
         }
     }
 
@@ -192,7 +277,7 @@ pub trait UciEngine {
     /// This should be implemented if you want your engine to handle inputs other than what is specified by the UCI protocol.
     ///
     /// The default implementation of this method does nothing and returns `Err()`.
-    fn parse_non_uci_command<'a>(&self, input: &'a str) -> Result<Self::CustomCommand> {
+    fn parse_non_uci_command(input: &str) -> Result<Self::CustomCommand> {
         info!("using default implementation of UciEngine::parse_non_uci_command({input:?})");
         bail!("Unrecognized UCI Command {input:?}")
     }
@@ -290,7 +375,7 @@ pub trait UciEngine {
     /// * `setoption name NalimovPath value c:\chess\tb\4;c:\chess\tb\5\n`
     ///
     /// The default implementation of this method does nothing and returns `Ok(())`.
-    fn setoption(&mut self, name: &str, value: Option<&str>) -> Result<()> {
+    fn setoption(&mut self, name: String, value: Option<String>) -> Result<()> {
         info!("using default implementation of UciEngine::setoption({name:?}, {value:?})");
         Ok(())
     }
@@ -317,7 +402,7 @@ pub trait UciEngine {
     ///    `register name Stefan MK code 4359874324`
     ///
     /// The default implementation of this method does nothing and returns `Ok(())`.
-    fn register(&mut self, registration: Option<(&str, &str)>) -> Result<()> {
+    fn register(&mut self, registration: Option<(String, String)>) -> Result<()> {
         info!("using default implementation of UciEngine::register({registration:?})");
         Ok(())
     }
@@ -349,7 +434,7 @@ pub trait UciEngine {
     /// If the game was played  from the start position the string `startpos` will be sent
     /// Note: no `new` command is needed. However, if this position is from a different game than
     /// the last position sent to the engine, the GUI should have sent a `ucinewgame` in between.
-    fn position(&mut self, fen: Option<&str>, moves: Vec<&str>) -> Result<()>;
+    fn position(&mut self, fen: Option<String>, moves: Vec<String>) -> Result<()>;
 
     /// Called when the engine receives `go <search options>`.
     ///
@@ -441,7 +526,7 @@ pub trait UciEngine {
     ///
     /// Quit the program as soon as possible
     ///
-    /// The default implementation of this method does nothing and returns `Ok(())`, as [`UciEngine::uci_loop`] exits its loop once `quit` is received.
+    /// The default implementation of this method does nothing and returns `Ok(())`, as [`UciEngine::input_handler`] exits its loop once `quit` is received.
     fn quit(&mut self) -> Result<()> {
         info!("using default implementation of UciEngine::quit");
         Ok(())
@@ -555,8 +640,8 @@ pub trait UciEngine {
 /// # UCI Commands (GUI to Engine)
 ///
 /// These are all the commands the engine gets from the interface.
-#[derive(PartialEq, Eq, Hash)]
-pub enum UciCommand<'a, T> {
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum UciCommand<T> {
     Uci,
 
     // on/off
@@ -565,19 +650,19 @@ pub enum UciCommand<'a, T> {
     IsReady,
 
     SetOption {
-        name: &'a str,
-        value: Option<&'a str>,
+        name: String,
+        value: Option<String>,
     },
 
     // `None` -> `later`
     // `Some` -> `(name, code)`
-    Register(Option<(&'a str, &'a str)>),
+    Register(Option<(String, String)>),
 
     UciNewGame,
 
     Position {
-        fen: Option<&'a str>,
-        moves: Vec<&'a str>,
+        fen: Option<String>,
+        moves: Vec<String>,
     },
 
     Go(UciSearchOptions),
@@ -591,8 +676,12 @@ pub enum UciCommand<'a, T> {
     Custom(T),
 }
 
-impl<'a, T> UciCommand<'a, T> {
-    fn parse_debug(args: &'a str) -> Result<Self> {
+impl<T> UciCommand<T> {
+    pub fn is_quit(&self) -> bool {
+        matches!(self, Self::Quit)
+    }
+
+    pub fn parse_debug(args: &str) -> Result<Self> {
         // This one's simple
         match args {
             "on" => Ok(Self::Debug(true)),
@@ -601,7 +690,7 @@ impl<'a, T> UciCommand<'a, T> {
         }
     }
 
-    fn parse_setoption(args: &'a str) -> Result<Self> {
+    pub fn parse_setoption(args: &str) -> Result<Self> {
         let (_, rest) = args
             .split_once("name")
             .ok_or(anyhow!("usage: setoption name <name> [value <value>]"))?;
@@ -611,16 +700,16 @@ impl<'a, T> UciCommand<'a, T> {
         let value = match rest {
             "" => bail!("usage: setoption name <name> [value <value>]"),
             "None" => None,
-            other => Some(other.trim()),
+            other => Some(other.trim().to_string()),
         };
 
         Ok(UciCommand::SetOption {
-            name: name.trim(),
+            name: name.trim().to_string(),
             value,
         })
     }
 
-    fn parse_register(args: &'a str) -> Result<Self> {
+    pub fn parse_register(args: &str) -> Result<Self> {
         // A `None` value represents "register later"
         let registration = if args.starts_with("later") {
             None
@@ -639,7 +728,7 @@ impl<'a, T> UciCommand<'a, T> {
                 bail!("usage: register <later | name <name> code <code>>");
             }
 
-            Some((name.trim(), code.trim()))
+            Some((name.trim().to_string(), code.trim().to_string()))
         } else {
             bail!("usage: register <later | name <name> code <code>>");
         };
@@ -647,18 +736,21 @@ impl<'a, T> UciCommand<'a, T> {
         Ok(UciCommand::Register(registration))
     }
 
-    fn parse_position(args: &'a str) -> Result<Self> {
+    pub fn parse_position(args: &str) -> Result<Self> {
         let (fen, moves) = if let Some((pos, moves)) = args.split_once("moves") {
             if moves.is_empty() {
                 bail!("usage: position <fen <FEN> | startpos> [moves move_1 [move_2 ...]]");
             }
-            (pos, moves.split_whitespace().collect())
+            (
+                pos,
+                moves.split_whitespace().map(|s| s.to_string()).collect(),
+            )
         } else {
             (args, vec![])
         };
 
         let fen = if fen.starts_with("fen") {
-            Some(fen.trim_start_matches("fen").trim())
+            Some(fen.trim_start_matches("fen").trim().to_string())
         } else if args.starts_with("startpos") {
             None
         } else {
@@ -668,7 +760,7 @@ impl<'a, T> UciCommand<'a, T> {
         Ok(UciCommand::Position { fen, moves })
     }
 
-    fn parse_go(args: &'a str) -> Result<Self> {
+    pub fn parse_go(args: &str) -> Result<Self> {
         // Parse an argument
         fn parse<T: FromStr>(arg: &str, input: Option<&str>) -> Result<T> {
             let input = input.ok_or(anyhow!("usage: go {arg} <x>"))?;

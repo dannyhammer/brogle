@@ -30,7 +30,7 @@ pub enum GameResult {
 }
  */
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Game {
     movegen: MoveGenerator,
     history: Vec<Position>,
@@ -48,7 +48,7 @@ impl Game {
     }
 
     /// Creates a new [`Game`] with the standard piece setup.
-    pub fn standard_setup() -> Self {
+    pub fn default() -> Self {
         Self::from_fen(FEN_STARTPOS).unwrap()
     }
 
@@ -259,24 +259,6 @@ impl Position {
             halfmove: 0,
             fullmove: 1,
         }
-    }
-
-    /// Creates a new [`Position`] with the standard chess setup.
-    /// * Pieces placed in standard positions
-    /// * White moves first
-    /// * All castling rights
-    /// * No en passant tile available
-    /// * Halfmove counter set to 0
-    /// * Fullmove counter set to 1
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::Position;
-    /// let state = Position::standard_setup();
-    /// assert_eq!(state.to_fen(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    /// ```
-    pub fn standard_setup() -> Self {
-        Self::from_fen(FEN_STARTPOS).unwrap()
     }
 
     /// Creates a new [`Position`] from the provided FEN string.
@@ -572,7 +554,8 @@ impl Deref for Position {
 
 impl Default for Position {
     fn default() -> Self {
-        Self::standard_setup()
+        // Safe unwrap because the FEN for startpos is always valid
+        Self::from_fen(FEN_STARTPOS).unwrap()
     }
 }
 
@@ -674,19 +657,6 @@ impl ChessBoard {
             colors: [BitBoard::EMPTY_BOARD; NUM_COLORS],
             pieces: [BitBoard::EMPTY_BOARD; NUM_PIECE_TYPES],
         }
-    }
-
-    /// Sets up this [`ChessBoard`] to the standard, default setup.
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::ChessBoard;
-    /// let board = ChessBoard::standard_setup();
-    /// assert_eq!(board.fen(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
-    /// ```
-    pub fn standard_setup() -> Self {
-        // Safe unwrap because the FEN for startpos is always valid
-        Self::from_fen(FEN_STARTPOS).unwrap()
     }
 
     /// Places the supplied [`Piece`] at the provided [`Tile`], returning modified `self`.
@@ -825,7 +795,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{ChessBoard, Tile};
-    /// let board = ChessBoard::standard_setup();
+    /// let board = ChessBoard::default();
     /// assert_eq!(board.has(Tile::B1), true);
     /// ```
     pub fn has(&self, tile: Tile) -> bool {
@@ -837,7 +807,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{ChessBoard, Piece, PieceKind, Color, Tile};
-    /// let board = ChessBoard::standard_setup();
+    /// let board = ChessBoard::default();
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// assert_eq!(board.get(Tile::B1), Some(white_knight));
     /// ```
@@ -903,7 +873,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::ChessBoard;
-    /// let mut board = ChessBoard::standard_setup();
+    /// let mut board = ChessBoard::default();
     /// board.clear_all();
     /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
     /// ```
@@ -916,7 +886,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{ChessBoard, Color, Tile};
-    /// let mut board = ChessBoard::standard_setup();
+    /// let mut board = ChessBoard::default();
     /// assert_eq!(board.color_at(Tile::A2), Some(Color::White));
     /// assert!(board.color_at(Tile::E4).is_none());
     /// ```
@@ -940,7 +910,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{ChessBoard, PieceKind, Tile};
-    /// let mut board = ChessBoard::standard_setup();
+    /// let mut board = ChessBoard::default();
     /// assert_eq!(board.kind_at(Tile::A2), Some(PieceKind::Pawn));
     /// assert!(board.kind_at(Tile::E4).is_none());
     /// ```
@@ -972,7 +942,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{ChessBoard, PieceKind, Color, Tile};
-    /// let mut board = ChessBoard::standard_setup();
+    /// let mut board = ChessBoard::default();
     /// assert_eq!(board.piece_at(Tile::A2).unwrap().kind(), PieceKind::Pawn);
     /// assert_eq!(board.piece_at(Tile::A2).unwrap().color(), Color::White);
     /// assert!(board.piece_at(Tile::E4).is_none());
@@ -992,7 +962,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{ChessBoard, PieceKind, BitBoard};
-    /// let board = ChessBoard::standard_setup();
+    /// let board = ChessBoard::default();
     /// let pawns = board.kind(PieceKind::Pawn);
     /// assert_eq!(pawns, BitBoard::RANK_2 | BitBoard::RANK_7);
     /// ```
@@ -1007,7 +977,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{ChessBoard, Color, Piece, BitBoard};
-    /// let board = ChessBoard::standard_setup();
+    /// let board = ChessBoard::default();
     /// let white_pieces = board.color(Color::White);
     /// assert_eq!(white_pieces, BitBoard::RANK_1 | BitBoard::RANK_2);
     /// ```
@@ -1032,7 +1002,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{ChessBoard, PieceKind, Color, Piece, BitBoard};
-    /// let board = ChessBoard::standard_setup();
+    /// let board = ChessBoard::default();
     /// let white_pawn = Piece::new(Color::White, PieceKind::Pawn);
     /// let white_pawns = board.piece(white_pawn);
     /// assert_eq!(white_pawns, BitBoard::RANK_2);
@@ -1083,7 +1053,7 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{BitBoard, ChessBoard, Color};
-    /// let board = ChessBoard::standard_setup();
+    /// let board = ChessBoard::default();
     /// let not_white = board.enemy_or_empty(Color::White);
     /// assert_eq!(not_white.to_hex_string(), "0xFFFFFFFFFFFF0000");
     /// ```
@@ -1129,7 +1099,8 @@ impl ChessBoard {
 
 impl Default for ChessBoard {
     fn default() -> Self {
-        Self::standard_setup()
+        // Safe unwrap because the FEN for startpos is always valid
+        Self::from_fen(FEN_STARTPOS).unwrap()
     }
 }
 

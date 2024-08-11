@@ -1,7 +1,8 @@
-use core::fmt;
 use std::{
+    fmt,
     sync::{
         atomic::{AtomicBool, Ordering},
+        mpsc::{self, Sender},
         Arc, RwLock,
     },
     thread,
@@ -10,10 +11,11 @@ use std::{
 
 use anyhow::{bail, Result};
 use brogle_core::{print_perft, print_split_perft, Game, Move, Position, FEN_STARTPOS};
+use threadpool::ThreadPool;
 
 use super::{
     search::{Search, SearchResult},
-    uci::{UciEngine, UciInfo, UciOption, UciResponse, UciSearchOptions},
+    uci::{UciCommand, UciEngine, UciInfo, UciOption, UciResponse, UciSearchOptions},
     Evaluator,
 };
 
@@ -74,15 +76,17 @@ pub struct Engine {
     info: Arc<RwLock<UciInfo>>,
     // /// List of available configuration options
     // options: todo!(),
+    /// Pool for spawning search and input threads.
+    pool: ThreadPool,
+
+    /// Handles sending events to the internal event pump.
+    sender: Option<Sender<UciCommand<EngineCommand>>>,
 }
 
 impl Engine {
     /// Construct a new [`Engine`] with default parameters.
     pub fn new() -> Self {
-        Self {
-            game: Game::standard_setup(),
-            ..Default::default()
-        }
+        Self::default()
     }
 
     /// Construct a new [`Engine`] from provided FEN string.
@@ -100,10 +104,28 @@ impl Engine {
     pub fn run(&mut self) -> Result<()> {
         let name = env!("CARGO_PKG_NAME");
         let version = env!("CARGO_PKG_VERSION");
-        let authors = env!("CARGO_PKG_AUTHORS").replace(":", ", ");
+        let authors = env!("CARGO_PKG_AUTHORS").replace(":", ", "); // Split multiple authors by comma-space
         println!("{name} {version} by {authors}");
 
-        self.uci_loop()
+        let (sender, receiver) = mpsc::channel();
+        self.sender = Some(sender.clone());
+
+        self.pool.execute(move || {
+            let res = Self::uci_loop_with_channel(sender);
+            eprintln!("RESULT: {res:?}");
+        });
+
+        for cmd in receiver {
+            let should_quit = cmd.is_quit();
+
+            self.execute_command(cmd)?;
+
+            if should_quit {
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     /// Returns an iterator over all UCI-compatible options for this engine.
@@ -146,11 +168,11 @@ impl Engine {
 
     /// Called when `ucinewgame` command is received. Resets all game-specific options.
     fn new_game(&mut self) {
-        self.game = Game::standard_setup();
+        self.game = Game::default();
     }
 
     /// Parses the custom `perft` command
-    fn parse_perft_command(&self, rest: &str) -> Result<EngineCommand> {
+    fn parse_perft_command(rest: &str) -> Result<EngineCommand> {
         let mut args = rest.split_ascii_whitespace();
 
         let Some(depth) = args.next() else {
@@ -177,14 +199,14 @@ impl Engine {
     }
 
     /// Parses the custom `eval` command
-    fn parse_eval_command(&self, rest: &str) -> Result<EngineCommand> {
+    fn parse_eval_command(rest: &str) -> Result<EngineCommand> {
         let mut args = rest.split_ascii_whitespace();
 
-        let mut game = self.game.clone();
+        let mut game = Game::default();
 
         if let Some(arg) = args.next() {
             if arg.to_ascii_lowercase() == "startpos" {
-                game = Game::standard_setup();
+                game = Game::default();
             } else if let Ok(parsed) = Game::from_fen(arg) {
                 game = parsed;
             } else {
@@ -196,7 +218,7 @@ impl Engine {
     }
 
     /// Parses the custom `fen` command
-    fn parse_fen_command(&self, rest: &str) -> Result<EngineCommand> {
+    fn parse_fen_command(rest: &str) -> Result<EngineCommand> {
         let mut args = rest.split_ascii_whitespace();
 
         let mut fen = None;
@@ -213,14 +235,16 @@ impl Engine {
         Ok(EngineCommand::Fen(fen))
     }
 
+    /*
     /// Parses the custom `move` command
-    fn parse_move_command(&self, rest: &str) -> Result<EngineCommand> {
+    fn parse_move_command(rest: &str) -> Result<EngineCommand> {
         if rest.is_empty() {
             bail!("usage: move <move1> [move2 move3 ...]");
         }
 
         let mut moves = vec![];
-        let mut pos = self.game.position().clone();
+        // let mut pos = self.game.position().clone();
+        let mut pos = Position::default();
 
         for arg in rest.split_ascii_whitespace() {
             match Move::from_uci(&pos, arg) {
@@ -236,9 +260,11 @@ impl Engine {
 
         Ok(EngineCommand::Move(moves))
     }
+     */
 
     /// Parses the custom `moves` command
-    fn parse_moves_command(&self, rest: &str) -> Result<EngineCommand> {
+
+    fn parse_moves_command(rest: &str) -> Result<EngineCommand> {
         let debug = rest
             .split_ascii_whitespace()
             .any(|arg| arg.to_ascii_lowercase() == "debug");
@@ -246,7 +272,7 @@ impl Engine {
         Ok(EngineCommand::Moves(debug))
     }
 
-    fn parse_option_command(&self, rest: &str) -> Result<EngineCommand> {
+    fn parse_option_command(rest: &str) -> Result<EngineCommand> {
         let mut args = rest.split_ascii_whitespace();
 
         let Some(arg) = args.next() else {
@@ -281,9 +307,10 @@ pub enum EngineCommand {
     /// Show the current state of of the board as a FEN string.
     Fen(Option<String>),
 
+    /*
     /// Make the list of moves applied to the board.
     Move(Vec<Move>),
-
+     */
     /// Show all legal moves from the current position.
     Moves(bool),
 
@@ -298,13 +325,15 @@ pub enum EngineCommand {
 
     /// View the current value of an option
     Option(String),
+
+    Info(UciInfo),
 }
 
 impl UciEngine for Engine {
     type CustomCommand = EngineCommand;
     /* GUI to Engine communication */
 
-    fn parse_non_uci_command<'a>(&self, input: &'a str) -> Result<Self::CustomCommand> {
+    fn parse_non_uci_command<'a>(input: &'a str) -> Result<Self::CustomCommand> {
         let (cmd, rest) = if input.contains(' ') {
             input.split_once(' ').unwrap()
         } else {
@@ -315,12 +344,12 @@ impl UciEngine for Engine {
             "help" => Ok(EngineCommand::Help),
             "show" => Ok(EngineCommand::Show),
             "history" => Ok(EngineCommand::History),
-            "perft" => self.parse_perft_command(rest),
-            "eval" => self.parse_eval_command(rest),
-            "move" => self.parse_move_command(rest),
-            "moves" => self.parse_moves_command(rest),
-            "fen" => self.parse_fen_command(rest),
-            "option" => self.parse_option_command(rest),
+            "perft" => Self::parse_perft_command(rest),
+            "eval" => Self::parse_eval_command(rest),
+            // "move" => Self::parse_move_command(rest),
+            "moves" => Self::parse_moves_command(rest),
+            "fen" => Self::parse_fen_command(rest),
+            "option" => Self::parse_option_command(rest),
             "undo" => Ok(EngineCommand::Undo),
             "bench" => Ok(EngineCommand::Bench),
             _ => bail!(
@@ -381,8 +410,7 @@ impl UciEngine for Engine {
 
             EngineCommand::Eval(game) => println!("{}", Evaluator::new(&game).eval()),
 
-            EngineCommand::Move(moves) => self.game.make_moves(moves),
-
+            // EngineCommand::Move(moves) => self.game.make_moves(moves),
             EngineCommand::Moves(debug) => {
                 let mut moves = self
                     .game
@@ -404,6 +432,8 @@ impl UciEngine for Engine {
             EngineCommand::Option(name) => {
                 println!("{name}={value}", value = "UNSET")
             }
+
+            EngineCommand::Info(info) => self.info(info)?,
         }
         Ok(())
     }
@@ -413,7 +443,7 @@ impl UciEngine for Engine {
         Ok(())
     }
 
-    fn setoption(&mut self, name: &str, value: Option<&str>) -> Result<()> {
+    fn setoption(&mut self, name: String, value: Option<String>) -> Result<()> {
         match name {
             _ => {
                 if let Some(value) = value {
@@ -431,15 +461,15 @@ impl UciEngine for Engine {
         Ok(())
     }
 
-    fn position(&mut self, fen: Option<&str>, moves: Vec<&str>) -> Result<()> {
+    fn position(&mut self, fen: Option<String>, moves: Vec<String>) -> Result<()> {
         // Apply the FEN to the game state
         if let Some(fen) = fen {
-            self.game = Game::from_fen(fen)?;
+            self.game = Game::from_fen(&fen)?;
         }
 
         // Now, if there are any moves, apply them as well.
         for mv in moves {
-            let mv = Move::from_uci(self.game.position(), mv)?;
+            let mv = Move::from_uci(self.game.position(), &mv)?;
             self.game.make_move_checked(mv)?;
         }
 
@@ -475,12 +505,11 @@ impl UciEngine for Engine {
                                                                                     // let timeout = Duration::from_secs(1);
         let result = Arc::clone(&self.search_result);
         let info = Arc::clone(&self.info);
+        let sender = self.sender.clone().unwrap();
 
         let game = self.game.clone();
         let max_depth = options.depth.unwrap_or(10) as usize; // TODO: Increase to 127 or 255 once you have TT set up
 
-        // thread::scope(|s| {
-        // s.spawn(move || {
         thread::spawn(move || {
             let mut depth = 1;
 
@@ -505,78 +534,15 @@ impl UciEngine for Engine {
                 let info = info.read().unwrap();
 
                 // Now send the info to the GUI
-                // Can't call `self.info` because we're inside a thread
-                println!("{}", UciResponse::<&str>::Info(info.clone()));
-                // _ = self.info(info.clone());
+                _ = sender.send(UciCommand::Custom(EngineCommand::Info(info.clone())));
 
                 depth += 1;
             }
 
-            // TODO: If this line of code is reached, it means the search has stopped on its own
-            // So, we need to store `false` in the stopper, and send bestmove.
-            // On the other hand, if the engine received `stop`, then we do NOT need to send bestmove here.
-
-            // _ = self.stop();
-            // if self.is_searching() {
-            //     self.stop_search()
-            // }
-            if is_searching.load(Ordering::Relaxed) {
-                is_searching.store(false, Ordering::Relaxed);
-                let res = result.read().unwrap();
-                println!("{}", UciResponse::BestMove(res.bestmove, res.ponder));
-                // _ = self.bestmove(res.bestmove, res.ponder);
-            }
+            // If this line of code is reached, it means the search has stopped on its own
+            // We can do the same actions as if we have received the "stop" command
+            _ = sender.send(UciCommand::Stop);
         });
-        // });
-        /*
-        thread::spawn(move || {
-            let mut depth = 1;
-
-            while depth <= max_depth && is_searching.load(Ordering::Relaxed) {
-                let cloned_stopper = Arc::clone(&is_searching);
-                let cloned_result = Arc::clone(&result);
-                let cloned_info = Arc::clone(&info);
-
-                // Start the search
-                let mut search =
-                    Search::new(&game, timeout, cloned_stopper, cloned_result, cloned_info)
-                        .with_options(options.clone());
-
-                // If we received an error, that means the search was stopped externally
-                if let Err(_err) = search.start(depth) {
-                    // eprintln!("[depth={depth}] {_err}");
-                    break;
-                }
-
-                // Send the updated info, now that the search has concluded
-                let info = info.read().unwrap();
-
-                // Now send the info to the GUI
-                // Can't call `self.info` because we're inside a thread
-                let resp = UciResponse::<&str>::Info(info.clone());
-                // _ = resp.send();
-                println!("{resp}");
-                // self.info(info.clone());
-
-                depth += 1;
-            }
-
-            // TODO: If this line of code is reached, it means the search has stopped on its own
-            // So, we need to store `false` in the stopper, and send bestmove.
-            // On the other hand, if the engine received `stop`, then we do NOT need to send bestmove here.
-
-            if is_searching.load(Ordering::Relaxed) {
-                is_searching.store(false, Ordering::Relaxed);
-                let res = result.read().unwrap();
-                let bestmove_string = res.bestmove.map(|mv| mv.to_string()).unwrap_or_default();
-                let ponder_string = res.ponder.map(|p| p.to_string());
-
-                let resp = UciResponse::BestMove(bestmove_string, ponder_string);
-                // _ = resp.send();
-                println!("{resp}");
-            }
-        });
-         */
 
         Ok(())
     }
@@ -597,6 +563,10 @@ impl UciEngine for Engine {
 
     fn ponderhit(&self) -> Result<()> {
         todo!("Handle ponderhit")
+    }
+
+    fn quit(&mut self) -> Result<()> {
+        std::process::exit(0);
     }
 
     /* Engine to GUI communication */
@@ -635,6 +605,8 @@ impl Default for Engine {
             // search_status: Arc::default(),
             search_result: Arc::default(),
             info: Arc::default(),
+            pool: ThreadPool::new(num_cpus::get()),
+            sender: None,
         }
     }
 }
