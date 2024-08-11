@@ -176,26 +176,6 @@ impl Engine {
         Ok(())
     }
 
-    /// Returns an iterator over all UCI-compatible options for this engine.
-    fn get_uci_options(&self) -> impl Iterator<Item = UciOption<&str>> {
-        [
-            // All available options will be defined here.
-            // UciOption::check("TestOpt Check", false),
-            // UciOption::spin("TestOpt Spin", -8, i32::MIN, i32::MAX),
-            // UciOption::combo("TestOpt Combo", "Apple", ["Apple", "Banana", "Strawberry"]),
-            // UciOption::button("TestOpt Button"),
-            // UciOption::string("TestOpt String", "defaultVal"),
-            // UciOption::check("Nullmove", true),
-            // UciOption::spin("Selectivity", 2, 0, 4),
-            // UciOption::combo("Style", "Normal", ["Solid", "Normal", "Risky"]),
-            // UciOption::string("NalimovPath", "c:\\"),
-            // UciOption::button("Clear Hash"),
-            // UciOption::spin("Threads", 1, 1, 1),
-            // UciOption::spin("Hash", 1, 1, 1),
-        ]
-        .into_iter()
-    }
-
     /// Sets the flag that the search should stop.
     fn stop_search(&mut self) {
         self.is_searching.store(false, Ordering::Relaxed);
@@ -283,7 +263,6 @@ impl Engine {
         Ok(EngineCommand::Fen(fen))
     }
 
-    /*
     /// Parses the custom `move` command
     fn parse_move_command(rest: &str) -> Result<EngineCommand> {
         if rest.is_empty() {
@@ -291,24 +270,17 @@ impl Engine {
         }
 
         let mut moves = vec![];
-        // let mut pos = self.game.position().clone();
-        let mut pos = Position::default();
 
         for arg in rest.split_ascii_whitespace() {
-            match Move::from_uci(&pos, arg) {
-                Ok(mv) => {
-                    if let Err(err) = pos.make_move_checked(mv) {
-                        bail!("Invalid move: {err}");
-                    }
-                    moves.push(mv);
-                }
-                Err(err) => bail!("{err}"),
+            if Move::is_uci(arg) {
+                moves.push(arg.to_string());
+            } else {
+                bail!("Invalid move {arg:?}");
             }
         }
 
         Ok(EngineCommand::Move(moves))
     }
-     */
 
     /// Parses the custom `moves` command
 
@@ -349,23 +321,18 @@ impl Engine {
             (input, "")
         };
 
-        // if let Ok(uci_cmd) = Self::parse_uci_input(input) {
-        //     return Ok(EngineCommand::UciCommand(uci_cmd));
-        // }
-
         match cmd {
             "help" => Ok(EngineCommand::Help),
             "show" => Ok(EngineCommand::Show),
             "history" => Ok(EngineCommand::History),
             "perft" => Self::parse_perft_command(rest),
             "eval" => Self::parse_eval_command(rest),
-            // "move" => Self::parse_move_command(rest),
+            "move" => Self::parse_move_command(rest),
             "moves" => Self::parse_moves_command(rest),
             "fen" => Self::parse_fen_command(rest),
             "option" => Self::parse_option_command(rest),
             "undo" => Ok(EngineCommand::Undo),
             "bench" => Ok(EngineCommand::Bench),
-            // _ => bail!("{input:?} not a command. run \"help\" for a list of commands",),
             _ => Self::parse_uci_input(input).map(|uci_cmd| EngineCommand::UciCommand(uci_cmd)),
         }
     }
@@ -421,7 +388,6 @@ impl Engine {
 
             EngineCommand::Eval(game) => println!("{}", Evaluator::new(&game).eval()),
 
-            // EngineCommand::Move(moves) => self.game.make_moves(moves),
             EngineCommand::Moves(from, debug) => {
                 if let Some(from) = from {
                     let moves = self
@@ -452,6 +418,12 @@ impl Engine {
                 }
             }
             EngineCommand::Bench => todo!("Implement `bench` command"),
+            EngineCommand::Move(moves) => {
+                for mv_string in moves {
+                    let mv = Move::from_uci(&self.game, &mv_string)?;
+                    self.game.make_move(mv);
+                }
+            }
             EngineCommand::Undo => self.game.unmake_move(),
             EngineCommand::Option(name) => {
                 println!("{name}={value}", value = "UNSET")
@@ -503,10 +475,9 @@ pub enum EngineCommand {
     /// Show the current state of of the board as a FEN string.
     Fen(Option<String>),
 
-    /*
     /// Make the list of moves applied to the board.
-    Move(Vec<Move>),
-     */
+    Move(Vec<String>),
+
     /// Show all legal moves from the current position.
     Moves(Option<Tile>, bool),
 
@@ -671,7 +642,23 @@ impl UciEngine for Engine {
     }
 
     fn option(&self) -> Result<()> {
-        for opt in self.get_uci_options() {
+        let options: [UciOption<&str>; 0] = [
+            // All available options will be defined here.
+            // UciOption::check("TestOpt Check", false),
+            // UciOption::spin("TestOpt Spin", -8, i32::MIN, i32::MAX),
+            // UciOption::combo("TestOpt Combo", "Apple", ["Apple", "Banana", "Strawberry"]),
+            // UciOption::button("TestOpt Button"),
+            // UciOption::string("TestOpt String", "defaultVal"),
+            // UciOption::check("Nullmove", true),
+            // UciOption::spin("Selectivity", 2, 0, 4),
+            // UciOption::combo("Style", "Normal", ["Solid", "Normal", "Risky"]),
+            // UciOption::string("NalimovPath", "c:\\"),
+            // UciOption::button("Clear Hash"),
+            // UciOption::spin("Threads", 1, 1, 1),
+            // UciOption::spin("Hash", 1, 1, 1),
+        ];
+
+        for opt in options {
             self.send_uci_response(UciResponse::Option(opt))?;
         }
         Ok(())

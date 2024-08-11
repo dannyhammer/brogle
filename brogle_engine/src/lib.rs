@@ -1,4 +1,5 @@
 pub mod engine;
+pub use engine::*;
 
 pub mod search {
     pub mod search;
@@ -60,7 +61,10 @@ pub mod eval {
 ///
 /// A nullmove from the Engine to the GUI should be sent as `0000`.
 /// Examples:  `e2e4`, `e7e5`, `e1g1` (white short castling), `e7e8q` (for promotion)
-pub mod uci;
+pub mod uci {
+    pub mod protocol;
+    pub use protocol::*;
+}
 
 pub mod prelude {
     pub use crate::engine::*;

@@ -103,25 +103,7 @@ pub trait UciEngine {
     ///
     /// If not possible, bails with a standard "unknown command X" message.
     fn parse_uci_input(input: &str) -> Result<UciCommand> {
-        // Split into the first word and the remaining arguments
-        let (first, rest) = input.split_once(' ').unwrap_or((input, ""));
-        let rest = rest.trim();
-
-        // Attempt to match to UCI commands
-        match first.trim() {
-            "uci" => Ok(UciCommand::Uci),
-            "debug" => UciCommand::parse_debug(rest),
-            "isready" => Ok(UciCommand::IsReady),
-            "setoption" => UciCommand::parse_setoption(rest),
-            "register" => UciCommand::parse_register(rest),
-            "ucinewgame" => Ok(UciCommand::UciNewGame),
-            "position" => UciCommand::parse_position(rest),
-            "go" => UciCommand::parse_go(rest),
-            "stop" => Ok(UciCommand::Stop),
-            "ponderhit" => Ok(UciCommand::PonderHit),
-            "quit" => Ok(UciCommand::Quit),
-            _ => bail!("[UciEngine] unknown command {input:?}"),
-        }
+        UciCommand::parse(input)
     }
 
     /// Send a response from this engine to the GUI via `stdout`.
@@ -511,6 +493,31 @@ pub enum UciCommand {
 }
 
 impl UciCommand {
+    /// Parse a string of input, returning a [`UciCommand`], if possible.
+    ///
+    /// If not possible, bails with a standard "unknown command X" message.
+    pub fn parse(input: &str) -> Result<Self> {
+        // Split into the first word and the remaining arguments
+        let (first, rest) = input.split_once(' ').unwrap_or((input, ""));
+        let rest = rest.trim();
+
+        // Attempt to match to UCI commands
+        match first.trim() {
+            "uci" => Ok(Self::Uci),
+            "debug" => Self::parse_debug(rest),
+            "isready" => Ok(Self::IsReady),
+            "setoption" => Self::parse_setoption(rest),
+            "register" => Self::parse_register(rest),
+            "ucinewgame" => Ok(Self::UciNewGame),
+            "position" => Self::parse_position(rest),
+            "go" => Self::parse_go(rest),
+            "stop" => Ok(Self::Stop),
+            "ponderhit" => Ok(Self::PonderHit),
+            "quit" => Ok(Self::Quit),
+            _ => bail!("unknown command {input:?}"),
+        }
+    }
+
     pub fn parse_debug(args: &str) -> Result<Self> {
         // This one's simple
         match args {
@@ -1206,101 +1213,20 @@ impl<T: fmt::Display> fmt::Display for UciOptionType<T> {
     }
 }
 
-// Examples:
-// ---
-//
-// This is how the communication when the engine boots can look like:
-//
-// GUI     engine
-//
-// // tell the engine to switch to UCI mode
-// uci
-//
-// // engine identify
-//       id name Shredder
-// 		id author Stefan MK
-//
-// // engine sends the options it can change
-// // the engine can change the hash size from 1 to 128 MB
-// 		option name Hash type spin default 1 min 1 max 128
-//
-// // the engine supports Nalimov endgame table bases
-// 		option name NalimovPath type string default <empty>
-// 		option name NalimovCache type spin default 1 min 1 max 32
-//
-// // the engine can switch off Nullmove and set the playing style
-// 	   option name Nullmove type check default true
-//   		option name Style type combo default Normal var Solid var Normal var Risky
-//
-// // the engine has sent all parameters and is ready
-// 		uciok
-//
-// // Note: here the GUI can already send a "quit" command if it just wants to find out
-// //       details about the engine, so the engine should not initialize its internal
-// //       parameters before here.
-// // now the GUI sets some values in the engine
-// // set hash to 32 MB
-// setoption name Hash value 32
-//
-// // init tbs
-// setoption name NalimovCache value 1
-// setoption name NalimovPath value d:\tb;c\tb
-//
-// // waiting for the engine to finish initializing
-// // this command and the answer is required here!
-// isready
-//
-// // engine has finished setting up the internal values
-// 		readyok
-//
-// // now we are ready to go
-//
-// // if the GUI is supporting it, tell the engine that is is
-// // searching on a game that it hasn't searched on before
-// ucinewgame
-//
-// // if the engine supports the "UCI_AnalyseMode" option and the next search is supposed to
-// // be an analysis, the GUI should set "UCI_AnalyseMode" to true if it is currently
-// // set to false with this engine
-// setoption name UCI_AnalyseMode value true
-//
-// // tell the engine to search infinite from the start position after 1.e4 e5
-// position startpos moves e2e4 e7e5
-// go infinite
-//
-// // the engine starts sending infos about the search to the GUI
-// // (only some examples are given)
-//
-// 		info depth 1 seldepth 0
-// 		info score cp 13  depth 1 nodes 13 time 15 pv f1b5
-// 		info depth 2 seldepth 2
-// 		info nps 15937
-// 		info score cp 14  depth 2 nodes 255 time 15 pv f1c4 f8c5
-// 		info depth 2 seldepth 7 nodes 255
-// 		info depth 3 seldepth 7
-// 		info nps 26437
-// 		info score cp 20  depth 3 nodes 423 time 15 pv f1c4 g8f6 b1c3
-// 		info nps 41562
-// 		....
-//
-// // here the user has seen enough and asks to stop the searching
-// stop
-//
-// // the engine has finished searching and is sending the bestmove command
-// // which is needed for every "go" command sent to tell the GUI
-// // that the engine is ready again
-// 		bestmove g1f3 ponder d8f6
-
 #[cfg(test)]
 mod test {
     use super::*;
-    /*
+
+    const DEFAULT_FEN: &'static str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     #[test]
     fn parse_debug() {
-        assert_eq!(UciCommand::parse_debug("debug on"), UciCommand::Debug(true));
         assert_eq!(
-            UciCommand::parse_debug("debug off"),
+            UciCommand::parse("debug on").unwrap(),
+            UciCommand::Debug(true)
+        );
+        assert_eq!(
+            UciCommand::parse("debug off").unwrap(),
             UciCommand::Debug(false)
         );
     }
@@ -1308,36 +1234,37 @@ mod test {
     #[test]
     fn parse_position() {
         assert_eq!(
-            UciCommand::parse_position("position startpos"),
+            UciCommand::parse("position startpos").unwrap(),
             UciCommand::Position {
-                fen: DEFAULT_FEN,
+                fen: None,
                 moves: vec![],
             },
         );
 
         assert_eq!(
-            UciCommand::parse_position(
+            UciCommand::parse(
                 "position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-            ),
+            )
+            .unwrap(),
             UciCommand::Position {
-                fen: DEFAULT_FEN,
+                fen: Some(DEFAULT_FEN.into()),
                 moves: vec![],
             },
         );
 
         assert_eq!(
-            UciCommand::parse_position("position startpos moves e2e4 e7e5"),
+            UciCommand::parse("position startpos moves e2e4 e7e5").unwrap(),
             UciCommand::Position {
-                fen: DEFAULT_FEN,
-                moves: vec!["e2e4", "e7e5"],
+                fen: None,
+                moves: vec!["e2e4".into(), "e7e5".into()],
             },
         );
 
-        assert_eq!(UciCommand::parse_position(
-            "position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 moves e2e4 e7e5"),
+        assert_eq!(UciCommand::parse(
+            "position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 moves e2e4 e7e5").unwrap(),
             UciCommand::Position {
-                fen: DEFAULT_FEN,
-                moves: vec!["e2e4", "e7e5"],
+                fen: Some(DEFAULT_FEN.into()),
+                moves: vec!["e2e4".into(), "e7e5".into()],
             },
         );
     }
@@ -1345,23 +1272,23 @@ mod test {
     #[test]
     fn parse_register() {
         assert_eq!(
-            UciCommand::parse_register("register later"),
+            UciCommand::parse("register later").unwrap(),
             UciCommand::Register(None)
         );
 
         assert_eq!(
-            UciCommand::parse_register("register name Bill Cipher code 42"),
-            UciCommand::Register(Some(("Bill Cipher", "42"))),
+            UciCommand::parse("register name Bill Cipher code 42").unwrap(),
+            UciCommand::Register(Some(("Bill Cipher".into(), "42".into()))),
         );
     }
 
     #[test]
     fn parse_setoption() {
         assert!(
-            UciCommand::parse_setoption("setoption name Test Option value 0").unwrap()
+            UciCommand::parse("setoption name Test Option value 0").unwrap()
                 == UciCommand::SetOption {
-                    name: "Test Option",
-                    value: "0",
+                    name: "Test Option".into(),
+                    value: Some("0".into()),
                 },
         );
     }
@@ -1369,7 +1296,7 @@ mod test {
     #[test]
     fn parse_go() {
         assert!(
-            UciCommand::parse_go("go infinite").unwrap()
+            UciCommand::parse("go infinite").unwrap()
                 == UciCommand::Go(UciSearchOptions {
                     infinite: true,
                     ..Default::default()
@@ -1377,7 +1304,7 @@ mod test {
         );
 
         assert!(
-            UciCommand::parse_go("go btime 30000 wtime 30000 winc 10 binc 42").unwrap()
+            UciCommand::parse("go btime 30000 wtime 30000 winc 10 binc 42").unwrap()
                 == UciCommand::Go(UciSearchOptions {
                     b_time: Some(Duration::from_millis(30_000)),
                     w_time: Some(Duration::from_millis(30_000)),
@@ -1388,7 +1315,7 @@ mod test {
         );
 
         assert!(
-            UciCommand::parse_go("go infinite searchmoves e2e4 d2d4").unwrap()
+            UciCommand::parse("go infinite searchmoves e2e4 d2d4").unwrap()
                 == UciCommand::Go(UciSearchOptions {
                     infinite: true,
                     search_moves: vec![String::from("e2e4"), String::from("d2d4")],
@@ -1397,19 +1324,18 @@ mod test {
         );
     }
 
-     */
     #[test]
     fn test_option_types() {
         let check: UciResponse<&str> = UciResponse::Option(UciOption::check("Nullmove", true));
         assert_eq!(
             format!("{check}"),
-            "option name Nullmove type check default true\n"
+            "option name Nullmove type check default true"
         );
 
         let spin: UciResponse<&str> = UciResponse::Option(UciOption::spin("Selectivity", 2, 0, 4));
         assert_eq!(
             format!("{spin}"),
-            "option name Selectivity type spin default 2 min 0 max 4\n"
+            "option name Selectivity type spin default 2 min 0 max 4"
         );
 
         let combo: UciResponse<&str> = UciResponse::Option(UciOption::combo(
@@ -1419,17 +1345,17 @@ mod test {
         ));
         assert_eq!(
             format!("{combo}"),
-            "option name Style type combo default Normal var Solid var Normal var Risky\n"
+            "option name Style type combo default Normal var Solid var Normal var Risky"
         );
 
         let string: UciResponse<&str> =
             UciResponse::Option(UciOption::string("NalimovPath", "c:\\"));
         assert_eq!(
             format!("{string}"),
-            "option name NalimovPath type string default c:\\\n"
+            "option name NalimovPath type string default c:\\"
         );
 
         let button: UciResponse<&str> = UciResponse::Option(UciOption::button("Clear Hash"));
-        assert_eq!(format!("{button}"), "option name Clear Hash type button\n");
+        assert_eq!(format!("{button}"), "option name Clear Hash type button");
     }
 }
