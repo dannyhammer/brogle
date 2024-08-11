@@ -1,5 +1,5 @@
 [package]
-name = "brogle_engine"
+name = "brogle"
 version = "0.1.0"
 edition = "2021"
 authors = ["Bill Cipher", "Dipper Pines"]

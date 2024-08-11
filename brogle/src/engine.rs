@@ -528,6 +528,8 @@ impl UciEngine for Engine {
         // Apply the FEN to the game state
         if let Some(fen) = fen {
             self.game = Game::from_fen(&fen)?;
+        } else {
+            self.game = Game::default();
         }
 
         // Now, if there are any moves, apply them as well.
@@ -559,9 +561,12 @@ impl UciEngine for Engine {
             Duration::MAX
         };
 
+        eprintln!("Received duration of {time_remaining:?}");
+
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);
-        let timeout = Duration::from_secs_f32(time_remaining.as_secs_f32() / 20.0); // 5% time remaining
+        // let timeout = Duration::from_secs_f32(time_remaining.as_secs_f32() / 20.0); // 5% time remaining
+        let timeout = Duration::from_secs_f32(time_remaining.as_secs_f32() / 100.0); // 1% time remaining
         let result = Arc::clone(&self.search_result);
         let sender = self.sender.clone().unwrap();
 
@@ -668,17 +673,18 @@ impl UciEngine for Engine {
 impl Default for Engine {
     /// Default engine starts with standard piece set up.
     fn default() -> Self {
+        let game = Game::from_fen(FEN_STARTPOS).unwrap();
+
+        // Initialize the engine to have the first legal move selected as it's best by default
+        let bestmove = game.legal_moves().first().copied().unwrap_or_default();
+
         Self {
-            game: Game::from_fen(
-                // "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
-                FEN_STARTPOS,
-            )
-            .unwrap(),
+            game,
             // ttable: TranspositionTable::default(),
             debug: Arc::default(),
             is_searching: Arc::default(),
             // search_status: Arc::default(),
-            search_result: Arc::default(),
+            search_result: Arc::new(RwLock::new(SearchResult::new(bestmove))),
             pool: ThreadPool::new(num_cpus::get()),
             sender: None,
         }

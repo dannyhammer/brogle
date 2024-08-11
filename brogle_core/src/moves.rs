@@ -352,7 +352,7 @@ impl Move {
 
         // Extract information about the piece being moved
         let piece = position.board().piece_at(from).ok_or(anyhow!(
-            "No piece found at {from} when parsing UCI move string."
+            "No piece found at {from} when parsing UCI move string on position {position}"
         ))?;
         let color = piece.color();
 

@@ -31,7 +31,7 @@ path = "src/perft_bench.rs"
 
 
 [dependencies]
-brogle_engine = { path = "../brogle_engine" }
+brogle = { path = "../brogle" }
 brogle_core = { path = "../brogle_core" }
 egui-macroquad = "0.15.0"
 macroquad = "0.4.8"

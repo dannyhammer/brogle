@@ -25,6 +25,15 @@ pub struct SearchResult {
     pub ponder: Option<Move>,
 }
 
+impl SearchResult {
+    pub fn new(bestmove: Move) -> Self {
+        Self {
+            bestmove,
+            ..Default::default()
+        }
+    }
+}
+
 impl Default for SearchResult {
     /// A default search result has no best move and a Very Bad score.
     fn default() -> Self {
@@ -164,8 +173,10 @@ impl<'a> Search<'a> {
     // }
 
     fn search(&mut self, depth: usize) -> Result<SearchResult> {
+        let mut moves = self.game.legal_moves();
+
         // Start with a default (very bad) result.
-        let mut result = SearchResult::default();
+        let mut result = SearchResult::new(moves.first().copied().unwrap_or_default());
         let mut alpha = -INF;
         let beta = INF;
         let ply = 0;
@@ -183,7 +194,6 @@ impl<'a> Search<'a> {
             // return self.quiescence(game, ply + 1, alpha, beta);
         }
 
-        let mut moves = self.game.legal_moves();
         moves.sort_by_cached_key(|mv| score_move(&self.game, mv));
 
         // println!("MOVES: {moves:?}");
@@ -245,16 +255,12 @@ impl<'a> Search<'a> {
         }
 
         // Handle cases for checkmate and stalemate
-        if result.bestmove == Move::default() {
-            if moves.is_empty() {
-                // eprintln!("No legal moves available at: {position}\nRes: {best:?}");
-                if self.game.is_in_check() {
-                    result.score = -INF + depth as i32; // Prefer earlier checkmates
-                } else {
-                    result.score = 0;
-                }
+        if moves.is_empty() {
+            // eprintln!("No legal moves available at: {position}\nRes: {best:?}");
+            if self.game.is_in_check() {
+                result.score = -INF + depth as i32; // Prefer earlier checkmates
             } else {
-                result.bestmove = *moves.first().unwrap();
+                result.score = 0; // Stalemate is better than losing
             }
         }
 
