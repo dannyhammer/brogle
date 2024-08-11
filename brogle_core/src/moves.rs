@@ -327,7 +327,7 @@ impl Move {
     }
     /// Creates a [`Move`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation, extracting extra info from the provided [`Position`]
     ///
-    /// Will return a [`ChessError`] if the string is invalid in any way.
+    /// Will return a [`anyhow::Error`] if the string is invalid in any way.
     ///
     /// # Example
     /// ```

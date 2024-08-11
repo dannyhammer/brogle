@@ -673,21 +673,21 @@ impl BitBoard {
     }
      */
 
-    /// `const` analog of [`BitAnd::bitand`].
+    /// `const` analog of [`std::ops::BitAnd::bitand`].
     ///
     /// Returns the bitwise AND (`&`) of `self` and `other`.
     pub const fn and(self, other: Self) -> Self {
         Self(self.0 & other.0)
     }
 
-    /// `const` analog of [`BitOr::bitor`].
+    /// `const` analog of [`std::ops::BitOr::bitor`].
     ///
     /// Returns the bitwise OR (`|`) of `self` and `other`.
     pub const fn or(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
 
-    /// `const` analog of [`BitXor::bitxor`].
+    /// `const` analog of [`std::ops::BitXor::bitxor`].
     ///
     /// Returns the bitwise XOR (`^`) of `self` and `other`.
     pub const fn xor(self, other: Self) -> Self {

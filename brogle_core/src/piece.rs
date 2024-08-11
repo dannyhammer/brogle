@@ -115,7 +115,7 @@ impl PieceKind {
 
     /// Creates a new [`PieceKind`] from a character, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
     ///
-    /// Will return a [`ChessError`] if `kind` is not a valid character.
+    /// Will return a [`anyhow::Error`] if `kind` is not a valid character.
     ///
     /// # Example
     /// ```
@@ -425,7 +425,7 @@ impl Piece {
 
     /// Creates a new [`Piece`] from a character, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
     ///
-    /// Will return a [`ChessError`] if `piece` is not a valid character.
+    /// Will return a [`anyhow::Error`] if `piece` is not a valid character.
     ///
     /// # Example
     /// ```

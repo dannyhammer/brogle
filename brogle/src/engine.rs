@@ -18,8 +18,8 @@ use log::{error, warn};
 use threadpool::ThreadPool;
 
 use super::{
+    protocols::{UciCommand, UciEngine, UciOption, UciResponse, UciSearchOptions},
     search::{Search, SearchResult},
-    uci::{UciCommand, UciEngine, UciOption, UciResponse, UciSearchOptions},
     Evaluator,
 };
 
@@ -643,7 +643,7 @@ impl UciEngine for Engine {
         //     .expect("Failed to acquire read access to engine.info");
         // self.info(info.clone())?;
 
-        self.send_uci_response(UciResponse::BestMove(bestmove, ponder))
+        self.send_uci_response(UciResponse::BestMove { bestmove, ponder })
     }
 
     fn option(&self) -> Result<()> {

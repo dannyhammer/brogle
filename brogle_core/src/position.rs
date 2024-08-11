@@ -1061,7 +1061,7 @@ impl ChessBoard {
         self.color(color).not()
     }
 
-    /// Creates a [`BoardIter`] to iterate over all occupied [`Tile`]s in this [`GameBoard`].
+    /// Creates a [`BoardIter`] to iterate over all occupied [`Tile`]s in this [`ChessBoard`].
     pub const fn iter<'a>(&'a self) -> BoardIter<'a> {
         BoardIter {
             board: &self,

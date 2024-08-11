@@ -9,7 +9,7 @@ use anyhow::{bail, Result};
 use brogle_core::{Game, Move, PieceKind};
 use log::error;
 
-use crate::uci::UciInfo;
+use crate::protocols::{UciInfo, UciResponse};
 use crate::{value_of, EngineCommand, Evaluator};
 
 const INF: i32 = 32_000;
@@ -147,11 +147,9 @@ impl<'a> Search<'a> {
             // .pv(pv)
             ;
 
-        if let Err(err) =
-            self.sender
-                .send(EngineCommand::UciResponse(crate::uci::UciResponse::Info(
-                    info,
-                )))
+        if let Err(err) = self
+            .sender
+            .send(EngineCommand::UciResponse(UciResponse::Info(info)))
         {
             //
             error!("Failed to send 'info' to engine during search: {err:?}");

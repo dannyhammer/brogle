@@ -8,20 +8,29 @@ use std::{
 use anyhow::{anyhow, bail, Context, Result};
 use log::{info, warn};
 
+/// Represents the arguments that can be sent to your engine via the `go` command.
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct UciSearchOptions {
-    /// Restrict search to this moves only.
+    /// ```text
+    /// searchmoves <move_1> [<move_2> ... <move_i>]
+    /// ```
     ///
-    /// Example: After position startpos and go infinite searchmoves e2e4 d2d4 the
-    /// engine should only search the two moves e2e4 and d2d4 in the initial position.
+    /// Restrict search to this moves only
+    ///
+    /// Example: After `position startpos` and `go infinite searchmoves e2e4 d2d4`
+    /// the engine should only search the two moves `e2e4` and `d2d4` in the initial
+    /// position.
     pub search_moves: Vec<String>,
 
-    /// start searching in pondering mode.
+    /// ```text
+    /// ponder
+    /// ```
+    /// Start searching in pondering mode.
     ///
     /// Do not exit the search in ponder mode, even if it's mate!
     ///
     /// This means that the last move sent in in the position string is the ponder
-    /// move. The engine can do what it wants to do, but after a ponderhit command
+    /// move. The engine can do what it wants to do, but after a `ponderhit` command
     /// it should execute the suggested move to ponder on. This means that the ponder
     /// move sent by the GUI can be interpreted as a recommendation about which move
     /// to ponder. However, if the engine decides to ponder on a different move, it
@@ -29,39 +38,69 @@ pub struct UciSearchOptions {
     /// the GUI because the GUI expects the engine to ponder on the suggested move.
     pub ponder: bool,
 
-    /// White has x msec left on the clock
+    /// ```text
+    /// wtime <x>
+    /// ```
+    /// White has `x` milliseconds left on the clock.
     pub w_time: Option<Duration>,
 
-    /// Black has x msec left on the clock
+    /// ```text
+    /// btime <x>
+    /// ```
+    /// Black has `x` milliseconds left on the clock.
     pub b_time: Option<Duration>,
 
-    /// White increment per move in milliseconds if x > 0
-    pub w_inc: Option<u32>,
+    /// ```text
+    /// winc <x>
+    /// ```
+    /// White increment per move in milliseconds if `x > 0`.
+    pub w_inc: Option<Duration>,
 
-    /// Black increment per move in milliseconds if x > 0
-    pub b_inc: Option<u32>,
+    /// ```text
+    /// binc <x>
+    /// ```
+    /// Black increment per move in milliseconds if `x > 0`.
+    pub b_inc: Option<Duration>,
 
-    /// There are x moves to the next time control,
+    /// ```text
+    /// movestogo <x>
+    /// ```
+    /// There are `x` moves to the next time control.
     ///
-    /// This will only be sent if x > 0,
+    /// This will only be sent if `x > 0`.
     ///
-    /// If you don't get this and get the wtime and btime it's sudden death
+    /// If you don't get this and get the `wtime` and `btime`, it's sudden death.
     pub moves_to_go: Option<u32>,
 
-    /// Search x plies only.
+    /// ```text
+    /// depth <x>
+    /// ```
+    /// Search `x` plies only.
     pub depth: Option<u32>,
 
-    /// Search x nodes only,
+    /// ```text
+    /// nodes <x>
+    /// ```
+    /// Search `x` nodes only.
     pub nodes: Option<u64>,
 
-    /// Search for a mate in x moves
+    /// ```text
+    /// mate <x>
+    /// ```
+    /// Search for a mate in `x` moves.
     pub mate: Option<u32>,
 
-    /// Search exactly x milliseconds
+    /// ```text
+    /// movetime <x>
+    /// ```
+    /// Search exactly `x` milliseconds.
     pub move_time: Option<Duration>,
 
-    /// Search until the stop command. Do not exit the search without being told so
-    /// in this mode!
+    /// ```text
+    /// infinite
+    /// ```
+    /// Search until the `stop` command. Do not exit the search without being told
+    /// so in this mode!
     pub infinite: bool,
 }
 
@@ -85,8 +124,8 @@ impl Default for UciSearchOptions {
     }
 }
 
-/// Represents an engine that has implemented the Universal Chess Interface (UCI)
-/// protocol.
+/// Represents an engine that has implemented the
+/// [Universal Chess Interface (UCI)](https://backscattering.de/chess/uci/) protocol.
 ///
 /// Implementing this trait requires you to implement the following methods:
 ///  - [`UciEngine::position`] to set the state of the game in your engine.
@@ -97,7 +136,9 @@ impl Default for UciSearchOptions {
 /// in their documentation.
 /// You may want to implement your own variants, depending on your engine's needs.
 ///
-/// The following methods are for GUI-to-Engine communication, meaning they are
+/// ## GUI to Engine
+///
+/// The following methods are for GUI to Engine communication, meaning they are
 /// called when the UI (or user) sends a command (via `stdin`) to your engine:
 ///  - [UciEngine::uci]
 ///  - [UciEngine::debug]
@@ -111,7 +152,8 @@ impl Default for UciSearchOptions {
 ///  - [UciEngine::ponderhit]
 ///  - [UciEngine::quit]
 ///
-/// The following methods are for Engine-to-GUI communication, meaning they are
+/// ## Engine to GUI
+/// The following methods are for Engine to GUI communication, meaning they are
 /// called when your engine needs to send a command (via `stdout`) to the UI:
 ///  - [UciEngine::id]
 ///  - [UciEngine::uciok]
@@ -147,7 +189,7 @@ pub trait UciEngine {
 
     /// Parse a string of input, returning a [`UciCommand`], if possible.
     ///
-    /// If not possible, bails with a standard "unknown command X" message.
+    /// If not possible, bails with a standard `"unknown command X"` message.
     ///
     /// This is a convenience method to wrap [`UciCommand::parse`].
     fn parse_uci_input(input: &str) -> Result<UciCommand> {
@@ -209,7 +251,7 @@ pub trait UciEngine {
     /// ```text
     /// debug [on | off]
     /// ```
-    /// where `on = true``
+    /// where `on = true`
     ///
     /// # Protocol Description
     ///
@@ -271,7 +313,7 @@ pub trait UciEngine {
     /// parameters of the engine. For the `button` type no value is needed.
     ///
     /// One string will be sent for each parameter and this will only be sent when
-    /// the engine is waiting. The name and value of the option in <id> should not
+    /// the engine is waiting. The name and value of the option in `<id>` should not
     /// be case sensitive and can include spaces.
     ///
     /// The substrings `value` and `name` should be avoided in `<id>` and `<x>` to
@@ -380,7 +422,6 @@ pub trait UciEngine {
     /// ```text
     /// go [searchmoves <move_1> [<move_2> ...]] [ponder] [wtime <x>] [btime <x>] [winc <x>] [binc <x>] [movestogo <x>] [depth <x>] [nodes <x>] [mate <x>] [movetime <x>] [infinite]
     /// ```
-    ///
     /// If no parameters are received, this should be treated as `go infinite`.
     ///
     /// # Protocol Description
@@ -396,7 +437,6 @@ pub trait UciEngine {
     /// ```text
     /// searchmoves <move_1> [<move_2> ... <move_i>]
     /// ```
-    ///
     /// Restrict search to this moves only
     ///
     /// Example: After `position startpos` and `go infinite searchmoves e2e4 d2d4`
@@ -406,7 +446,6 @@ pub trait UciEngine {
     /// ```text
     /// ponder
     /// ```
-    ///     
     /// Start searching in pondering mode.
     ///
     /// Do not exit the search in ponder mode, even if it's mate!
@@ -422,31 +461,26 @@ pub trait UciEngine {
     /// ```text
     /// wtime <x>
     /// ```
-    ///
     /// White has `x` milliseconds left on the clock.
     ///
     /// ```text
     /// btime <x>
     /// ```
-    ///
     /// Black has `x` milliseconds left on the clock.
     ///
     /// ```text
     /// winc <x>
     /// ```
-    ///
     /// White increment per move in milliseconds if `x > 0`.
     ///
     /// ```text
     /// binc <x>
     /// ```
-    ///
     /// Black increment per move in milliseconds if `x > 0`.
     ///
     /// ```text
     /// movestogo <x>
     /// ```
-    ///  
     /// There are `x` moves to the next time control.
     ///
     /// This will only be sent if `x > 0`.
@@ -456,31 +490,26 @@ pub trait UciEngine {
     /// ```text
     /// depth <x>
     /// ```
-    ///
     /// Search `x` plies only.
     ///
     /// ```text
     /// nodes <x>
     /// ```
-    ///   
     /// Search `x` nodes only.
     ///
     /// ```text
     /// mate <x>
     /// ```
-    ///
     /// Search for a mate in `x` moves.
     ///
     /// ```text
     /// movetime <x>
     /// ```
-    ///
     /// Search exactly `x` milliseconds.
     ///
     /// ```text
     /// infinite
     /// ```
-    ///
     /// Search until the `stop` command. Do not exit the search without being told
     /// so in this mode!
     fn go(&mut self, options: UciSearchOptions) -> Result<()>;
@@ -496,7 +525,7 @@ pub trait UciEngine {
     ///
     /// Stop calculating as soon as possible.
     ///
-    /// Don't forget the "bestmove" and possibly the "ponder" token when finishing
+    /// Don't forget the `bestmove` and possibly the `ponder` token when finishing
     /// the search.
     fn stop(&mut self) -> Result<()>;
 
@@ -524,8 +553,8 @@ pub trait UciEngine {
     /// quit
     /// ```
     ///
-    /// This does not necessarily need to immediately exit ([`std::process:exit`]),
-    /// but should make sure it performs any necessary clean-up before exiting.
+    /// This does not necessarily need to immediately exit, but should make sure it
+    /// performs any necessary clean-up before exiting.
     ///
     /// It is likely that you want this command to be a special case in your
     /// engine's event handler.
@@ -585,7 +614,7 @@ pub trait UciEngine {
         let name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
         let author = env!("CARGO_PKG_AUTHORS").replace(":", ", ");
 
-        self.send_uci_response(UciResponse::Id(name, author))
+        self.send_uci_response(UciResponse::Id { name, author })
     }
 
     /// Send the `uciok` message to `stdout` as follows:
@@ -637,7 +666,7 @@ pub trait UciEngine {
     ///
     /// # Protocol Description
     ///
-    /// The engine has stopped searching and found the move <move> best in this
+    /// The engine has stopped searching and found the move `<move>` best in this
     /// position.
     ///
     /// The engine can send the move it likes to ponder on. The engine must not
@@ -647,16 +676,16 @@ pub trait UciEngine {
     /// pondering mode if there is a `stop` command, so for every `go` command a
     /// `bestmove` command is needed!
     ///
-    /// Directly before that the engine should send a final `info`` command with the
+    /// Directly before that the engine should send a final `info` command with the
     /// final search information, the the GUI has the complete statistics about the
     /// last search.
     ///
     /// # Default
     ///
     /// The default implementation of this method simply immediately sends a response
-    /// of `bestmove <move> [ponder]`.
+    /// of `bestmove <bestmove> [ponder <ponder>]`.
     fn bestmove<T: fmt::Display>(&self, bestmove: T, ponder: Option<T>) -> Result<()> {
-        self.send_uci_response(UciResponse::<T>::BestMove(bestmove, ponder))
+        self.send_uci_response(UciResponse::<T>::BestMove { bestmove, ponder })
     }
 
     /// Send the `copyprotection` message to `stdout` as follows:
@@ -666,15 +695,15 @@ pub trait UciEngine {
     ///
     /// # Protocol Description
     ///
-    /// This is needed for copy-protected engines. After the uciok command the engine
-    /// can tell the GUI, that it will check the copy protection now. This is done by
-    /// copyprotection checking.
+    /// This is needed for copy-protected engines. After the `uciok` command the
+    /// engine can tell the GUI, that it will check the copy protection now. This is
+    /// done by `copyprotection checking`.
     ///
-    /// If the check is ok the engine should send copyprotection ok, otherwise
-    /// copyprotection error. If there is an error the engine should not function
-    /// properly but should not quit alone. If the engine reports copyprotection
-    /// error the GUI should not use this engine and display an error message
-    /// instead!
+    /// If the check is ok the engine should send `copyprotection ok`, otherwise
+    /// `copyprotection error`. If there is an error the engine should not function
+    /// properly but should not quit alone. If the engine reports
+    /// `copyprotection error`
+    /// the GUI should not use this engine and display an error message instead!
     ///
     /// The code in the engine can look like this:
     /// ```text
@@ -726,7 +755,8 @@ pub trait UciEngine {
     ///
     /// # Default
     ///
-    /// The default implementation of this method simply immediately sends a response of `checking` followed by `ok`.
+    /// The default implementation of this method simply immediately sends a response
+    /// of `checking` followed by `ok`.
     fn registration(&self) -> Result<()> {
         info!("using default implementation of UciEngine::registration");
         self.send_uci_response(UciResponse::<&str>::Registration(
@@ -737,16 +767,165 @@ pub trait UciEngine {
 
     /// Send the `info` message to `stdout` as follows:
     /// ```text
-    /// info [TODO: info fields]
+    /// info [depth <x>] [seldepth <x>] [time <x>] [nodes <x>] [pv <move_1> [<move_2> ... <move_i>]] [score [cp <x> | mate <y>] [lowerbound | upperbound]] [currmove <move>] [currmovenumber <x>] [hashfull <x>] [nps <x>] [tbhits <x>] [sbhits <x>] [cpuload <x>] [string <str>] [refutation <move_1> <move_2> [... <move_i>]] [currline [cpunr] <move_1> [... <move_i>]]
     /// ```
-    ///
-    /// TODO: https://backscattering.de/chess/uci/#engine-info-command
     ///
     /// # Protocol Description
     ///
+    /// The engine wants to send information to the GUI. This should be done whenever
+    /// one of the info has changed.
+    ///
+    /// The engine can send only selected infos or multiple infos with one info
+    /// command, e.g.`info currmove e2e4 currmovenumber 1` or
+    /// `info depth 12 nodes 123456 nps 100000`.
+    ///
+    /// Also all infos belonging to the pv should be sent together e.g.
+    /// `info depth 2 score cp 214 time 1242 nodes 2124 nps 34928 pv e2e4 e7e5 g1f3`.
+    ///
+    /// I suggest to start sending `currmove`, `currmovenumber`, `currline` and
+    /// `refutation` only after one second to avoid too much traffic.
+    ///
+    /// ## Arguments
+    ///
+    /// ```text
+    /// depth <x>
+    /// ```
+    /// Search depth (in plies).
+    ///
+    /// ```text
+    /// seldepth <x>
+    /// ```
+    /// Selective search depth (in plies),
+    ///
+    /// If the engine sends `seldepth` there must also be a `depth` present in the
+    /// same string.
+    ///
+    /// ```text
+    /// time <x>
+    /// ```
+    /// The time searched (in ms).
+    /// This should be sent together with the `pv`.
+    ///
+    /// ```text
+    /// nodes <x>
+    /// ```
+    /// `<x>` nodes searched.
+    /// The engine should send this info regularly.
+    ///
+    /// ```text
+    /// pv <move_1> [<move_2> ... <move_i>]
+    /// ```
+    /// The best line found.
+    ///
+    /// ```text
+    /// multipv <num>
+    /// ```
+    /// This for the multi pv mode.
+    ///
+    /// For the best move/pv add `multipv 1` in the string when you send the pv.
+    ///
+    /// In *k*-best mode always send all k variants in k strings together.
+    ///
+    /// ```text
+    /// score [cp <x> | mate <y> | lowerbound | upperbound]
+    /// ```
+    ///
+    ///   - `cp <x>`
+    /// The score from the engine's point of view in centipawns.
+    ///
+    ///   - `mate <y>`
+    /// Mate in `y` moves, not plies.
+    ///
+    /// If the engine is getting mated, use negative values for `y`.
+    ///
+    ///   - `lowerbound`
+    /// The score is just a lower bound.
+    ///
+    ///   - `upperbound`
+    /// The score is just an upper bound.
+    ///
+    /// ```text
+    /// currmove <move>
+    /// ```
+    /// Currently searching this move
+    ///
+    /// ```text
+    /// Currmovenumber <x>
+    /// ```
+    /// Currently searching move number `x`, for the first move `x` should be `1` not
+    /// `0`.
+    ///
+    /// ```text
+    /// hashfull <x>
+    /// ```
+    /// The hash is `x` permill full.
+    ///
+    /// The engine should send this info regularly.
+    ///
+    /// ```text
+    /// nps <x>
+    /// ```
+    /// `x` nodes per second searched.
+    ///
+    /// The engine should send this info regularly.
+    ///
+    /// ```text
+    /// tbhits <x>
+    /// ```
+    /// `x` positions where found in the endgame table bases.
+    ///
+    /// ```text
+    /// sbhits <x>
+    /// ```
+    /// `x` positions where found in the shredder endgame databases.
+    ///
+    /// ```text
+    /// cpuload x
+    /// ```
+    /// The cpu usage of the engine is `x` permill.
+    ///
+    /// ```text
+    /// string <str>
+    /// ```
+    /// Any string `str` which will be displayed be the engine.
+    ///
+    /// If there is a string command the rest of the line will be interpreted as
+    /// `str`.
+    ///
+    /// ```text
+    /// refutation <move_1> <move_2> ... <move_i>
+    /// ```
+    /// Move `<move_1>` is refuted by the line `<move_2> ... <move_1>`.
+    /// `i` can be any number `>= 1`.
+    ///
+    /// Example: after move `d1h5` is searched, the engine can send
+    /// `info refutation d1h5 g6h5` if `g6h5` is the best answer after
+    /// `d1h5` or if `g6h5` refutes the move `d1h5`.
+    ///
+    /// If there is no refutation for `d1h5` found, the engine should just send
+    /// `info refutation d1h5`.
+    ///
+    /// The engine should only send this if the option `UCI_ShowRefutations` is set
+    /// to `true`.
+    ///
+    /// ```text
+    /// currline <cpnunr> <move_1> [<move_2> ... <move_i>]
+    /// ```
+    /// This is the current line the engine is calculating. `cpunr` is the number of
+    /// the cpu if the engine is running on more than one cpu. `cpunr = 1,2,3...`.
+    ///
+    /// if the engine is just using one cpu, `cpunr` can be omitted.
+    ///
+    /// If `cpunr` is greater than `1`, always send all *k* lines in *k* strings
+    /// together.
+    ///
+    /// The engine should only send this if the option `UCI_ShowCurrLine` is set to
+    /// `true`.
+    ///
     /// # Default
     ///
-    /// The default implementation of this method simply immediately sends a response of `info [ STUFF ]`.
+    /// The default implementation of this method simply immediately sends a response
+    /// of `info <info>`.
     fn info(&self, info: UciInfo) -> Result<()> {
         // info!("using default implementation of UciEngine::info({info:?})");
         self.send_uci_response(UciResponse::<String>::Info(info))
@@ -754,12 +933,227 @@ pub trait UciEngine {
 
     /// Send the `option` message to `stdout` as follows:
     /// ```text
-    /// option [TODO: option fields]
+    /// option name <id> type <t> [default <x>] [min <x>] [max <x>] [var <x>]
     /// ```
     ///
-    /// TODO: https://backscattering.de/chess/uci/#engine-option-command
-    ///
     /// # Protocol Description
+    ///
+    /// This command tells the GUI which parameters can be changed in the engine.
+    ///
+    /// This should be sent once at engine startup after the `uci` and the `id`
+    /// commands if any parameter can be changed in the engine
+    ///
+    /// The GUI should parse this and build a dialog for the user to change the
+    /// settings. Note that not every option needs to appear in this dialog as some
+    /// options like `Ponder`, `UCI_AnalyseMode`, etc. are better handled elsewhere
+    /// or are set automatically.
+    ///
+    /// If the user wants to change some settings, the GUI will send a `setoption`
+    /// command to the engine. Note that the GUI need not send the setoption command
+    /// when starting the engine for every option if it doesn't want to change the
+    /// default value.
+    ///
+    /// For all allowed combinations see the examples below, as some combinations of
+    /// this tokens don't make sense. One string will be sent for each parameter.
+    ///
+    /// ## Arguments
+    ///
+    /// ```text
+    /// name <id>
+    /// ```
+    /// The option has the name `<id>`.
+    ///
+    /// Certain options have a fixed value for `<id>`, which means that the semantics
+    /// of this option is fixed. Usually those options should not be displayed in the
+    /// normal engine options window of the GUI but get a special treatment.
+    /// `Pondering`, for example, should be set automatically when pondering is
+    /// enabled or disabled in the GUI options. The same for `UCI_AnalyseMode` which
+    /// should also be set automatically by the GUI. All those certain options have
+    /// the prefix `UCI_` except for the first 6 options below. If the GUI gets an
+    /// unknown option with the prefix `UCI_`, it should just ignore it and not
+    /// display it in the engine's options dialog.
+    ///
+    /// ### Special Options
+    ///
+    ///   - `id = Hash`, type `spin`
+    ///
+    /// The value in MB for memory for hash tables can be changed.
+    ///
+    /// This should be answered with the first `setoptions` command at program boot
+    /// if the engine has sent the appropriate `option name Hash` command, which
+    /// should be supported by all engines! So the engine should use a very small
+    /// hash first as default.
+    ///
+    ///   - `id = NalimovPath`, type `string`
+    ///
+    /// This is the path on the hard disk to the Nalimov compressed format.
+    ///
+    /// Multiple directories can be concatenated with `;`.
+    ///
+    ///   - `id = NalimovCache`, type `spin`
+    ///
+    /// This is the size in MB for the cache for the nalimov table bases.
+    ///
+    /// These last two options should also be present in the initial options exchange
+    /// dialog when the engine is booted if the engine supports it.
+    ///
+    ///   - `id = Ponder`, type `check`
+    ///
+    /// This means that the engine is able to ponder. The GUI will send this whenever
+    /// pondering is possible or not.
+    ///
+    /// Note: The engine should not start pondering on its own if this is enabled,
+    /// this option is only needed because the engine might change its time
+    /// management algorithm when pondering is allowed.
+    ///
+    ///   - `id = OwnBook`, type `check`
+    ///
+    /// This means that the engine has its own book which is accessed by the engine
+    /// itself. if this is set, the engine takes care of the opening book and the GUI
+    /// will never execute a move out of its book for the engine. If this is set to
+    /// `false` by the GUI, the engine should not access its own book.
+    ///
+    ///   - `id = MultiPV`, type `spin`
+    ///
+    /// The engine supports multi best line or *k*-best mode. the default value is
+    /// `1`.
+    ///
+    ///   - `id = UCI_ShowCurrLine`, type `check`, should be `false` by default.
+    ///
+    /// The engine can show the current line it is calculating. see `info currline`
+    /// above.
+    ///
+    ///   - `id = UCI_ShowRefutations`, type `check`, should be `false` by default.
+    ///
+    /// The engine can show a move and its refutation in a line.
+    /// See `info refutations` above.
+    ///
+    ///   - `id = UCI_LimitStrength`, type `check`, should be `false` by default,
+    ///
+    /// The engine is able to limit its strength to a specific Elo number.
+    ///
+    /// This should always be implemented together with `UCI_Elo`.
+    ///
+    ///   - `id = UCI_Elo`, type `spin`
+    ///
+    /// The engine can limit its strength in Elo within this interval.
+    ///
+    /// If `UCI_LimitStrength` is set to `false`, this value should be ignored. If
+    /// `UCI_LimitStrength` is set to true, the engine should play with this
+    /// specific strength. This should always be implemented together with
+    /// `UCI_LimitStrength`.
+    ///
+    ///   - `id = UCI_AnalyseMode`, type `check`
+    ///
+    /// The engine wants to behave differently when analysing or playing a game. For
+    /// example when playing it can use some kind of learning. This is set to `false`
+    /// if the engine is playing a game, otherwise it is `true`.
+    ///
+    ///   - `id = UCI_Opponent`, type `string`
+    ///
+    /// With this command the GUI can send the name, title, elo and if the engine is
+    /// playing a human or computer to the engine.
+    ///
+    /// The format of the string has to be
+    /// `[GM | IM | FM | WGM | WIM | none] [<elo> | none] [computer | human] <name>`.
+    ///
+    /// #### Examples
+    ///```text
+    /// setoption name UCI_Opponent value GM 2800 human Gary Kasparov
+    /// setoption name UCI_Opponent value none none computer Shredder
+    /// ```
+    ///
+    ///   - `id = UCI_EngineAbout`, type `string`
+    ///
+    /// With this command, the engine tells the GUI information about itself, for
+    /// example a license text.
+    ///
+    /// Usually it doesn't make sense that the GUI changes this text with the
+    /// setoption command.
+    ///
+    /// #### Examples
+    ///```text
+    /// option name UCI_EngineAbout type string default Shredder by Stefan Meyer-Kahlen, see www.shredderchess.com
+    /// ```
+    ///
+    ///   - `id = UCI_ShredderbasesPath`, type `string`
+    ///
+    /// This is either the path to the folder on the hard disk containing the
+    /// Shredder endgame databases or the path and filename of one Shredder endgame
+    /// database.
+    ///
+    ///   - `id = UCI_SetPositionValue`, type `string`
+    ///
+    /// The GUI can send this to the engine to tell the engine to use a certain value
+    /// in centipawns from white's point of view if evaluating this specific position.
+    ///
+    /// The string can have the formats: value + fen | clear + fen | clearall
+    ///
+    /// ### Option Types
+    ///
+    ///```text
+    /// type <t>
+    /// ```
+    /// The option has type `<t>`. There are 5 different types of options the engine
+    /// can send.
+    ///
+    ///```text
+    /// check
+    /// ```
+    /// A checkbox that can either be `true` or `false`.
+    ///
+    ///```text
+    /// spin
+    /// ```
+    /// A spin wheel that can be an integer in a certain range.
+    ///
+    ///```text
+    /// combo
+    /// ```
+    /// A combo box that can have different predefined strings as a value.
+    ///
+    ///```text
+    /// button
+    /// ```
+    /// A button that can be pressed to send a command to the engine.
+    ///
+    ///```text
+    /// string
+    /// ```
+    /// A text field that has a string as a value
+    ///
+    /// An empty string has the value `<empty>`
+    ///
+    /// ### Option Fields
+    ///```text
+    /// default <x>
+    /// ```
+    /// The default value of this parameter is `<x>`.
+    ///
+    ///```text
+    /// min <x>
+    /// ```
+    /// The minimum value of this parameter is `<x>`.
+    ///
+    ///```text
+    /// max <x>
+    /// ```
+    /// The maximum value of this parameter is `<x>`.
+    ///
+    ///```text
+    /// var <x>
+    /// ```
+    /// A predefined value of this parameter is `<x>`.
+    ///
+    /// ## Examples
+    /// Here are 5 strings for each of the 5 possible types of options:
+    ///```text
+    /// option name Nullmove type check default true
+    /// option name Selectivity type spin default 2 min 0 max 4
+    /// option name Style type combo default Normal var Solid var Normal var Risky
+    /// option name NalimovPath type string default c:\
+    /// option name Clear Hash type button
+    /// ```
     ///
     /// # Default
     ///
@@ -770,9 +1164,11 @@ pub trait UciEngine {
     }
 }
 
-/// # UCI Commands (GUI to Engine)
+/// Commands that are sent from the GUI to your engine via `stdin`.
 ///
-/// These are all the commands the engine gets from the interface.
+/// Each of these corresponds to a method on the [`UciEngine`] trait.
+/// For example, when your engine receives `uci`, it should execute
+/// [`UciEngine::uci`].
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum UciCommand {
     /// The `uci` command.
@@ -866,7 +1262,7 @@ impl UciCommand {
         }
     }
 
-    /// Attempt to parse the arguments of [`UciCommand::debug`].
+    /// Attempt to parse the arguments of [`UciCommand::Debug`].
     pub fn parse_debug(args: &str) -> Result<Self> {
         // This one's simple
         match args {
@@ -876,7 +1272,7 @@ impl UciCommand {
         }
     }
 
-    /// Attempt to parse the arguments of [`UciCommand::setoption`].
+    /// Attempt to parse the arguments of [`UciCommand::SetOption`].
     pub fn parse_setoption(args: &str) -> Result<Self> {
         let (_, rest) = args
             .split_once("name")
@@ -896,7 +1292,7 @@ impl UciCommand {
         })
     }
 
-    /// Attempt to parse the arguments of [`UciCommand::register`].
+    /// Attempt to parse the arguments of [`UciCommand::Register`].
     pub fn parse_register(args: &str) -> Result<Self> {
         // A `None` value represents "register later"
         let (name, code) = if args.starts_with("later") {
@@ -924,7 +1320,7 @@ impl UciCommand {
         Ok(UciCommand::Register { name, code })
     }
 
-    /// Attempt to parse the arguments of [`UciCommand::position`].
+    /// Attempt to parse the arguments of [`UciCommand::Position`].
     pub fn parse_position(args: &str) -> Result<Self> {
         let (fen, moves) = if let Some((pos, moves)) = args.split_once("moves") {
             if moves.is_empty() {
@@ -949,7 +1345,7 @@ impl UciCommand {
         Ok(UciCommand::Position { fen, moves })
     }
 
-    /// Attempt to parse the arguments of [`UciCommand::go`].
+    /// Attempt to parse the arguments of [`UciCommand::Go`].
     pub fn parse_go(args: &str) -> Result<Self> {
         // Parse an argument
         fn parse<T: FromStr>(arg: &str, input: Option<&str>) -> Result<T> {
@@ -978,8 +1374,8 @@ impl UciCommand {
                 "wtime" => opt.w_time = Some(parse_duration(arg, args.next())?),
                 // "wtime" => opt.w_time = Some(Duration::from_millis(args.next().ok_or(anyhow!("usage: go wtime <x>"))?.parse()?)),
                 "btime" => opt.b_time = Some(parse_duration(arg, args.next())?),
-                "winc" => opt.w_inc = Some(parse(arg, args.next())?),
-                "binc" => opt.b_inc = Some(parse(arg, args.next())?),
+                "winc" => opt.w_inc = Some(parse_duration(arg, args.next())?),
+                "binc" => opt.b_inc = Some(parse_duration(arg, args.next())?),
                 "movestogo" => opt.moves_to_go = Some(parse(arg, args.next())?),
                 "depth" => opt.depth = Some(parse(arg, args.next())?),
                 "nodes" => opt.nodes = Some(parse(arg, args.next())?),
@@ -1002,7 +1398,7 @@ pub enum UciCheckingStatus {
     /// The engine is checking the status of `copyprotection` or `registration`.
     Checking,
 
-    /// All is well.
+    /// All is well. Check was successful. No further action needed.
     Ok,
 
     /// An error occurred when checking `copyprotection` or `registration`
@@ -1024,286 +1420,45 @@ impl fmt::Display for UciCheckingStatus {
 /// These are all the commands the interface gets from the engine.
 #[derive(Debug, Clone)]
 pub enum UciResponse<T: fmt::Display = String> {
-    /// `id`
-    ///
-    /// * `name <x>`
-    ///
-    /// This must be sent after receiving the `uci` command to identify the engine,
-    ///
-    /// e.g. `id name Shredder X.Y\n`
-    ///
-    /// * `author <x>`
-    ///
-    /// This must be sent after receiving the `uci` command to identify the engine,
-    ///
-    /// e.g. `id author Stefan MK\n`
-    Id(T /* name */, T /* author */),
+    /// ```text
+    /// id name <x>
+    /// id author <x>
+    /// ```
+    Id { name: T, author: T },
 
-    /// `uciok`
-    ///
-    /// Must be sent after the id and optional options to tell the GUI that the engine
-    /// has sent all infos and is ready in uci mode.
+    /// ```text
+    /// uciok
+    /// ```
     UciOk,
 
-    /// `readyok`
-    ///
-    /// This must be sent when the engine has received an `isready` command and has
-    /// processed all input and is ready to accept new commands now.
-    /// It is usually sent after a command that can take some time to be able to wait for the engine,
-    /// but it can be used anytime, even when the engine is searching,
-    /// and must always be answered with `isready`.
+    /// ```text
+    /// readyok
+    /// ```
     ReadyOk,
 
-    /// `bestmove <move_1> [ ponder <move_2> ]`
-    ///
-    /// The engine has stopped searching and found the move <move> best in this position.
-    /// the engine can send the move it likes to ponder on. The engine must not start pondering automatically.
-    /// this command must always be sent if the engine stops searching, also in pondering mode if there is a
-    /// `stop` command, so for every `go` command a `bestmove` command is needed!
-    /// Directly before that the engine should send a final "info" command with the final search information,
-    /// the the GUI has the complete statistics about the last search.
-    BestMove(T /* bestmove */, Option<T> /* ponder */),
-
-    /// `copyprotection`
-    ///
-    /// this is needed for copy-protected engines. After the uciok command the engine can tell the GUI,
-    /// that it will check the copy protection now. This is done by `copyprotection checking`.
-    /// If the check is ok the engine should send `copyprotection ok`, otherwise `copyprotection error`.
-    /// If there is an error the engine should not function properly but should not quit alone.
-    /// If the engine reports `copyprotection error` the GUI should not use this engine
-    /// and display an error message instead!
-    ///
-    /// The code in the engine can look like this:
+    /// ```text
+    /// bestmove <move_1> [ponder <move_2>]
     /// ```
-    /// // TellGUI("copyprotection checking\n");
-    /// // ... check the copy protection here ...
-    /// // if(ok)
-    /// //     TellGUI("copyprotection ok\n");
-    /// // else
-    /// //     TellGUI("copyprotection error\n");
+    BestMove { bestmove: T, ponder: Option<T> },
+
+    /// ```text
+    /// copyprotection [checking | ok | error]
     /// ```
     CopyProtection(UciCheckingStatus),
 
-    /// `registration`
-    ///
-    /// This is needed for engines that need a username and/or a code to function with all features.
-    /// Analog to the `copyprotection` command the engine can send `registration checking`
-    /// after the uciok command followed by either `registration ok` or `registration error`.
-    /// Also after every attempt to register the engine it should answer with `registration checking`
-    /// and then either `registration ok` or `registration error`.
-    /// In contrast to the `copyprotection` command, the GUI can use the engine after the engine has
-    /// reported an error, but should inform the user that the engine is not properly registered
-    /// and might not use all its features.
-    /// In addition the GUI should offer to open a dialog to
-    /// enable registration of the engine. To try to register an engine the GUI can send
-    /// the `register` command.
-    /// The GUI has to always answer with the `register` command if the engine sends `registration error`
-    /// at engine startup (this can also be done with `register later`)
-    /// and tell the user somehow that the engine is not registered.
-    /// This way the engine knows that the GUI can deal with the registration procedure and the user
-    /// will be informed that the engine is not properly registered.
+    /// ```text
+    /// registration [checking | ok | error]
+    /// ```
     Registration(UciCheckingStatus),
 
-    /// `info`
-    ///
-    /// The engine wants to send information to the GUI. This should be done whenever one of the info has changed.
-    /// The engine can send only selected infos or multiple infos with one info command,
-    ///
-    /// e.g. `info currmove e2e4 currmovenumber 1` or `info depth 12 nodes 123456 nps 100000`.
-    ///
-    /// Also all infos belonging to the pv should be sent together
-    ///
-    /// e.g. `info depth 2 score cp 214 time 1242 nodes 2124 nps 34928 pv e2e4 e7e5 g1f3`
-    ///
-    /// I suggest to start sending `currmove`, `currmovenumber`, `currline` and `refutation` only after one second
-    /// to avoid too much traffic.
-    ///
-    /// Additional info:
-    /// * `depth <x>`
-    ///
-    /// Search depth in plies.
-    ///
-    /// * `seldepth <x>`
-    ///
-    /// Selective search depth in plies.
-    /// If the engine sends `seldepth` there must also be a `depth` present in the same string.
-    ///
-    /// * `time <x>`
-    ///
-    /// The time searched in ms, this should be sent together with the `pv`.
-    ///
-    /// * nodes <x>
-    ///
-    /// `x` nodes searched, the engine should send this info regularly.
-    ///
-    /// * `pv <move_1> ... <move_i>`
-    ///
-    /// The best line found.
-    ///
-    /// * `multipv <num>`
-    /// This for the multi pv mode.
-    /// 	for the best move/pv add `multipv 1` in the string when you send the `pv`.
-    /// 	in `k`-best mode always send all `k` variants in `k` strings together.
-    ///
-    /// * `score`
-    /// 	* cp <x>
-    /// 		the score from the engine's point of view in centipawns.
-    /// 	* mate <y>
-    /// 		mate in y moves, not plies.
-    /// 		If the engine is getting mated use negative values for y.
-    /// 	* lowerbound
-    ///       the score is just a lower bound.
-    /// 	* upperbound
-    /// 	   the score is just an upper bound.
-    /// * currmove <move>
-    /// 	currently searching this move
-    /// * currmovenumber <x>
-    /// 	currently searching move number x, for the first move x should be 1 not 0.
-    /// * hashfull <x>
-    /// 	the hash is x permill full, the engine should send this info regularly
-    /// * nps <x>
-    /// 	x nodes per second searched, the engine should send this info regularly
-    /// * tbhits <x>
-    /// 	x positions where found in the endgame table bases
-    /// * sbhits <x>
-    /// 	x positions where found in the shredder endgame databases
-    /// * cpuload <x>
-    /// 	the cpu usage of the engine is x permill.
-    /// * string <str>
-    /// 	any string str which will be displayed be the engine,
-    /// 	if there is a string command the rest of the line will be interpreted as <str>.
-    /// * refutation <move_1> <move_2> ... <move_i>
-    ///    move <move_1> is refuted by the line <move_2> ... <move_i>, i can be any number >= 1.
-    ///    Example: after move d1h5 is searched, the engine can send
-    ///    "info refutation d1h5 g6h5"
-    ///    if g6h5 is the best answer after d1h5 or if g6h5 refutes the move d1h5.
-    ///    if there is no refutation for d1h5 found, the engine should just send
-    ///    "info refutation d1h5"
-    /// 	The engine should only send this if the option "UCI_ShowRefutations" is set to true.
-    /// * currline <cpunr> <move_1> ... <move_i>
-    ///    this is the current line the engine is calculating. <cpunr> is the number of the cpu if
-    ///    the engine is running on more than one cpu. <cpunr> = 1,2,3....
-    ///    if the engine is just using one cpu, <cpunr> can be omitted.
-    ///    If <cpunr> is greater than 1, always send all k lines in k strings together.
-    /// 	The engine should only send this if the option "UCI_ShowCurrLine" is set to true.
+    /// ```text
+    /// info [depth <x>] [seldepth <x>] [time <x>] [nodes <x>] [pv <move_1> [<move_2> ... <move_i>]] [score [cp <x> | mate <y>] [lowerbound | upperbound]] [currmove <move>] [currmovenumber <x>] [hashfull <x>] [nps <x>] [tbhits <x>] [sbhits <x>] [cpuload <x>] [string <str>] [refutation <move_1> <move_2> [... <move_i>]] [currline [cpunr] <move_1> [... <move_i>]]
+    /// ```
     Info(UciInfo),
 
-    /// `option`
-    ///
-    /// This command tells the GUI which parameters can be changed in the engine.
-    /// This should be sent once at engine startup after the "uci" and the "id" commands
-    /// if any parameter can be changed in the engine.
-    /// The GUI should parse this and build a dialog for the user to change the settings.
-    /// Note that not every option needs to appear in this dialog as some options like
-    /// "Ponder", "UCI_AnalyseMode", etc. are better handled elsewhere or are set automatically.
-    /// If the user wants to change some settings, the GUI will send a "setoption" command to the engine.
-    /// Note that the GUI need not send the setoption command when starting the engine for every option if
-    /// it doesn't want to change the default value.
-    /// For all allowed combinations see the examples below,
-    /// as some combinations of this tokens don't make sense.
-    /// One string will be sent for each parameter.
-    ///
-    /// * name <id>
-    /// 	The option has the name id.
-    /// 	Certain options have a fixed value for <id>, which means that the semantics of this option is fixed.
-    /// 	Usually those options should not be displayed in the normal engine options window of the GUI but
-    /// 	get a special treatment. "Pondering" for example should be set automatically when pondering is
-    /// 	enabled or disabled in the GUI options. The same for "UCI_AnalyseMode" which should also be set
-    /// 	automatically by the GUI. All those certain options have the prefix "UCI_" except for the
-    /// 	first 6 options below. If the GUI gets an unknown Option with the prefix "UCI_", it should just
-    /// 	ignore it and not display it in the engine's options dialog.
-    /// 	* <id> = Hash, type is spin
-    /// 		the value in MB for memory for hash tables can be changed,
-    /// 		this should be answered with the first "setoptions" command at program boot
-    /// 		if the engine has sent the appropriate "option name Hash" command,
-    /// 		which should be supported by all engines!
-    /// 		So the engine should use a very small hash first as default.
-    /// 	* <id> = NalimovPath, type string
-    /// 		this is the path on the hard disk to the Nalimov compressed format.
-    /// 		Multiple directories can be concatenated with ";"
-    /// 	* <id> = NalimovCache, type spin
-    /// 		this is the size in MB for the cache for the nalimov table bases
-    /// 		These last two options should also be present in the initial options exchange dialog
-    /// 		when the engine is booted if the engine supports it
-    /// 	* <id> = Ponder, type check
-    /// 		this means that the engine is able to ponder.
-    /// 		The GUI will send this whenever pondering is possible or not.
-    /// 		Note: The engine should not start pondering on its own if this is enabled, this option is only
-    /// 		needed because the engine might change its time management algorithm when pondering is allowed.
-    /// 	* <id> = OwnBook, type check
-    /// 		this means that the engine has its own book which is accessed by the engine itself.
-    /// 		if this is set, the engine takes care of the opening book and the GUI will never
-    /// 		execute a move out of its book for the engine. If this is set to false by the GUI,
-    /// 		the engine should not access its own book.
-    /// 	* <id> = MultiPV, type spin
-    /// 		the engine supports multi best line or k-best mode. the default value is 1
-    /// 	* <id> = UCI_ShowCurrLine, type check, should be false by default,
-    /// 		the engine can show the current line it is calculating. see "info currline" above.
-    /// 	* <id> = UCI_ShowRefutations, type check, should be false by default,
-    /// 		the engine can show a move and its refutation in a line. see "info refutations" above.
-    /// 	* <id> = UCI_LimitStrength, type check, should be false by default,
-    /// 		The engine is able to limit its strength to a specific Elo number,
-    /// 	   This should always be implemented together with "UCI_Elo".
-    /// 	* <id> = UCI_Elo, type spin
-    /// 		The engine can limit its strength in Elo within this interval.
-    /// 		If UCI_LimitStrength is set to false, this value should be ignored.
-    /// 		If UCI_LimitStrength is set to true, the engine should play with this specific strength.
-    /// 	   This should always be implemented together with "UCI_LimitStrength".
-    /// 	* <id> = UCI_AnalyseMode, type check
-    /// 	   The engine wants to behave differently when analysing or playing a game.
-    /// 	   For example when playing it can use some kind of learning.
-    /// 	   This is set to false if the engine is playing a game, otherwise it is true.
-    /// 	 * <id> = UCI_Opponent, type string
-    /// 	   With this command the GUI can send the name, title, elo and if the engine is playing a human
-    /// 	   or computer to the engine.
-    /// 	   The format of the string has to be [GM|IM|FM|WGM|WIM|none] [<elo>|none] [computer|human] <name>
-    /// 	   Examples:
-    /// 	   "setoption name UCI_Opponent value GM 2800 human Gary Kasparov"
-    /// 	   "setoption name UCI_Opponent value none none computer Shredder"
-    /// 	 * <id> = UCI_EngineAbout, type string
-    /// 	   With this command, the engine tells the GUI information about itself, for example a license text,
-    /// 	   usually it doesn't make sense that the GUI changes this text with the setoption command.
-    /// 	   Example:
-    /// 		"option name UCI_EngineAbout type string default Shredder by Stefan Meyer-Kahlen, see www.shredderchess.com"
-    /// 	* <id> = UCI_ShredderbasesPath, type string
-    /// 		this is either the path to the folder on the hard disk containing the Shredder endgame databases or
-    /// 		the path and filename of one Shredder endgame database.
-    ///    * <id> = UCI_SetPositionValue, type string
-    ///       the GUI can send this to the engine to tell the engine to use a certain value in centipawns from white's
-    ///       point of view if evaluating this specific position.
-    ///       The string can have the formats:
-    ///       <value> + <fen> | clear + <fen> | clearall
-    ///
-    /// * `type <t>`
-    /// 	The option has type t.
-    /// 	There are 5 different types of options the engine can send
-    /// 	* check
-    /// 		a checkbox that can either be true or false
-    /// 	* spin
-    /// 		a spin wheel that can be an integer in a certain range
-    /// 	* combo
-    /// 		a combo box that can have different predefined strings as a value
-    /// 	* button
-    /// 		a button that can be pressed to send a command to the engine
-    /// 	* string
-    /// 		a text field that has a string as a value,
-    /// 		an empty string has the value "<empty>"
-    /// * default <x>
-    /// 	the default value of this parameter is x
-    /// * min <x>
-    /// 	the minimum value of this parameter is x
-    /// * max <x>
-    /// 	the maximum value of this parameter is x
-    /// * var <x>
-    /// 	a predefined value of this parameter is x
-    ///
-    /// Examples:
-    ///    Here are 5 strings for each of the 5 possible types of options
-    ///    * `"option name Nullmove type check default true\n"`
-    ///    * `"option name Selectivity type spin default 2 min 0 max 4\n"`
-    ///    * `"option name Style type combo default Normal var Solid var Normal var Risky\n"`
-    ///    * `"option name NalimovPath type string default c:\\n"`
-    ///    * `"option name Clear Hash type button\n"`
+    /// ```text
+    /// option name <id> type <t> [default <x>] [min <x>] [max <x>] [var <x>]
+    /// ```
     Option(UciOption<T>),
 }
 
@@ -1311,10 +1466,10 @@ impl<T: fmt::Display> fmt::Display for UciResponse<T> {
     /// Responses are formatted to display appropriately according to the UCI specifications.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Id(name, author) => write!(f, "id name {name}\nid author {author}"),
+            Self::Id { name, author } => write!(f, "id name {name}\nid author {author}"),
             Self::UciOk => write!(f, "uciok"),
             Self::ReadyOk => write!(f, "readyok"),
-            Self::BestMove(bestmove, ponder) => {
+            Self::BestMove { bestmove, ponder } => {
                 if let Some(ponder) = ponder {
                     write!(f, "bestmove {bestmove} ponder {ponder}")
                 } else {
@@ -1329,116 +1484,326 @@ impl<T: fmt::Display> fmt::Display for UciResponse<T> {
     }
 }
 
-// trait UciInfoMessage: fmt::Debug + fmt::Display {}
+/*
+/// Bounds for the `score` argument of the `info` response.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum UciBound {
+    /// The score is just a lowerbound.
+    Lowerbound,
 
+    /// The score is just an upperbound.
+    Upperbound,
+}
+
+impl fmt::Display for UciBound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Lowerbound => write!(f, "lowerbound"),
+            Self::Upperbound => write!(f, "upperbound"),
+        }
+    }
+}
+
+/// Represents the type of score for the `score` argument of the `info` response.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum UciScoreType {
+    /// The score from the engine's point of view in centipawns.
+    Centipawns(i32),
+
+    /// Mate in `<y>` moves (not plies).
+    Mate(u32),
+}
+
+impl fmt::Display for UciScoreType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Centipawns(x) => write!(f, "cp {x}"),
+            Self::Mate(y) => write!(f, "mate {y}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct UciScore {
+    /// Either `cp` or `mate`.
+    score_type: UciScoreType,
+
+    /// Either `lowerbound` or `upperbound`.
+    bound: Option<UciBound>,
+}
+
+impl fmt::Display for UciScore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(bound) = self.bound {
+            write!(f, "{} {bound}", self.score_type)
+        } else {
+            write!(f, "{}", self.score_type)
+        }
+    }
+}
+ */
+
+/// Represents all information that can be sent with the `info` command.
+///
+/// See [`UciEngine::info`] for more details.
 #[derive(Debug, Clone, Default)]
 pub struct UciInfo {
-    // pub depth: Option<std::rc::Rc<dyn UciInfoMessage>>,
+    /// ```text
+    /// depth <x>
+    /// ```
+    /// Search depth (in plies).
     pub depth: Option<String>,
+
+    /// ```text
+    /// seldepth <x>
+    /// ```
+    /// Selective search depth (in plies),
+    ///
+    /// If the engine sends `seldepth` there must also be a `depth` present in the
+    /// same string.
     pub seldepth: Option<String>,
+
+    /// ```text
+    /// time <x>
+    /// ```
+    /// The time searched (in ms).
+    /// This should be sent together with the `pv`.
     pub time: Option<String>,
+
+    /// ```text
+    /// nodes <x>
+    /// ```
+    /// `<x>` nodes searched.
+    /// The engine should send this info regularly.
     pub nodes: Option<String>,
+
+    /// ```text
+    /// pv <move_1> [<move_2> ... <move_i>]
+    /// ```
+    /// The best line found.
     pub pv: Vec<String>,
+
+    /// ```text
+    /// multipv <num>
+    /// ```
+    /// This for the multi pv mode.
+    ///
+    /// For the best move/pv add `multipv 1` in the string when you send the pv.
+    ///
+    /// In *k*-best mode always send all k variants in k strings together.
     pub multipv: Option<String>,
-    // TODO: https://backscattering.de/chess/uci/#engine-info-score
+
+    /// ```text
+    /// score [cp <x> | mate <y> | lowerbound | upperbound]
+    /// ```
+    ///
+    ///   - `cp <x>`
+    /// The score from the engine's point of view in centipawns.
+    ///
+    ///   - `mate <y>`
+    /// Mate in `y` moves, not plies.
+    ///
+    /// If the engine is getting mated, use negative values for `y`.
+    ///
+    ///   - `lowerbound`
+    /// The score is just a lower bound.
+    ///
+    ///   - `upperbound`
+    /// The score is just an upper bound.
     pub score: Option<String>,
+
+    /// ```text
+    /// currmove <move>
+    /// ```
+    /// Currently searching this move
     pub currmove: Option<String>,
+
+    /// ```text
+    /// Currmovenumber <x>
+    /// ```
+    /// Currently searching move number `x`, for the first move `x` should be `1` not
+    /// `0`.
     pub currmovenumber: Option<String>,
+
+    /// ```text
+    /// hashfull <x>
+    /// ```
+    /// The hash is `x` permill full.
+    ///
+    /// The engine should send this info regularly.
     pub hashfull: Option<String>,
+
+    /// ```text
+    /// nps <x>
+    /// ```
+    /// `x` nodes per second searched.
+    ///
+    /// The engine should send this info regularly.
     pub nps: Option<String>,
+
+    /// ```text
+    /// tbhits <x>
+    /// ```
+    /// `x` positions where found in the endgame table bases.
     pub tbhits: Option<String>,
+
+    /// ```text
+    /// sbhits <x>
+    /// ```
+    /// `x` positions where found in the shredder endgame databases.
     pub sbhits: Option<String>,
+
+    /// ```text
+    /// cpuload x
+    /// ```
+    /// The cpu usage of the engine is `x` permill.
     pub cpuload: Option<String>,
+
+    /// ```text
+    /// string <str>
+    /// ```
+    /// Any string `str` which will be displayed be the engine.
+    ///
+    /// If there is a string command the rest of the line will be interpreted as
+    /// `str`.
     pub string: Option<String>,
+
+    /// ```text
+    /// refutation <move_1> <move_2> ... <move_i>
+    /// ```
+    /// Move `<move_1>` is refuted by the line `<move_2> ... <move_1>`.
+    /// `i` can be any number `>= 1`.
+    ///
+    /// Example: after move `d1h5` is searched, the engine can send
+    /// `info refutation d1h5 g6h5` if `g6h5` is the best answer after
+    /// `d1h5` or if `g6h5` refutes the move `d1h5`.
+    ///
+    /// If there is no refutation for `d1h5` found, the engine should just send
+    /// `info refutation d1h5`.
+    ///
+    /// The engine should only send this if the option `UCI_ShowRefutations` is set
+    /// to `true`.
     pub refutation: Vec<String>,
+
+    /// ```text
+    /// currline <cpnunr> <move_1> [<move_2> ... <move_i>]
+    /// ```
+    /// This is the current line the engine is calculating. `cpunr` is the number of
+    /// the cpu if the engine is running on more than one cpu. `cpunr = 1,2,3...`.
+    ///
+    /// if the engine is just using one cpu, `cpunr` can be omitted.
+    ///
+    /// If `cpunr` is greater than `1`, always send all *k* lines in *k* strings
+    /// together.
+    ///
+    /// The engine should only send this if the option `UCI_ShowCurrLine` is set to
+    /// `true`.
     pub currline: Vec<String>,
 }
 
 impl UciInfo {
+    /// Creates a new, empty, [`UciInfo`] struct.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Consumes `self` and adds the provided `depth` value.
     pub fn depth(mut self, depth: impl fmt::Display) -> Self {
         self.depth = Some(depth.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `seldepth` value.
     pub fn seldepth(mut self, seldepth: impl fmt::Display) -> Self {
         self.seldepth = Some(seldepth.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `time` value.
     pub fn time(mut self, time: impl fmt::Display) -> Self {
         self.time = Some(time.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `nodes` value.
     pub fn nodes(mut self, nodes: impl fmt::Display) -> Self {
         self.nodes = Some(nodes.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `multipv` value.
     pub fn multipv(mut self, multipv: impl fmt::Display) -> Self {
         self.multipv = Some(multipv.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `score` value.
     pub fn score(mut self, score: impl fmt::Display) -> Self {
         self.score = Some(score.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `currmove` value.
     pub fn currmove(mut self, currmove: impl fmt::Display) -> Self {
         self.currmove = Some(currmove.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `currmovenumber` value.
     pub fn currmovenumber(mut self, currmovenumber: impl fmt::Display) -> Self {
         self.currmovenumber = Some(currmovenumber.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `hashfull` value.
     pub fn hashfull(mut self, hashfull: impl fmt::Display) -> Self {
         self.hashfull = Some(hashfull.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `nps` value.
     pub fn nps(mut self, nps: impl fmt::Display) -> Self {
         self.nps = Some(nps.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `tbhits` value.
     pub fn tbhits(mut self, tbhits: impl fmt::Display) -> Self {
         self.tbhits = Some(tbhits.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `sbhits` value.
     pub fn sbhits(mut self, sbhits: impl fmt::Display) -> Self {
         self.sbhits = Some(sbhits.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `cpuload` value.
     pub fn cpuload(mut self, cpuload: impl fmt::Display) -> Self {
         self.cpuload = Some(cpuload.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `string` value.
     pub fn string(mut self, string: impl fmt::Display) -> Self {
         self.string = Some(string.to_string());
         self
     }
 
+    /// Consumes `self` and adds the provided `pv` value.
     pub fn pv<T: fmt::Display>(mut self, pv: impl IntoIterator<Item = T>) -> Self {
         self.pv = pv.into_iter().map(|x| x.to_string()).collect();
         self
     }
 
+    /// Consumes `self` and adds the provided `refutation` value.
     pub fn refutation<T: fmt::Display>(mut self, refutation: impl IntoIterator<Item = T>) -> Self {
         self.refutation = refutation.into_iter().map(|x| x.to_string()).collect();
         self
     }
 
+    /// Consumes `self` and adds the provided `currline` value.
     pub fn currline<T: fmt::Display>(mut self, currline: impl IntoIterator<Item = T>) -> Self {
         self.currline = currline.into_iter().map(|x| x.to_string()).collect();
         self
@@ -1446,7 +1811,9 @@ impl UciInfo {
 }
 
 impl fmt::Display for UciInfo {
-    /// An info command will only display data that it has; any `None` fields are not displayed.
+    /// An info command will only display data that it has.
+    ///
+    /// Any `None` fields are not displayed.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(x) = &self.depth {
             write!(f, "depth {x} ")?;
@@ -1504,6 +1871,8 @@ impl fmt::Display for UciInfo {
 }
 
 /// Represents a UCI-compatible option that can be modified for your Engine.
+///
+/// See [`UciEngine::option`] for more details.
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub struct UciOption<T: fmt::Display = String> {
     /// Name of the option.
@@ -1519,14 +1888,17 @@ impl<T: fmt::Display> UciOption<T> {
         Self { name, opt_type }
     }
 
+    /// Create a new [`UciOption`] of type [`UciOptionType::Check`].
     pub fn check(name: T, default: bool) -> Self {
         Self::new(name, UciOptionType::Check { default })
     }
 
+    /// Create a new [`UciOption`] of type [`UciOptionType::Spin`].
     pub fn spin(name: T, default: i32, min: i32, max: i32) -> Self {
         Self::new(name, UciOptionType::Spin { default, min, max })
     }
 
+    /// Create a new [`UciOption`] of type [`UciOptionType::Combo`].
     pub fn combo(name: T, default: T, vars: impl IntoIterator<Item = T>) -> Self {
         Self::new(
             name,
@@ -1537,10 +1909,12 @@ impl<T: fmt::Display> UciOption<T> {
         )
     }
 
+    /// Create a new [`UciOption`] of type [`UciOptionType::Button`].
     pub fn button(name: T) -> Self {
         Self::new(name, UciOptionType::Button)
     }
 
+    /// Create a new [`UciOption`] of type [`UciOptionType::String`].
     pub fn string(name: T, default: T) -> Self {
         Self::new(name, UciOptionType::String { default })
     }
@@ -1553,21 +1927,39 @@ impl<T: fmt::Display> fmt::Display for UciOption<T> {
     }
 }
 
+/// Represents the type of UCI-compatible options your engine can expose to the GUI.
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub enum UciOptionType<T: fmt::Display = String> {
-    /// Checkbox that can either be true or false
+    ///```text
+    /// check
+    /// ```
+    /// A checkbox that can either be `true` or `false`.
     Check { default: bool },
 
-    /// Spin wheel that can be an integer within a range.
+    ///```text
+    /// spin
+    /// ```
+    /// A spin wheel that can be an integer in a certain range.
     Spin { default: i32, min: i32, max: i32 },
 
-    /// Combo box that can have pre-defined string values
+    ///```text
+    /// combo
+    /// ```
+    /// A combo box that can have different predefined strings as a value.
     Combo { default: T, vars: Vec<T> },
 
-    /// A button that can be pressed to send commands to the engine
+    ///```text
+    /// button
+    /// ```
+    /// A button that can be pressed to send a command to the engine.
     Button,
 
-    /// Text field with a string value or empty string `""`.
+    ///```text
+    /// string
+    /// ```
+    /// A text field that has a string as a value
+    ///
+    /// An empty string has the value `<empty>`
     String { default: T },
 }
 
@@ -1693,8 +2085,8 @@ mod test {
                 == UciCommand::Go(UciSearchOptions {
                     b_time: Some(Duration::from_millis(30_000)),
                     w_time: Some(Duration::from_millis(30_000)),
-                    w_inc: Some(10),
-                    b_inc: Some(42),
+                    w_inc: Some(Duration::from_millis(10)),
+                    b_inc: Some(Duration::from_millis(42)),
                     ..Default::default()
                 }),
         );

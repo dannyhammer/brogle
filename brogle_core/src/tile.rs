@@ -485,7 +485,7 @@ impl Tile {
         Some(Self::new(file, rank))
     }
 
-    /// Increments (if `color` is [`White`]) or decrements (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
+    /// Increments (if `color` is [`Color::White`]) or decrements (if `color` is [`Color::Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
@@ -499,7 +499,7 @@ impl Tile {
         self.offset(0, n as i8 * color.negation_multiplier())
     }
 
-    /// Decrements (if `color` is [`White`]) or increments (if `color` is [`Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
+    /// Decrements (if `color` is [`Color::White`]) or increments (if `color` is [`Color::Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
@@ -513,7 +513,7 @@ impl Tile {
         self.offset(0, n as i8 * color.opponent().negation_multiplier())
     }
 
-    /// Increments (if `color` is [`White`]) or decrements (if `color` is [`Black`]) the [`File`] of this [`Tile`] by `n`, if possible.
+    /// Increments (if `color` is [`Color::White`]) or decrements (if `color` is [`Color::Black`]) the [`File`] of this [`Tile`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
@@ -527,7 +527,7 @@ impl Tile {
         self.offset(n as i8 * color.negation_multiplier(), 0)
     }
 
-    /// Decrements (if `color` is [`White`]) or increments (if `color` is [`Black`]) the [`File`] of this [`Tile`] by `n`, if possible.
+    /// Decrements (if `color` is [`Color::White`]) or increments (if `color` is [`Color::Black`]) the [`File`] of this [`Tile`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///

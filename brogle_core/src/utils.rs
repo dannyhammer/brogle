@@ -6,7 +6,7 @@ pub const FEN_STARTPOS: &'static str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQK
 pub const FEN_KIWIPETE: &'static str =
     "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
 
-/// https://www.chessprogramming.org/Chess_Position#cite_note-4
+/// <https://www.chessprogramming.org/Chess_Position#cite_note-4>
 pub const MAX_NUM_MOVES: usize = 218;
 
 pub const NUM_PIECE_TYPES: usize = 6;
