@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    fmt::{self},
     io::{self, Write},
     str::FromStr,
     time::Duration,
@@ -12,14 +12,21 @@ use log::{info, warn};
 pub struct UciSearchOptions {
     /// Restrict search to this moves only.
     ///
-    /// Example: After position startpos and go infinite searchmoves e2e4 d2d4 the engine should only search the two moves e2e4 and d2d4 in the initial position.
+    /// Example: After position startpos and go infinite searchmoves e2e4 d2d4 the
+    /// engine should only search the two moves e2e4 and d2d4 in the initial position.
     pub search_moves: Vec<String>,
 
     /// start searching in pondering mode.
     ///
     /// Do not exit the search in ponder mode, even if it's mate!
     ///
-    /// This means that the last move sent in in the position string is the ponder move. The engine can do what it wants to do, but after a ponderhit command it should execute the suggested move to ponder on. This means that the ponder move sent by the GUI can be interpreted as a recommendation about which move to ponder. However, if the engine decides to ponder on a different move, it should not display any mainlines as they are likely to be misinterpreted by the GUI because the GUI expects the engine to ponder on the suggested move.
+    /// This means that the last move sent in in the position string is the ponder
+    /// move. The engine can do what it wants to do, but after a ponderhit command
+    /// it should execute the suggested move to ponder on. This means that the ponder
+    /// move sent by the GUI can be interpreted as a recommendation about which move
+    /// to ponder. However, if the engine decides to ponder on a different move, it
+    /// should not display any mainlines as they are likely to be misinterpreted by
+    /// the GUI because the GUI expects the engine to ponder on the suggested move.
     pub ponder: bool,
 
     /// White has x msec left on the clock
@@ -53,7 +60,8 @@ pub struct UciSearchOptions {
     /// Search exactly x milliseconds
     pub move_time: Option<Duration>,
 
-    /// Search until the stop command. Do not exit the search without being told so in this mode!
+    /// Search until the stop command. Do not exit the search without being told so
+    /// in this mode!
     pub infinite: bool,
 }
 
@@ -77,11 +85,49 @@ impl Default for UciSearchOptions {
     }
 }
 
-/// Represents a type that has implemented the Universal Chess Interface (UCI) protocol.
+/// Represents an engine that has implemented the Universal Chess Interface (UCI)
+/// protocol.
+///
+/// Implementing this trait requires you to implement the following methods:
+///  - [`UciEngine::position`] to set the state of the game in your engine.
+///  - [`UciEngine::go`] to spawn a thread for searching the previously-set position.
+///  - [`UciEngine::stop`] to kill the search thread and yield a `bestmove` result.
+///
+/// The remaining methods all have default implementations, all of which are detailed
+/// in their documentation.
+/// You may want to implement your own variants, depending on your engine's needs.
+///
+/// The following methods are for GUI-to-Engine communication, meaning they are
+/// called when the UI (or user) sends a command (via `stdin`) to your engine:
+///  - [UciEngine::uci]
+///  - [UciEngine::debug]
+///  - [UciEngine::isready]
+///  - [UciEngine::setoption]
+///  - [UciEngine::register]
+///  - [UciEngine::ucinewgame]
+///  - [UciEngine::position]
+///  - [UciEngine::go]
+///  - [UciEngine::stop]
+///  - [UciEngine::ponderhit]
+///  - [UciEngine::quit]
+///
+/// The following methods are for Engine-to-GUI communication, meaning they are
+/// called when your engine needs to send a command (via `stdout`) to the UI:
+///  - [UciEngine::id]
+///  - [UciEngine::uciok]
+///  - [UciEngine::readyok]
+///  - [UciEngine::bestmove]
+///  - [UciEngine::copyprotection]
+///  - [UciEngine::registration]
+///  - [UciEngine::info]
+///  - [UciEngine::option]
 pub trait UciEngine {
     /// Executes the provided [`UciCommand`].
     ///
-    /// This is just a convenience method that `match`es on `cmd` and calls the appropriate method.
+    /// This is just a convenience method that `match`es on `cmd` and calls the
+    /// appropriate method.
+    ///
+    /// You do not need to re-implement this.
     fn execute_uci_command(&mut self, cmd: UciCommand) -> Result<()> {
         use UciCommand::*;
         match cmd {
@@ -89,7 +135,7 @@ pub trait UciEngine {
             Debug(status) => self.debug(status),
             IsReady => self.isready(),
             SetOption { name, value } => self.setoption(name, value),
-            Register(registration) => self.register(registration),
+            Register { name, code } => self.register(name, code),
             UciNewGame => self.ucinewgame(),
             Position { fen, moves } => self.position(fen, moves),
             Go(search_opt) => self.go(search_opt),
@@ -102,29 +148,49 @@ pub trait UciEngine {
     /// Parse a string of input, returning a [`UciCommand`], if possible.
     ///
     /// If not possible, bails with a standard "unknown command X" message.
+    ///
+    /// This is a convenience method to wrap [`UciCommand::parse`].
     fn parse_uci_input(input: &str) -> Result<UciCommand> {
         UciCommand::parse(input)
     }
 
     /// Send a response from this engine to the GUI via `stdout`.
+    ///
+    /// This formats the provided `cmd` as a string terminated with the EOL char `\n`.
+    ///
+    /// The only reason you'd every really want to overwrite this method is if you
+    /// want to write to something other than `stdout`.
     fn send_uci_response<T: fmt::Display>(&self, cmd: UciResponse<T>) -> Result<()> {
         write!(io::stdout(), "{cmd}\n").context("Failed to write '{cmd}' and flush buffer")
     }
 
-    /* GUI to Engine communication */
+    /******************************************************************/
+    /*                  GUI to Engine communication                   */
+    /******************************************************************/
 
-    /// Called when the engine receives the `uci` command.
+    /// Called when the engine receives:
+    /// ```text
+    /// uci
+    /// ```
     ///
-    /// Tell engine to use the uci (universal chess interface),
-    /// this will be sent once as a first command after program boot
-    /// to tell the engine to switch to uci mode.
+    /// # Protocol Description
     ///
-    /// After receiving the uci command the engine must identify itself with the `id` command
-    /// and send the `option` commands to tell the GUI which engine settings the engine supports if any.
+    /// Tell engine to use the uci (universal chess interface).
+    /// This will be sent once as a first command after program boot to tell the
+    /// engine to switch to uci mode.
+    ///
+    /// After receiving the uci command the engine must identify itself with the `id`
+    /// command and send the `option` commands to tell the GUI which engine settings
+    /// the engine supports if any.
+    ///
     /// After that the engine should send `uciok` to acknowledge the uci mode.
-    /// If no uciok is sent within a certain time period, the engine task will be killed by the GUI.
+    /// If no uciok is sent within a certain time period, the engine task will be
+    /// killed by the GUI.
     ///
-    /// The default implementation of this method calls, in order: [`UciEngine::id`], [`UciEngine::option`], and finally [`UciEngine::uciok`].
+    /// # Default
+    ///
+    /// The default implementation of this method calls, in order: [`UciEngine::id`],
+    /// [`UciEngine::option`], and finally [`UciEngine::uciok`].
     fn uci(&mut self) -> Result<()> {
         info!("using default implementation of UciEngine::uci");
         // The engine must now identify itself
@@ -139,14 +205,24 @@ pub trait UciEngine {
         Ok(())
     }
 
-    /// Called upon `debug [on | off]` where `on = true`.
+    /// Called when the engine receives:
+    /// ```text
+    /// debug [on | off]
+    /// ```
+    /// where `on = true``
+    ///
+    /// # Protocol Description
     ///
     /// Switch the debug mode of the engine on and off.
     ///
-    /// In debug mode the engine should send additional infos to the GUI, e.g. with the `info string` command,
-    /// to help debugging, e.g. the commands that the engine has received etc.
-    /// This mode should be switched off by default and this command can be sent
-    /// any time, also when the engine is thinking.
+    /// In debug mode the engine should send additional infos to the GUI.
+    ///   - e.g. with the `info string` command, to help debugging.
+    ///   - e.g. the commands that the engine has received etc.
+    ///
+    /// This mode should be switched off by default and this command can be sent any
+    /// time, also when the engine is thinking.
+    ///
+    /// # Default
     ///
     /// The default implementation of this method does nothing and returns `Ok(())`.
     fn debug(&mut self, status: bool) -> Result<()> {
@@ -154,37 +230,55 @@ pub trait UciEngine {
         Ok(())
     }
 
-    /// Called when the engine receives `isready`.
+    /// Called when the engine receives:
+    /// ```text
+    /// isready
+    /// ```
     ///
-    /// This is used to synchronize the engine with the GUI. When the GUI has sent a command or
-    /// multiple commands that can take some time to complete,
-    /// this command can be used to wait for the engine to be ready again or
-    /// to ping the engine to find out if it is still alive.
+    /// # Protocol Description
     ///
-    /// E.g. this should be sent after setting the path to the table bases as this can take some time.
-    /// This command is also required once before the engine is asked to do any search
-    /// to wait for the engine to finish initializing.
-    /// This command must always be answered with `readyok` and can be sent also when the engine is calculating
-    /// in which case the engine should also immediately answer with `readyok` without stopping the search.
+    /// This is used to synchronize the engine with the GUI.
+    /// When the GUI has sent a command or multiple commands that can take some time
+    /// to complete, this command can be used to wait for the engine to be ready
+    /// again or to ping the engine to find out if it is still alive. E.g. this
+    /// should be sent after setting the path to the table bases as this can take
+    /// some time.
     ///
-    /// The default implementation of this method simply immediately sends a response of `readyok`.
+    /// This command is also required once before the engine is asked to do any
+    /// search to wait for the engine to finish initializing.
+    ///
+    /// This command must always be answered with `readyok` and can be sent also
+    /// when the engine is calculating in which case the engine should also
+    /// immediately answer with `readyok` without stopping the search.
+    ///
+    /// # Default
+    ///
+    /// The default implementation of this method simply immediately sends a response
+    /// of `readyok`.
     fn isready(&self) -> Result<()> {
         info!("using default implementation of UciEngine::isready");
         self.send_uci_response(UciResponse::<&str>::ReadyOk)
     }
 
-    /// Called when the engine receives `setoption name <name> [ value <value> ]`.
-    /// `setoption name <id> [value <x>]`
+    /// Called when the engine receives:
+    /// ```text
+    /// setoption name <id> [value <x>]
+    /// ```
     ///
-    /// This is sent to the engine when the user wants to change the internal parameters
-    /// of the engine. For the `button` type no value is needed.
+    /// # Protocol Description
     ///
-    /// One string will be sent for each parameter and this will only be sent when the engine is waiting.
-    /// The name and value of the option in <id> should not be case sensitive and can include spaces.
-    /// The substrings `value` and `name` should be avoided in `<id>` and `<x>` to allow unambiguous parsing,
-    /// for example do not use `<name> = draw value`.
+    /// This is sent to the engine when the user wants to change the internal
+    /// parameters of the engine. For the `button` type no value is needed.
     ///
-    /// # Examples
+    /// One string will be sent for each parameter and this will only be sent when
+    /// the engine is waiting. The name and value of the option in <id> should not
+    /// be case sensitive and can include spaces.
+    ///
+    /// The substrings `value` and `name` should be avoided in `<id>` and `<x>` to
+    /// allow unambiguous parsing, for example do not use `<name> = draw value`.
+    ///
+    /// ## Examples
+    ///
     /// Here are some strings for the example below:
     /// * `setoption name Nullmove value true\n`
     /// * `setoption name Selectivity value 3\n`
@@ -192,51 +286,71 @@ pub trait UciEngine {
     /// * `setoption name Clear Hash\n`
     /// * `setoption name NalimovPath value c:\chess\tb\4;c:\chess\tb\5\n`
     ///
+    /// # Default
+    ///
     /// The default implementation of this method does nothing and returns `Ok(())`.
     fn setoption(&mut self, name: String, value: Option<String>) -> Result<()> {
         info!("using default implementation of UciEngine::setoption({name:?}, {value:?})");
         Ok(())
     }
 
-    /// Called when the engine receives `registration [name <name> code <code> | later]`.
+    /// Called when the engine receives:
+    /// ```text
+    /// registration [name <name> code <code> | later]
+    /// ```
     ///
-    /// This is the command to try to register an engine or to tell the engine that registration
-    /// will be done later. This command should always be sent if the engine has sent `registration error`
-    /// at program startup.
+    /// You probably don't need to implement this. Registration is rare and arguably
+    /// unnecessary.
+    ///
+    /// If called with `later`, then the `name` and `code` parameters will be `None`.
+    /// Otherwise, they are likely to both be `Some`, though it is up to your engine
+    /// to determine if both are necessary.
+    ///
+    /// # Protocol Description
+    ///
+    /// This is the command to try to register an engine or to tell the engine that
+    /// registration will be done later. This command should always be sent if the
+    /// engine has sent `registration error` at program startup.
     ///
     /// The following tokens are allowed:
-    /// * `later`
-    ///    * The user doesn't want to register the engine now.
-    /// * `name <x>`
-    ///    * The engine should be registered with the name `<x>`
-    /// * `code <y>`
-    ///    * The engine should be registered with the code `<y>`
+    /// * `later` - The user doesn't want to register the engine now.
+    /// * `name <x>` - The engine should be registered with the name `<x>`
+    /// * `code <y>` - The engine should be registered with the code `<y>`
     ///
-    /// If called with `later`, then the `registration` parameter will be `None`.
-    /// Otherwise, it will be `Some(name, code)`.
-    ///
-    /// # Example:
+    /// ## Example:
     ///    `register later`
     ///    `register name Stefan MK code 4359874324`
     ///
+    /// # Default
+    ///
     /// The default implementation of this method does nothing and returns `Ok(())`.
-    fn register(&mut self, registration: Option<(String, String)>) -> Result<()> {
-        info!("using default implementation of UciEngine::register({registration:?})");
+    fn register(&mut self, name: Option<String>, code: Option<String>) -> Result<()> {
+        info!("using default implementation of UciEngine::register({name:?}, {code:?})");
         Ok(())
     }
 
-    /// Called when the engine receives `ucinewgame`.
+    /// Called when the engine receives:
+    /// ```text
+    /// ucinewgame
+    /// ```
     ///
-    /// This is sent to the engine when the next search (started with `position` and `go`) will be from
-    /// a different game. This can be a new game the engine should play or a new game it should analyze but
-    /// also the next position from a test suite with positions only.
+    /// # Protocol Description
     ///
-    /// If the GUI hasn't sent a `ucinewgame` before the first `position` command, the engine shouldn't
-    /// expect any further ucinewgame commands as the GUI is probably not supporting the ucinewgame command.
-    /// So the engine should not rely on this command even though all new GUIs should support it.
+    /// This is sent to the engine when the next search (started with `position`
+    /// and `go`) will be from a different game. This can be a new game the engine
+    /// should play or a new game it should analyze but also the next position from
+    /// a test suite with positions only.
     ///
-    /// As the engine's reaction to `ucinewgame` can take some time the GUI should always send `isready`
-    /// after `ucinewgame` to wait for the engine to finish its operation.
+    /// If the GUI hasn't sent a `ucinewgame` before the first `position` command,
+    /// the engine shouldn't expect any further ucinewgame commands as the GUI is
+    /// probably not supporting the ucinewgame command. So the engine should not rely
+    /// on this command even though all new GUIs should support it.
+    ///
+    /// As the engine's reaction to `ucinewgame` can take some time the GUI should
+    /// always send `isready` after `ucinewgame` to wait for the engine to finish
+    /// its operation.
+    ///
+    /// # Default
     ///
     /// The default implementation of this method does nothing and returns `Ok(())`.
     fn ucinewgame(&mut self) -> Result<()> {
@@ -244,95 +358,160 @@ pub trait UciEngine {
         Ok(())
     }
 
-    /// Called when the engine receives `position [ startpos | fen <fen> ] move <move_1> ... <move_i>`
+    /// Called when the engine receives:
+    /// ```text
+    /// position [fen <fenstring> | startpos] [moves <move_1> [<move_2> ...]]
+    /// ```
+    ///
+    /// # Protocol Description
     ///
     /// Set up the position described in FEN string on the internal board and
     /// play the moves on the internal chess board.
     ///
-    /// If the game was played  from the start position the string `startpos` will be sent
-    /// Note: no `new` command is needed. However, if this position is from a different game than
-    /// the last position sent to the engine, the GUI should have sent a `ucinewgame` in between.
+    /// If the game was played from the start position, the string `startpos` will
+    /// be sent.
+    ///
+    /// Note: no `new` command is needed. However, if this position is from a
+    /// different game than the last position sent to the engine, the GUI should have
+    /// sent a `ucinewgame` in between.
     fn position(&mut self, fen: Option<String>, moves: Vec<String>) -> Result<()>;
 
-    /// Called when the engine receives `go <search options>`.
+    /// Called when the engine receives:
+    /// ```text
+    /// go [searchmoves <move_1> [<move_2> ...]] [ponder] [wtime <x>] [btime <x>] [winc <x>] [binc <x>] [movestogo <x>] [depth <x>] [nodes <x>] [mate <x>] [movetime <x>] [infinite]
+    /// ```
+    ///
+    /// If no parameters are received, this should be treated as `go infinite`.
+    ///
+    /// # Protocol Description
     ///
     /// Start calculating on the current position set up with the `position` command.
     ///
-    /// There are a number of commands that can follow this command, all will be sent in the same string.
+    /// There are a number of commands that can follow this command, all will be sent
+    /// in the same string. If one command is not sent its value should be
+    /// interpreted as it would not influence the search.
     ///
-    /// If one command is not sent its value should be interpreted as it would not influence the search.
-    /// * `searchmoves <move_1> .... <move_i>`
+    /// ## Arguments
+    ///
+    /// ```text
+    /// searchmoves <move_1> [<move_2> ... <move_i>]
+    /// ```
     ///
     /// Restrict search to this moves only
-    /// Example: After `position startpos` and `go infinite searchmoves e2e4 d2d4`
-    /// 	the engine should only search the two moves `e2e4` and `d2d4` in the initial position.
     ///
-    /// * `ponder`
+    /// Example: After `position startpos` and `go infinite searchmoves e2e4 d2d4`
+    /// the engine should only search the two moves `e2e4` and `d2d4` in the initial
+    /// position.
+    ///
+    /// ```text
+    /// ponder
+    /// ```
     ///     
     /// Start searching in pondering mode.
     ///
     /// Do not exit the search in ponder mode, even if it's mate!
-    /// 	This means that the last move sent in in the position string is the ponder move.
-    /// 	The engine can do what it wants to do, but after a `ponderhit` command
-    /// 	it should execute the suggested move to ponder on. This means that the ponder move sent by
-    /// 	the GUI can be interpreted as a recommendation about which move to ponder. However, if the
-    /// 	engine decides to ponder on a different move, it should not display any mainlines as they are
-    /// 	likely to be misinterpreted by the GUI because the GUI expects the engine to ponder
-    ///    on the suggested move.
     ///
-    /// * `wtime <x>`
+    /// This means that the last move sent in in the position string is the ponder
+    /// move. The engine can do what it wants to do, but after a `ponderhit` command
+    /// it should execute the suggested move to ponder on. This means that the ponder
+    /// move sent by the GUI can be interpreted as a recommendation about which move
+    /// to ponder. However, if the engine decides to ponder on a different move, it
+    /// should not display any mainlines as they are likely to be misinterpreted by
+    /// the GUI because the GUI expects the engine to ponder on the suggested move.
     ///
-    /// White has `x` milliseconds left on the clock
+    /// ```text
+    /// wtime <x>
+    /// ```
     ///
-    /// * `btime <x>`
+    /// White has `x` milliseconds left on the clock.
     ///
-    /// Black has `x` milliseconds left on the clock
+    /// ```text
+    /// btime <x>
+    /// ```
     ///
-    /// * `winc <x>`
+    /// Black has `x` milliseconds left on the clock.
     ///
-    /// White increment per move in milliseconds if `x > 0`
+    /// ```text
+    /// winc <x>
+    /// ```
     ///
-    /// * `binc <x>`
+    /// White increment per move in milliseconds if `x > 0`.
     ///
-    /// Black increment per move in milliseconds if `x > 0`
+    /// ```text
+    /// binc <x>
+    /// ```
     ///
-    /// * `movestogo <x>`
+    /// Black increment per move in milliseconds if `x > 0`.
+    ///
+    /// ```text
+    /// movestogo <x>
+    /// ```
     ///  
-    /// There are `x` moves to the next time control,
-    /// 	this will only be sent if `x > 0`,
-    /// 	if you don't get this and get the `wtime` and `btime` it's sudden death
+    /// There are `x` moves to the next time control.
     ///
-    /// * `depth <x>`
+    /// This will only be sent if `x > 0`.
     ///
-    /// search `x` plies only.
+    /// If you don't get this and get the `wtime` and `btime`, it's sudden death.
     ///
-    /// * `nodes <x>`
+    /// ```text
+    /// depth <x>
+    /// ```
+    ///
+    /// Search `x` plies only.
+    ///
+    /// ```text
+    /// nodes <x>
+    /// ```
     ///   
-    /// Search `x` nodes only,
+    /// Search `x` nodes only.
     ///
-    /// * `mate <x>`
+    /// ```text
+    /// mate <x>
+    /// ```
     ///
-    /// Search for a mate in `x` moves
+    /// Search for a mate in `x` moves.
     ///
-    /// * `movetime <x>`
+    /// ```text
+    /// movetime <x>
+    /// ```
     ///
-    /// Search exactly `x` milliseconds
+    /// Search exactly `x` milliseconds.
     ///
-    /// * `infinite`
+    /// ```text
+    /// infinite
+    /// ```
     ///
-    /// Search until the `stop` command. Do not exit the search without being told so in this mode!
+    /// Search until the `stop` command. Do not exit the search without being told
+    /// so in this mode!
     fn go(&mut self, options: UciSearchOptions) -> Result<()>;
 
-    /// Called when the engine receives `stop`.
+    /// Called when the engine receives:
+    /// ```text
+    /// stop
+    /// ```
     ///
-    /// Stop calculating as soon as possible,
-    /// don't forget the "bestmove" and possibly the "ponder" token when finishing the search
+    /// Your engine should probably call [`UciEngine::bestmove`] before/within this.
+    ///
+    /// # Protocol Description
+    ///
+    /// Stop calculating as soon as possible.
+    ///
+    /// Don't forget the "bestmove" and possibly the "ponder" token when finishing
+    /// the search.
     fn stop(&mut self) -> Result<()>;
 
-    /// Called when the engine receives `ponderhit`.
+    /// Called when the engine receives:
+    /// ```text
+    /// ponderhit
+    /// ```
     ///
-    /// The user has played the expected move. This will be sent if the engine was told to ponder on the same move
-    /// the user has played. The engine should continue searching but switch from pondering to normal search.
+    /// # Protocol Description
+    ///
+    /// The user has played the expected move. This will be sent if the engine was
+    /// told to ponder on the same move the user has played. The engine should
+    /// continue searching but switch from pondering to normal search.
+    ///
+    /// # Default
     ///
     /// The default implementation of this method does nothing and returns `Ok(())`.
     fn ponderhit(&self) -> Result<()> {
@@ -340,11 +519,24 @@ pub trait UciEngine {
         Ok(())
     }
 
-    /// Called when the engine receives `quit`.
+    /// Called when the engine receives:
+    /// ```text
+    /// quit
+    /// ```
     ///
-    /// Quit the program as soon as possible
+    /// This does not necessarily need to immediately exit ([`std::process:exit`]),
+    /// but should make sure it performs any necessary clean-up before exiting.
     ///
-    /// The default implementation of this method does nothing and returns `Ok(())`, as [`UciEngine::input_handler`] exits its loop once `quit` is received.
+    /// It is likely that you want this command to be a special case in your
+    /// engine's event handler.
+    ///
+    /// # Protocol Description
+    ///
+    /// Quit the program as soon as possible.
+    ///
+    /// # Default
+    ///
+    /// The default implementation of this method does nothing and returns `Ok(())`.
     fn quit(&mut self) -> Result<()> {
         info!("using default implementation of UciEngine::quit");
         Ok(())
@@ -354,15 +546,30 @@ pub trait UciEngine {
     /*                  Engine to GUI communication                   */
     /******************************************************************/
 
-    /// Send the `id` message to `stdout.`
+    /// Send the `id` message to `stdout` as follows:
+    /// ```text
+    /// id name <x>
+    /// id author <x>
+    /// ```
     ///
-    /// Will send two messages- one for `name` and one for `author`.
+    /// # Protocol Description
     ///
-    /// # Example
+    /// ## Example
     ///
-    /// `id name Shredder\n`
+    /// ```text
+    /// name <x>
+    /// ```
+    /// This must be sent after receiving the uci command to identify the engine,
+    /// e.g. `id name Shredder X.Y\n`
     ///
-    /// `id author Stefan MK\n`
+    ///
+    /// ```text
+    /// author <x>
+    /// ```
+    /// Ths must be sent after receiving the uci command to identify the engine,
+    /// e.g. `id author Stefan MK\n`
+    ///
+    /// # Default
     ///
     /// The default implementation of this method sends the following:
     /// ```text
@@ -370,9 +577,9 @@ pub trait UciEngine {
     /// id author [<author> | <author_1>, <author_2>, ...]\n
     /// ```
     /// Where:
-    /// - `<name>` is fetched from the `CARGO_PKG_NAME` env var
-    /// - `<version>` is fetched from the `CARGO_PKG_VERSION` env var
-    /// - `<author>` is fetched from the `CARGO_PKG_AUTHORS` env var
+    /// - `<name>` is fetched from the `CARGO_PKG_NAME` env var.
+    /// - `<version>` is fetched from the `CARGO_PKG_VERSION` env var.
+    /// - `<author>` is fetched from the `CARGO_PKG_AUTHORS` env var.
     fn id(&self) -> Result<()> {
         info!("using default implementation of UciEngine::id");
         let name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
@@ -381,64 +588,163 @@ pub trait UciEngine {
         self.send_uci_response(UciResponse::Id(name, author))
     }
 
-    /// Send the `uciok` message to `stdout.`
+    /// Send the `uciok` message to `stdout` as follows:
+    /// ```text
+    /// uciok
+    /// ```
     ///
-    /// Must be sent after the `id` and optional `option`s to tell the GUI that the engine
-    /// has sent all infos and is ready in uci mode.
+    /// # Protocol Description
     ///
-    /// The default implementation of this method simply immediately sends a response of `uciok`.
+    /// Must be sent after the `id` and optional `option`s to tell the GUI that the
+    /// engine has sent all infos and is ready in uci mode.
+    ///
+    /// # Default
+    ///
+    /// The default implementation of this method simply immediately sends a response
+    /// of `uciok`.
     fn uciok(&self) -> Result<()> {
         info!("using default implementation of UciEngine::uciok");
         self.send_uci_response(UciResponse::<&str>::UciOk)
     }
 
-    /// Send the `readyok` message to `stdout.`
+    /// Send the `readyok` message to `stdout` as follows:
+    /// ```text
+    /// readyok
+    /// ```
+    ///
+    /// # Protocol Description
     ///
     /// This must be sent when the engine has received an `isready` command and has
     /// processed all input and is ready to accept new commands now.
-    /// It is usually sent after a command that can take some time to be able to wait for the engine,
-    /// but it can be used anytime, even when the engine is searching,
-    /// and must always be answered with `isready`.
     ///
-    /// The default implementation of this method simply immediately sends a response of `readyok`.
+    /// It is usually sent after a command that can take some time to be able to wait
+    /// for the engine, but it can be used anytime, even when the engine is
+    /// searching, and must always be answered with `isready`.
+    ///
+    /// # Default
+    ///
+    /// The default implementation of this method simply immediately sends a response
+    /// of `readyok`.
     fn readyok(&self) -> Result<()> {
         info!("using default implementation of UciEngine::readyok");
         self.send_uci_response(UciResponse::<&str>::ReadyOk)
     }
 
-    /// Send the `bestmove <move_1> [ ponder <move_2> ]` message to `stdout.`
+    /// Send the `bestmove` message to `stdout` as follows:
+    /// ```text
+    /// bestmove <move_1> [ponder <move_2>]
+    /// ```
     ///
-    /// The engine has stopped searching and found the move <move> best in this position.
-    /// the engine can send the move it likes to ponder on. The engine must not start pondering automatically.
-    /// this command must always be sent if the engine stops searching, also in pondering mode if there is a
-    /// `stop` command, so for every `go` command a `bestmove` command is needed!
-    /// Directly before that the engine should send a final "info" command with the final search information,
-    /// the the GUI has the complete statistics about the last search.
+    /// # Protocol Description
     ///
-    /// The default implementation of this method simply immediately sends a response of `bestmove <move> [ponder]`.
+    /// The engine has stopped searching and found the move <move> best in this
+    /// position.
+    ///
+    /// The engine can send the move it likes to ponder on. The engine must not
+    /// start pondering automatically.
+    ///
+    /// This command must always be sent if the engine stops searching, also in
+    /// pondering mode if there is a `stop` command, so for every `go` command a
+    /// `bestmove` command is needed!
+    ///
+    /// Directly before that the engine should send a final `info`` command with the
+    /// final search information, the the GUI has the complete statistics about the
+    /// last search.
+    ///
+    /// # Default
+    ///
+    /// The default implementation of this method simply immediately sends a response
+    /// of `bestmove <move> [ponder]`.
     fn bestmove<T: fmt::Display>(&self, bestmove: T, ponder: Option<T>) -> Result<()> {
         self.send_uci_response(UciResponse::<T>::BestMove(bestmove, ponder))
     }
 
-    /// Send the `copyprotection [ checking | ok | error ]` message to `stdout.`
+    /// Send the `copyprotection` message to `stdout` as follows:
+    /// ```text
+    /// copyprotection [checking | ok | error]
+    /// ```
     ///
-    /// The default implementation of this method simply immediately sends a response of `checking` followed by `ok`.
+    /// # Protocol Description
+    ///
+    /// This is needed for copy-protected engines. After the uciok command the engine
+    /// can tell the GUI, that it will check the copy protection now. This is done by
+    /// copyprotection checking.
+    ///
+    /// If the check is ok the engine should send copyprotection ok, otherwise
+    /// copyprotection error. If there is an error the engine should not function
+    /// properly but should not quit alone. If the engine reports copyprotection
+    /// error the GUI should not use this engine and display an error message
+    /// instead!
+    ///
+    /// The code in the engine can look like this:
+    /// ```text
+    /// TellGUI("copyprotection checking\n");
+    /// // ... check the copy protection here ...
+    /// if(ok)
+    ///     TellGUI("copyprotection ok\n");
+    /// else
+    ///     TellGUI("copyprotection error\n");
+    /// ```
+    ///
+    /// # Default
+    ///
+    /// The default implementation of this method simply immediately sends a response
+    /// of `checking` followed by `ok`.
     fn copyprotection(&self) -> Result<()> {
         info!("using default implementation of UciEngine::copyprotection");
-        self.send_uci_response(UciResponse::CopyProtection("checking"))?;
-        self.send_uci_response(UciResponse::CopyProtection("ok"))
+        self.send_uci_response(UciResponse::<&str>::CopyProtection(
+            UciCheckingStatus::Checking,
+        ))?;
+        self.send_uci_response(UciResponse::<&str>::CopyProtection(UciCheckingStatus::Ok))
     }
 
-    /// Send the `registration[ checking | ok | error ]` message to `stdout.`
+    /// Send the `registration` message to `stdout` as follows:
+    /// ```text
+    /// registration [checking | ok | error]
+    /// ```
+    ///
+    /// # Protocol Description
+    ///
+    /// Analog to the `copyprotection` command the engine can send
+    /// `registration checking` after the uciok command followed by either
+    /// `registration ok` or `registration error`. Also after every attempt to
+    /// register the engine it should answer with `registration checking` and then
+    /// either `registration ok` or `registration error`.
+    ///
+    /// In contrast to the `copyprotection` command, the GUI can use the engine after
+    /// the engine has reported an error, but should inform the user that the engine
+    /// is not properly registered and might not use all its features.
+    ///
+    /// In addition the GUI should offer to open a dialog to enable registration of
+    /// the engine. To try to register an engine the GUI can send the `register`
+    /// command. The GUI has to always answer with the `register` command if the
+    /// engine sends `registration error` at engine startup (this can also be done
+    /// with `register later`) and tell the user somehow that the engine is not
+    /// registered. This way the engine knows that the GUI can deal with the
+    /// registration procedure and the user will be informed that the engine is not
+    /// properly registered.
+    ///
+    /// # Default
     ///
     /// The default implementation of this method simply immediately sends a response of `checking` followed by `ok`.
     fn registration(&self) -> Result<()> {
         info!("using default implementation of UciEngine::registration");
-        self.send_uci_response(UciResponse::Registration("checking"))?;
-        self.send_uci_response(UciResponse::Registration("ok"))
+        self.send_uci_response(UciResponse::<&str>::Registration(
+            UciCheckingStatus::Checking,
+        ))?;
+        self.send_uci_response(UciResponse::<&str>::Registration(UciCheckingStatus::Ok))
     }
 
-    /// Send the `info [ STUFF ]` message to `stdout.`
+    /// Send the `info` message to `stdout` as follows:
+    /// ```text
+    /// info [TODO: info fields]
+    /// ```
+    ///
+    /// TODO: https://backscattering.de/chess/uci/#engine-info-command
+    ///
+    /// # Protocol Description
+    ///
+    /// # Default
     ///
     /// The default implementation of this method simply immediately sends a response of `info [ STUFF ]`.
     fn info(&self, info: UciInfo) -> Result<()> {
@@ -446,7 +752,16 @@ pub trait UciEngine {
         self.send_uci_response(UciResponse::<String>::Info(info))
     }
 
-    /// Send the `option [ STUFF ]` message to `stdout.`
+    /// Send the `option` message to `stdout` as follows:
+    /// ```text
+    /// option [TODO: option fields]
+    /// ```
+    ///
+    /// TODO: https://backscattering.de/chess/uci/#engine-option-command
+    ///
+    /// # Protocol Description
+    ///
+    /// # Default
     ///
     /// The default implementation of this method does nothing and returns `Ok(())`.
     fn option(&self) -> Result<()> {
@@ -460,35 +775,68 @@ pub trait UciEngine {
 /// These are all the commands the engine gets from the interface.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum UciCommand {
+    /// The `uci` command.
+    ///
+    /// See [`UciEngine::uci`] for more details.
     Uci,
 
-    // on/off
+    /// The `debug` command.
+    ///
+    ///  - `on` <=> `true`
+    ///  - `off` <=> `false`
+    ///
+    /// See [`UciEngine::debug`] for more details.
     Debug(bool),
 
+    /// The `isready` command.
+    ///
+    /// See [`UciEngine::isready`] for more details.
     IsReady,
 
-    SetOption {
-        name: String,
-        value: Option<String>,
+    /// The `setoption` command.
+    ///
+    /// See [`UciEngine::setoption`] for more details.
+    SetOption { name: String, value: Option<String> },
+
+    /// The `register` command.
+    ///
+    /// See [`UciEngine::register`] for more details.
+    Register {
+        name: Option<String>,
+        code: Option<String>,
     },
 
-    // `None` -> `later`
-    // `Some` -> `(name, code)`
-    Register(Option<(String, String)>),
-
+    /// The `ucinewgame` command.
+    ///
+    /// See [`UciEngine::ucinewgame`] for more details.
     UciNewGame,
 
+    /// The `position` command.
+    ///
+    /// See [`UciEngine::position`] for more details.
     Position {
         fen: Option<String>,
         moves: Vec<String>,
     },
 
+    /// The `go` command.
+    ///
+    /// See [`UciEngine::go`] for more details.
     Go(UciSearchOptions),
 
+    /// The `stop` command.
+    ///
+    /// See [`UciEngine::stop`] for more details.
     Stop,
 
+    /// The `ponderhit` command.
+    ///
+    /// See [`UciEngine::ponderhit`] for more details.
     PonderHit,
 
+    /// The `quit` command.
+    ///
+    /// See [`UciEngine::quit`] for more details.
     Quit,
 }
 
@@ -518,6 +866,7 @@ impl UciCommand {
         }
     }
 
+    /// Attempt to parse the arguments of [`UciCommand::debug`].
     pub fn parse_debug(args: &str) -> Result<Self> {
         // This one's simple
         match args {
@@ -527,6 +876,7 @@ impl UciCommand {
         }
     }
 
+    /// Attempt to parse the arguments of [`UciCommand::setoption`].
     pub fn parse_setoption(args: &str) -> Result<Self> {
         let (_, rest) = args
             .split_once("name")
@@ -546,10 +896,11 @@ impl UciCommand {
         })
     }
 
+    /// Attempt to parse the arguments of [`UciCommand::register`].
     pub fn parse_register(args: &str) -> Result<Self> {
         // A `None` value represents "register later"
-        let registration = if args.starts_with("later") {
-            None
+        let (name, code) = if args.starts_with("later") {
+            (None, None)
         } else if args.starts_with("name") {
             // Otherwise, we need to fetch the name and code.
             let (_, args) = args
@@ -565,14 +916,15 @@ impl UciCommand {
                 bail!("usage: register <later | name <name> code <code>>");
             }
 
-            Some((name.trim().to_string(), code.trim().to_string()))
+            (Some(name.trim().to_string()), Some(code.trim().to_string()))
         } else {
             bail!("usage: register <later | name <name> code <code>>");
         };
 
-        Ok(UciCommand::Register(registration))
+        Ok(UciCommand::Register { name, code })
     }
 
+    /// Attempt to parse the arguments of [`UciCommand::position`].
     pub fn parse_position(args: &str) -> Result<Self> {
         let (fen, moves) = if let Some((pos, moves)) = args.split_once("moves") {
             if moves.is_empty() {
@@ -597,6 +949,7 @@ impl UciCommand {
         Ok(UciCommand::Position { fen, moves })
     }
 
+    /// Attempt to parse the arguments of [`UciCommand::go`].
     pub fn parse_go(args: &str) -> Result<Self> {
         // Parse an argument
         fn parse<T: FromStr>(arg: &str, input: Option<&str>) -> Result<T> {
@@ -643,10 +996,33 @@ impl UciCommand {
     }
 }
 
+/// Represents the status of the `copyprotection` and `registration` commands.
+#[derive(Debug, Clone)]
+pub enum UciCheckingStatus {
+    /// The engine is checking the status of `copyprotection` or `registration`.
+    Checking,
+
+    /// All is well.
+    Ok,
+
+    /// An error occurred when checking `copyprotection` or `registration`
+    Error,
+}
+
+impl fmt::Display for UciCheckingStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Checking => write!(f, "checking"),
+            Self::Ok => write!(f, "ok"),
+            Self::Error => write!(f, "error"),
+        }
+    }
+}
+
 /// # Responses sent from the Engine to the GUI via `stdout`.
 ///
 /// These are all the commands the interface gets from the engine.
-#[derive(Clone, PartialEq, Debug, Hash)]
+#[derive(Debug, Clone)]
 pub enum UciResponse<T: fmt::Display = String> {
     /// `id`
     ///
@@ -706,7 +1082,7 @@ pub enum UciResponse<T: fmt::Display = String> {
     /// // else
     /// //     TellGUI("copyprotection error\n");
     /// ```
-    CopyProtection(T),
+    CopyProtection(UciCheckingStatus),
 
     /// `registration`
     ///
@@ -726,7 +1102,7 @@ pub enum UciResponse<T: fmt::Display = String> {
     /// and tell the user somehow that the engine is not registered.
     /// This way the engine knows that the GUI can deal with the registration procedure and the user
     /// will be informed that the engine is not properly registered.
-    Registration(T),
+    Registration(UciCheckingStatus),
 
     /// `info`
     ///
@@ -953,8 +1329,11 @@ impl<T: fmt::Display> fmt::Display for UciResponse<T> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
+// trait UciInfoMessage: fmt::Debug + fmt::Display {}
+
+#[derive(Debug, Clone, Default)]
 pub struct UciInfo {
+    // pub depth: Option<std::rc::Rc<dyn UciInfoMessage>>,
     pub depth: Option<String>,
     pub seldepth: Option<String>,
     pub time: Option<String>,
@@ -1273,12 +1652,18 @@ mod test {
     fn parse_register() {
         assert_eq!(
             UciCommand::parse("register later").unwrap(),
-            UciCommand::Register(None)
+            UciCommand::Register {
+                name: None,
+                code: None
+            }
         );
 
         assert_eq!(
             UciCommand::parse("register name Bill Cipher code 42").unwrap(),
-            UciCommand::Register(Some(("Bill Cipher".into(), "42".into()))),
+            UciCommand::Register {
+                name: Some("Bill Cipher".into()),
+                code: Some("42".into())
+            }
         );
     }
 

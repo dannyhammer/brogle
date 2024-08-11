@@ -454,7 +454,7 @@ impl Write for Engine {
 }
 
 /// Represents a custom command that can be sent to this engine.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub enum EngineCommand {
     /// For displaying the list of available commands.
     Help,

@@ -73,7 +73,7 @@ const fn material_difference(board: &ChessBoard, color: Color) -> i32 {
 
 /// Returns a value of the provided `PieceKind`.
 ///
-/// Values are obtained from here: https://www.chessprogramming.org/Simplified_Evaluation_Function
+/// Values are obtained from here: <https://www.chessprogramming.org/Simplified_Evaluation_Function>
 pub const fn value_of(kind: PieceKind) -> i32 {
     match kind {
         PieceKind::Pawn => 100,
