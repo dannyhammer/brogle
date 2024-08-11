@@ -1,13 +1,16 @@
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use std::usize;
 use std::{ops::Neg, time::Instant};
 
 use anyhow::{bail, Result};
 use brogle_core::{Game, Move, PieceKind};
+use log::error;
 
-use crate::uci::{UciInfo, UciSearchOptions};
-use crate::{value_of, Evaluator};
+use crate::uci::UciInfo;
+use crate::{value_of, EngineCommand, Evaluator};
 
 const INF: i32 = 32_000;
 
@@ -57,18 +60,31 @@ impl Neg for SearchResult {
     }
 }
 
+pub struct SearchData {
+    pub starttime: Instant,
+    pub nodes_searched: usize,
+}
+
+impl Default for SearchData {
+    fn default() -> Self {
+        Self {
+            starttime: Instant::now(),
+            nodes_searched: 0,
+        }
+    }
+}
+
 /// A struct to encapsulate the logic of searching through moves for a given a chess position.
 pub struct Search<'a> {
     game: &'a Game,
     timeout: Duration,
     stopper: Arc<AtomicBool>,
-    options: UciSearchOptions,
+    sender: Sender<EngineCommand>,
 
     // Search data
+    pub(crate) data: SearchData,
     pub(crate) result: Arc<RwLock<SearchResult>>,
-    pub(crate) starttime: Instant,
-    pub(crate) nodes_searched: usize,
-    pub(crate) info: Arc<RwLock<UciInfo>>,
+    // pub(crate) info: Arc<RwLock<UciInfo>>,
     /*
     /// Principle Variation of the search
     /// pv[i][j] is the PV at the i'th ply (0 is root), which has j descendants
@@ -83,32 +99,25 @@ impl<'a> Search<'a> {
         timeout: Duration,
         stopper: Arc<AtomicBool>,
         result: Arc<RwLock<SearchResult>>,
-        info: Arc<RwLock<UciInfo>>,
+        sender: Sender<EngineCommand>,
     ) -> Self {
         Self {
             game,
             timeout,
             stopper,
             result,
-            info,
-            options: UciSearchOptions::default(),
-            starttime: Instant::now(),
-            nodes_searched: 0,
+            sender,
+            data: SearchData::default(),
             // pv: Vec::default(),
         }
     }
 
-    pub fn with_options(mut self, options: UciSearchOptions) -> Self {
-        self.options = options;
-        self
-    }
-
     /// Starts a search from the supplied depth.
     // pub fn start(&mut self, depth: usize) -> Result<SearchResult> {
-    pub fn start(&mut self, depth: usize) -> Result<()> {
+    pub fn start(mut self, depth: usize) -> Result<SearchData> {
         // eprintln!("\nStarting search of depth {depth} on {}", self.game.fen());
 
-        self.starttime = Instant::now();
+        self.data.starttime = Instant::now();
         // Populate the PV list
         // self.pv = Vec::with_capacity(depth);
         // self.pv = vec![Vec::with_capacity(depth); depth];
@@ -116,23 +125,30 @@ impl<'a> Search<'a> {
 
         // If the search timed out, this result is garbage, so don't return it.
         *self.result.write().unwrap() = result.clone();
-        let elapsed = self.starttime.elapsed();
+        let elapsed = self.data.starttime.elapsed();
 
         // let pv = self.pv[0].clone();
 
-        let mut lock = self.info.write().unwrap();
-        let mut info = lock.clone();
-        info = info
+        let info = UciInfo::default()
             .depth(depth)
             .score(result.score)
-            .nodes(self.nodes_searched)
-            .nps((self.nodes_searched as f64 / elapsed.as_secs_f64()) as usize)
+            .nodes(self.data.nodes_searched)
+            .nps((self.data.nodes_searched as f64 / elapsed.as_secs_f64()) as usize)
             .time(elapsed.as_millis())
             // .pv(pv)
             ;
 
-        *lock = info;
+        if let Err(err) =
+            self.sender
+                .send(EngineCommand::UciResponse(crate::uci::UciResponse::Info(
+                    info,
+                )))
+        {
+            //
+            error!("Failed to send 'info' to engine during search: {err:?}");
+        }
 
+        //  */
         // let nps = self.nodes_searched as f64 / elapsed.as_secs_f64();
         // eprintln!(
         //     "\nSearched {} nodes in {:?} ({nps:.2} n/s): {result:?}",
@@ -140,7 +156,7 @@ impl<'a> Search<'a> {
         // );
 
         // Ok(result)
-        Ok(())
+        Ok(self.data)
     }
 
     // pub fn stop(&mut self) {
@@ -162,7 +178,7 @@ impl<'a> Search<'a> {
         if depth == 0 {
             // Root nodes in negamax must be evaluated from the current player's perspective
             result.score = Evaluator::new(&self.game).eval();
-            self.nodes_searched += 1;
+            self.data.nodes_searched += 1;
             return Ok(result);
             // return self.quiescence(game, ply + 1, alpha, beta);
         }
@@ -184,10 +200,12 @@ impl<'a> Search<'a> {
 
             // Recursively search our opponent's responses
             let current = -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?;
-            self.nodes_searched += 1;
+            self.data.nodes_searched += 1;
 
             // Check if we've run out of time or if we've been told to stop searching
-            if self.starttime.elapsed() >= self.timeout || !self.stopper.load(Ordering::Relaxed) {
+            if self.data.starttime.elapsed() >= self.timeout
+                || !self.stopper.load(Ordering::Relaxed)
+            {
                 // If we must cancel this search, we need to return the result from the previous iteration
                 bail!(
                     "Search was stopped while evaluating {mv}. Current bestmove: {:?}",
@@ -294,10 +312,12 @@ impl<'a> Search<'a> {
 
             // Recursively search our opponent's responses
             let current = -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?;
-            self.nodes_searched += 1;
+            self.data.nodes_searched += 1;
 
             // Check if we've run out of time or if we've been told to stop searching
-            if self.starttime.elapsed() >= self.timeout || !self.stopper.load(Ordering::Relaxed) {
+            if self.data.starttime.elapsed() >= self.timeout
+                || !self.stopper.load(Ordering::Relaxed)
+            {
                 // If we must cancel this search, we need to return the result from the previous iteration
                 bail!("Negamax was stopped while evaluating {mv}. Current best score: {best}");
             }
@@ -378,10 +398,12 @@ impl<'a> Search<'a> {
 
             // Recursively search our opponent's responses
             let current = -self.quiescence(&new_pos, ply + 1, -beta, -alpha)?;
-            self.nodes_searched += 1;
+            self.data.nodes_searched += 1;
 
             // Check if we've run out of time or if we've been told to stop searching
-            if self.starttime.elapsed() >= self.timeout || !self.stopper.load(Ordering::Relaxed) {
+            if self.data.starttime.elapsed() >= self.timeout
+                || !self.stopper.load(Ordering::Relaxed)
+            {
                 // If we must cancel this search, we need to return the result from the previous iteration
                 bail!("QSearch was stopped while evaluating {mv}");
             }

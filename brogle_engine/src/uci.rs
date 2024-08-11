@@ -1,8 +1,7 @@
 use std::{
     fmt,
-    io::{stdin, stdout, BufRead, BufReader, Read, Write},
+    io::{self, Write},
     str::FromStr,
-    sync::mpsc::Sender,
     time::Duration,
 };
 
@@ -80,153 +79,12 @@ impl Default for UciSearchOptions {
 
 /// Represents a type that has implemented the Universal Chess Interface (UCI) protocol.
 pub trait UciEngine {
-    /// Represents the concrete type for your own engine's custom commands.
-    ///
-    /// If you do not intend to implement any custom commands, I recommend making this a [`String`]`
-    type CustomCommand;
-
-    /// Obtain a reader to receive commands from.
-    ///
-    /// This defaults to returning [`Stdin`].
-    fn read() -> impl Read {
-        stdin()
-    }
-
-    /// Obtain a writer to send commands to.
-    ///
-    /// This defaults to returning [`Stdout`].
-    fn write() -> impl Write {
-        stdout()
-    }
-
-    /// The main I/O loop that handles communication between the engine and other program(s).
-    ///
-    /// Upon receiving `uci`, your engine should call this function, and will only leave this function
-    /// when a `quit` message is received.
-    fn uci_input_handler(&mut self) -> Result<()> {
-        let mut reader = BufReader::new(Self::read());
-        let mut buffer = String::with_capacity(2048);
-
-        loop {
-            // Clear the buffer, read input, and trim the trailing newline
-            buffer.clear();
-            let bytes = reader
-                .read_line(&mut buffer)
-                .context("Failed to read line when parsing UCI commands")?;
-            let buf = buffer.trim();
-
-            // For ctrl + d
-            if 0 == bytes {
-                warn!("Engine received input of 0 bytes and is quitting");
-                break;
-            }
-
-            // Ignore empty lines
-            if buf.is_empty() {
-                continue;
-            }
-
-            // Attempt to parse the user input
-            let cmd = match Self::parse_input(buf) {
-                Ok(cmd) => cmd,
-                Err(err) => {
-                    // UCI protocol states to continue running when invalid input is received.
-                    eprintln!("{err}");
-                    continue;
-                }
-            };
-
-            let should_quit = cmd.is_quit();
-
-            self.execute_command(cmd)?;
-
-            if should_quit {
-                break;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn uci_loop_with_channel(sender: Sender<UciCommand<Self::CustomCommand>>) -> Result<()> {
-        let mut reader = BufReader::new(Self::read());
-        let mut buffer = String::with_capacity(2048);
-
-        loop {
-            // Clear the buffer, read input, and trim the trailing newline
-            buffer.clear();
-            let bytes = reader
-                .read_line(&mut buffer)
-                .context("Failed to read line when parsing UCI commands")?;
-            let buf = buffer.trim();
-
-            // For ctrl + d
-            if 0 == bytes {
-                warn!("Engine received input of 0 bytes and is quitting");
-                if let Err(_) = sender.send(UciCommand::Quit) {
-                    bail!("Could not send command {buf} to engine");
-                }
-                return Ok(());
-            }
-
-            // Ignore empty lines
-            if buf.is_empty() {
-                continue;
-            }
-
-            // Attempt to parse the user input
-            let cmd = match Self::parse_input(buf) {
-                Ok(cmd) => cmd,
-                Err(err) => {
-                    // UCI protocol states to continue running when invalid input is received.
-                    eprintln!("{err}");
-                    continue;
-                }
-            };
-            let should_quit = cmd.is_quit();
-
-            if let Err(_) = sender.send(cmd) {
-                bail!("Could not send command {buf} to engine");
-            }
-
-            if should_quit {
-                break;
-            }
-        }
-
-        Ok(())
-    }
-
-    /*
-    fn get_input() -> Result<UciCommand<Self::CustomCommand>> {
-        let mut buffer = String::with_capacity(2048);
-        let bytes = BufReader::new(Self::read())
-            .read_line(&mut buffer)
-            .context("Failed to read line when parsing UCI commands")?;
-        let buf = buffer.trim();
-
-        // For ctrl + d
-        if 0 == bytes {
-            warn!("Engine received input of 0 bytes and is quitting");
-            return Ok(UciCommand::Quit);
-        }
-
-        // Ignore empty lines
-        if buf.is_empty() {
-            bail!("Engine received input of 0 bytes and is quitting");
-        }
-
-        Self::parse_input(buf)
-    }
-     */
-
     /// Executes the provided [`UciCommand`].
     ///
     /// This is just a convenience method that `match`es on `cmd` and calls the appropriate method.
-    fn execute_command(&mut self, cmd: UciCommand<Self::CustomCommand>) -> Result<()> {
+    fn execute_uci_command(&mut self, cmd: UciCommand) -> Result<()> {
         use UciCommand::*;
         match cmd {
-            Custom(custom) => self.non_uci_command(custom),
             Uci => self.uci(),
             Debug(status) => self.debug(status),
             IsReady => self.isready(),
@@ -242,7 +100,9 @@ pub trait UciEngine {
     }
 
     /// Parse a string of input, returning a [`UciCommand`], if possible.
-    fn parse_input(input: &str) -> Result<UciCommand<Self::CustomCommand>> {
+    ///
+    /// If not possible, bails with a standard "unknown command X" message.
+    fn parse_uci_input(input: &str) -> Result<UciCommand> {
         // Split into the first word and the remaining arguments
         let (first, rest) = input.split_once(' ').unwrap_or((input, ""));
         let rest = rest.trim();
@@ -260,37 +120,13 @@ pub trait UciEngine {
             "stop" => Ok(UciCommand::Stop),
             "ponderhit" => Ok(UciCommand::PonderHit),
             "quit" => Ok(UciCommand::Quit),
-            // If nothing else worked, try parsing it as a non-UCI command
-            _ => Self::parse_non_uci_command(input.trim()).map(|args| UciCommand::Custom(args)),
+            _ => bail!("[UciEngine] unknown command {input:?}"),
         }
     }
 
-    /// Send a response from this engine to the GUI
-    ///
-    /// This calls [`UciEngine::write`], which defaults to [`Stdout`]
-    fn send<T: fmt::Display>(&self, cmd: UciResponse<T>) -> Result<()> {
-        write!(Self::write(), "{cmd}\n").context("Failed to write '{cmd}' and flush buffer")
-    }
-
-    /// Parse a non-UCI command.
-    ///
-    /// This should be implemented if you want your engine to handle inputs other than what is specified by the UCI protocol.
-    ///
-    /// The default implementation of this method does nothing and returns `Err()`.
-    fn parse_non_uci_command(input: &str) -> Result<Self::CustomCommand> {
-        info!("using default implementation of UciEngine::parse_non_uci_command({input:?})");
-        bail!("Unrecognized UCI Command {input:?}")
-    }
-
-    /// Execute a non-UCI command.
-    ///
-    /// This should be implemented if you want your engine to handle inputs other than what is specified by the UCI protocol.
-    ///
-    /// The default implementation of this method does nothing and returns `Ok(())`.
-    fn non_uci_command(&mut self, cmd: Self::CustomCommand) -> Result<()> {
-        info!("using default implementation of UciEngine::non_uci_command");
-        _ = cmd;
-        Ok(())
+    /// Send a response from this engine to the GUI via `stdout`.
+    fn send_uci_response<T: fmt::Display>(&self, cmd: UciResponse<T>) -> Result<()> {
+        write!(io::stdout(), "{cmd}\n").context("Failed to write '{cmd}' and flush buffer")
     }
 
     /* GUI to Engine communication */
@@ -352,7 +188,7 @@ pub trait UciEngine {
     /// The default implementation of this method simply immediately sends a response of `readyok`.
     fn isready(&self) -> Result<()> {
         info!("using default implementation of UciEngine::isready");
-        self.send(UciResponse::<&str>::ReadyOk)
+        self.send_uci_response(UciResponse::<&str>::ReadyOk)
     }
 
     /// Called when the engine receives `setoption name <name> [ value <value> ]`.
@@ -560,7 +396,7 @@ pub trait UciEngine {
         let name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
         let author = env!("CARGO_PKG_AUTHORS").replace(":", ", ");
 
-        self.send(UciResponse::Id(name, author))
+        self.send_uci_response(UciResponse::Id(name, author))
     }
 
     /// Send the `uciok` message to `stdout.`
@@ -571,7 +407,7 @@ pub trait UciEngine {
     /// The default implementation of this method simply immediately sends a response of `uciok`.
     fn uciok(&self) -> Result<()> {
         info!("using default implementation of UciEngine::uciok");
-        self.send(UciResponse::<&str>::UciOk)
+        self.send_uci_response(UciResponse::<&str>::UciOk)
     }
 
     /// Send the `readyok` message to `stdout.`
@@ -585,7 +421,7 @@ pub trait UciEngine {
     /// The default implementation of this method simply immediately sends a response of `readyok`.
     fn readyok(&self) -> Result<()> {
         info!("using default implementation of UciEngine::readyok");
-        self.send(UciResponse::<&str>::ReadyOk)
+        self.send_uci_response(UciResponse::<&str>::ReadyOk)
     }
 
     /// Send the `bestmove <move_1> [ ponder <move_2> ]` message to `stdout.`
@@ -599,7 +435,7 @@ pub trait UciEngine {
     ///
     /// The default implementation of this method simply immediately sends a response of `bestmove <move> [ponder]`.
     fn bestmove<T: fmt::Display>(&self, bestmove: T, ponder: Option<T>) -> Result<()> {
-        self.send(UciResponse::<T>::BestMove(bestmove, ponder))
+        self.send_uci_response(UciResponse::<T>::BestMove(bestmove, ponder))
     }
 
     /// Send the `copyprotection [ checking | ok | error ]` message to `stdout.`
@@ -607,8 +443,8 @@ pub trait UciEngine {
     /// The default implementation of this method simply immediately sends a response of `checking` followed by `ok`.
     fn copyprotection(&self) -> Result<()> {
         info!("using default implementation of UciEngine::copyprotection");
-        self.send(UciResponse::CopyProtection("checking"))?;
-        self.send(UciResponse::CopyProtection("ok"))
+        self.send_uci_response(UciResponse::CopyProtection("checking"))?;
+        self.send_uci_response(UciResponse::CopyProtection("ok"))
     }
 
     /// Send the `registration[ checking | ok | error ]` message to `stdout.`
@@ -616,8 +452,8 @@ pub trait UciEngine {
     /// The default implementation of this method simply immediately sends a response of `checking` followed by `ok`.
     fn registration(&self) -> Result<()> {
         info!("using default implementation of UciEngine::registration");
-        self.send(UciResponse::Registration("checking"))?;
-        self.send(UciResponse::Registration("ok"))
+        self.send_uci_response(UciResponse::Registration("checking"))?;
+        self.send_uci_response(UciResponse::Registration("ok"))
     }
 
     /// Send the `info [ STUFF ]` message to `stdout.`
@@ -625,7 +461,7 @@ pub trait UciEngine {
     /// The default implementation of this method simply immediately sends a response of `info [ STUFF ]`.
     fn info(&self, info: UciInfo) -> Result<()> {
         // info!("using default implementation of UciEngine::info({info:?})");
-        self.send(UciResponse::<String>::Info(info))
+        self.send_uci_response(UciResponse::<String>::Info(info))
     }
 
     /// Send the `option [ STUFF ]` message to `stdout.`
@@ -640,8 +476,8 @@ pub trait UciEngine {
 /// # UCI Commands (GUI to Engine)
 ///
 /// These are all the commands the engine gets from the interface.
-#[derive(PartialEq, Eq, Hash, Debug)]
-pub enum UciCommand<T> {
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+pub enum UciCommand {
     Uci,
 
     // on/off
@@ -672,15 +508,9 @@ pub enum UciCommand<T> {
     PonderHit,
 
     Quit,
-
-    Custom(T),
 }
 
-impl<T> UciCommand<T> {
-    pub fn is_quit(&self) -> bool {
-        matches!(self, Self::Quit)
-    }
-
+impl UciCommand {
     pub fn parse_debug(args: &str) -> Result<Self> {
         // This one's simple
         match args {

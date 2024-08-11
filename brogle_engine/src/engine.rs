@@ -1,25 +1,27 @@
 use std::{
     fmt,
+    io::{self, Read, Write},
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Sender},
         Arc, RwLock,
     },
-    thread,
     time::Duration,
 };
 
-use anyhow::{bail, Result};
-use brogle_core::{print_perft, print_split_perft, Game, Move, Position, FEN_STARTPOS};
+use anyhow::{bail, Context, Result};
+use brogle_core::{
+    print_perft, print_split_perft, BitBoard, Game, Move, Position, Tile, FEN_STARTPOS,
+};
+use log::{error, warn};
 use threadpool::ThreadPool;
 
 use super::{
     search::{Search, SearchResult},
-    uci::{UciCommand, UciEngine, UciInfo, UciOption, UciResponse, UciSearchOptions},
+    uci::{UciCommand, UciEngine, UciOption, UciResponse, UciSearchOptions},
     Evaluator,
 };
-
-// type TranspositionTable = ();
 
 /// Represents the possible communication protocols supported by this engine.
 ///
@@ -29,16 +31,6 @@ enum EngineProtocol {
     #[default]
     UCI,
 }
-
-/*
-#[derive(PartialEq, Eq, Clone, Debug, Default)]
-pub(crate) enum SearchStatus {
-    #[default]
-    NotStarted,
-    InProgress,
-    Done,
-}
- */
 
 /// A chess engine responds to inputs (such as from a GUI or terminal) and
 /// responds with computed outputs. The most common modern protocol is UCI.
@@ -60,27 +52,26 @@ pub struct Engine {
 
     // /// Transposition table for game states.
     // ttable: TranspositionTable,
+    //
     /// Whether to display additional information in `info` commands.
     ///
     /// Defaults to `false`.`
     debug: Arc<AtomicBool>,
 
     /// Atomic boolean to determine whether the engine is currently running a search.
-    // search_status: Arc<RwLock<SearchStatus>>,
     is_searching: Arc<AtomicBool>,
 
     /// Result of the last-executed search.
     search_result: Arc<RwLock<SearchResult>>,
 
-    /// Search-related info that can be sent to the GUI at any time.
-    info: Arc<RwLock<UciInfo>>,
-    // /// List of available configuration options
-    // options: todo!(),
     /// Pool for spawning search and input threads.
     pool: ThreadPool,
 
     /// Handles sending events to the internal event pump.
-    sender: Option<Sender<UciCommand<EngineCommand>>>,
+    sender: Option<Sender<EngineCommand>>,
+    //
+    // /// List of available configuration options
+    // options: todo!(),
 }
 
 impl Engine {
@@ -91,8 +82,7 @@ impl Engine {
 
     /// Construct a new [`Engine`] from provided FEN string.
     pub fn from_fen(fen: &str) -> Result<Self> {
-        let game = Game::from_fen(fen)?;
-        Ok(Self {
+        Game::from_fen(fen).map(|game| Self {
             game,
             ..Default::default()
         })
@@ -102,23 +92,81 @@ impl Engine {
     ///
     /// This function launches the engine and awaits user input via `stdin`.
     pub fn run(&mut self) -> Result<()> {
+        // Print some metadata about the engine
         let name = env!("CARGO_PKG_NAME");
         let version = env!("CARGO_PKG_VERSION");
         let authors = env!("CARGO_PKG_AUTHORS").replace(":", ", "); // Split multiple authors by comma-space
         println!("{name} {version} by {authors}");
 
+        // Create (and store) the channel(s) for communication
         let (sender, receiver) = mpsc::channel();
         self.sender = Some(sender.clone());
 
+        // Spin up a thread for handling user/GUI input
         self.pool.execute(move || {
-            let res = Self::uci_loop_with_channel(sender);
-            eprintln!("RESULT: {res:?}");
+            if let Err(err) = Self::user_input_handler(sender) {
+                error!("{err}");
+            }
         });
 
+        // Main event loop: Handle inputs from various sources
         for cmd in receiver {
-            let should_quit = cmd.is_quit();
+            // If the command is 'quit', we need to exit after executing it
+            let should_quit = matches!(cmd, EngineCommand::UciCommand(UciCommand::Quit));
 
             self.execute_command(cmd)?;
+
+            if should_quit {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Enter a perpetual loop to handle input over `stdin` from the user/GUI.
+    ///
+    /// This function only exits if an error occurs it receives the input 'quit'  
+    fn user_input_handler(sender: Sender<EngineCommand>) -> Result<()> {
+        let mut buffer = String::with_capacity(2048);
+
+        loop {
+            // Clear the buffer, read input, and trim the trailing newline
+            buffer.clear();
+            let bytes = io::stdin()
+                .read_line(&mut buffer)
+                .context("Failed to read line when parsing UCI commands")?;
+            let buf = buffer.trim();
+
+            // For ctrl + d
+            if 0 == bytes {
+                warn!("Engine received input of 0 bytes and is quitting");
+                sender
+                    .send(EngineCommand::UciCommand(UciCommand::Quit))
+                    .context("Received empty input from stdin")?;
+                break;
+            }
+
+            // Ignore empty lines
+            if buf.is_empty() {
+                continue;
+            }
+
+            // Attempt to parse the user input
+            let cmd = match Self::parse_command(buf) {
+                Ok(cmd) => cmd,
+                Err(err) => {
+                    // UCI protocol states to continue running when invalid input is received.
+                    eprintln!("{err}");
+                    continue;
+                }
+            };
+
+            let should_quit = matches!(cmd, EngineCommand::UciCommand(UciCommand::Quit));
+
+            sender
+                .send(cmd)
+                .context("Failed to send command {buf:?} to engine")?;
 
             if should_quit {
                 break;
@@ -269,7 +317,17 @@ impl Engine {
             .split_ascii_whitespace()
             .any(|arg| arg.to_ascii_lowercase() == "debug");
 
-        Ok(EngineCommand::Moves(debug))
+        let mut args = rest.split_ascii_whitespace();
+        let from = if let Some(from) = args.next() {
+            let Ok(from) = Tile::from_str(from) else {
+                bail!("usage: moves [square] [debug]")
+            };
+            Some(from)
+        } else {
+            None
+        };
+
+        Ok(EngineCommand::Moves(from, debug))
     }
 
     fn parse_option_command(rest: &str) -> Result<EngineCommand> {
@@ -283,62 +341,17 @@ impl Engine {
 
         Ok(EngineCommand::Option(name))
     }
-}
 
-/// Represents a custom command that can be sent to this engine.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum EngineCommand {
-    /// For displaying the list of available commands.
-    Help,
-
-    /// Run a perft at the provided depth.
-    Perft {
-        depth: usize,
-        pretty: bool,
-        split: bool,
-    },
-
-    /// Pretty-print the current state of the board.
-    Show,
-
-    /// Display the moves made during this game.
-    History,
-
-    /// Show the current state of of the board as a FEN string.
-    Fen(Option<String>),
-
-    /*
-    /// Make the list of moves applied to the board.
-    Move(Vec<Move>),
-     */
-    /// Show all legal moves from the current position.
-    Moves(bool),
-
-    /// Evaluates the current position.
-    Eval(Game),
-
-    /// Benchmark this engine.
-    Bench,
-
-    /// Undo the last move made.
-    Undo,
-
-    /// View the current value of an option
-    Option(String),
-
-    Info(UciInfo),
-}
-
-impl UciEngine for Engine {
-    type CustomCommand = EngineCommand;
-    /* GUI to Engine communication */
-
-    fn parse_non_uci_command<'a>(input: &'a str) -> Result<Self::CustomCommand> {
+    fn parse_command<'a>(input: &'a str) -> Result<EngineCommand> {
         let (cmd, rest) = if input.contains(' ') {
             input.split_once(' ').unwrap()
         } else {
             (input, "")
         };
+
+        // if let Ok(uci_cmd) = Self::parse_uci_input(input) {
+        //     return Ok(EngineCommand::UciCommand(uci_cmd));
+        // }
 
         match cmd {
             "help" => Ok(EngineCommand::Help),
@@ -352,14 +365,12 @@ impl UciEngine for Engine {
             "option" => Self::parse_option_command(rest),
             "undo" => Ok(EngineCommand::Undo),
             "bench" => Ok(EngineCommand::Bench),
-            _ => bail!(
-                "{} does not recognize command {input:?}",
-                env!("CARGO_PKG_NAME")
-            ),
+            // _ => bail!("{input:?} not a command. run \"help\" for a list of commands",),
+            _ => Self::parse_uci_input(input).map(|uci_cmd| EngineCommand::UciCommand(uci_cmd)),
         }
     }
 
-    fn non_uci_command(&mut self, cmd: Self::CustomCommand) -> Result<()> {
+    fn execute_command(&mut self, cmd: EngineCommand) -> Result<()> {
         match cmd {
             EngineCommand::Help => {
                 println!(
@@ -411,21 +422,34 @@ impl UciEngine for Engine {
             EngineCommand::Eval(game) => println!("{}", Evaluator::new(&game).eval()),
 
             // EngineCommand::Move(moves) => self.game.make_moves(moves),
-            EngineCommand::Moves(debug) => {
-                let mut moves = self
-                    .game
-                    .legal_moves()
-                    .into_iter()
-                    .map(|m| {
-                        if debug {
-                            format!("{m:?}")
-                        } else {
-                            format!("{m}")
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                moves.sort();
-                println!("{}", moves.join(" "))
+            EngineCommand::Moves(from, debug) => {
+                if let Some(from) = from {
+                    let moves = self
+                        .game
+                        .legal_moves()
+                        .into_iter()
+                        .filter(|mv| mv.from() == from);
+                    let mut mobility = BitBoard::default();
+                    for mv in moves {
+                        mobility |= BitBoard::from_tile(mv.to());
+                    }
+                    println!("{mobility}");
+                } else {
+                    let mut moves = self
+                        .game
+                        .legal_moves()
+                        .into_iter()
+                        .map(|m| {
+                            if debug {
+                                format!("{m:?}")
+                            } else {
+                                format!("{m}")
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    moves.sort();
+                    println!("{}", moves.join(" "));
+                }
             }
             EngineCommand::Bench => todo!("Implement `bench` command"),
             EngineCommand::Undo => self.game.unmake_move(),
@@ -433,10 +457,78 @@ impl UciEngine for Engine {
                 println!("{name}={value}", value = "UNSET")
             }
 
-            EngineCommand::Info(info) => self.info(info)?,
+            EngineCommand::UciCommand(uci_cmd) => self.execute_uci_command(uci_cmd)?,
+            EngineCommand::UciResponse(uci_resp) => self.send_uci_response(uci_resp)?,
         }
+
         Ok(())
     }
+}
+
+impl Read for Engine {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        io::stdin().read(buf)
+    }
+}
+
+impl Write for Engine {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        io::stdout().write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        io::stdout().flush()
+    }
+}
+
+/// Represents a custom command that can be sent to this engine.
+#[derive(Clone, PartialEq, Debug)]
+pub enum EngineCommand {
+    /// For displaying the list of available commands.
+    Help,
+
+    /// Run a perft at the provided depth.
+    Perft {
+        depth: usize,
+        pretty: bool,
+        split: bool,
+    },
+
+    /// Pretty-print the current state of the board.
+    Show,
+
+    /// Display the moves made during this game.
+    History,
+
+    /// Show the current state of of the board as a FEN string.
+    Fen(Option<String>),
+
+    /*
+    /// Make the list of moves applied to the board.
+    Move(Vec<Move>),
+     */
+    /// Show all legal moves from the current position.
+    Moves(Option<Tile>, bool),
+
+    /// Evaluates the current position.
+    Eval(Game),
+
+    /// Benchmark this engine.
+    Bench,
+
+    /// Undo the last move made.
+    Undo,
+
+    /// View the current value of an option
+    Option(String),
+
+    UciCommand(UciCommand),
+
+    UciResponse(UciResponse),
+}
+
+impl UciEngine for Engine {
+    /* GUI to Engine communication */
 
     fn debug(&mut self, status: bool) -> Result<()> {
         self.debug.store(status, Ordering::Relaxed);
@@ -477,11 +569,8 @@ impl UciEngine for Engine {
     }
 
     fn go(&mut self, options: UciSearchOptions) -> Result<()> {
-        // Arena sent this to our engine
-        // go wtime 300000 btime 300000 winc 0 binc 0
-
         if self.is_searching() {
-            eprintln!("Engine is already searching");
+            warn!("Engine was told to search while it is already searching. Stopping current search...");
             self.stop_search();
         }
 
@@ -502,46 +591,45 @@ impl UciEngine for Engine {
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);
         let timeout = Duration::from_secs_f32(time_remaining.as_secs_f32() / 20.0); // 5% time remaining
-                                                                                    // let timeout = Duration::from_secs(1);
         let result = Arc::clone(&self.search_result);
-        let info = Arc::clone(&self.info);
         let sender = self.sender.clone().unwrap();
 
         let game = self.game.clone();
         let max_depth = options.depth.unwrap_or(10) as usize; // TODO: Increase to 127 or 255 once you have TT set up
 
-        thread::spawn(move || {
+        self.pool.execute(move || {
             let mut depth = 1;
 
             while depth <= max_depth && is_searching.load(Ordering::Relaxed) {
-                // while depth <= max_depth && self.is_searching() {
                 let cloned_stopper = Arc::clone(&is_searching);
                 let cloned_result = Arc::clone(&result);
-                let cloned_info = Arc::clone(&info);
 
                 // Start the search
-                let mut search =
-                    Search::new(&game, timeout, cloned_stopper, cloned_result, cloned_info)
-                        .with_options(options.clone());
+                let search = Search::new(
+                    &game,
+                    timeout,
+                    cloned_stopper,
+                    cloned_result,
+                    sender.clone(),
+                );
+                // .with_options(options.clone());
 
                 // If we received an error, that means the search was stopped externally
-                if let Err(_err) = search.start(depth) {
-                    // eprintln!("[depth={depth}] {_err}");
-                    break;
+
+                match search.start(depth) {
+                    Ok(_data) => {}
+                    Err(_) => break,
                 }
-
-                // Send the updated info, now that the search has concluded
-                let info = info.read().unwrap();
-
-                // Now send the info to the GUI
-                _ = sender.send(UciCommand::Custom(EngineCommand::Info(info.clone())));
 
                 depth += 1;
             }
 
             // If this line of code is reached, it means the search has stopped on its own
             // We can do the same actions as if we have received the "stop" command
-            _ = sender.send(UciCommand::Stop);
+
+            if let Err(err) = sender.send(EngineCommand::UciCommand(UciCommand::Stop)) {
+                error!("Failed to send 'stop' to engine after search concluded: {err:?}");
+            }
         });
 
         Ok(())
@@ -573,18 +661,18 @@ impl UciEngine for Engine {
 
     fn bestmove<T: fmt::Display>(&self, bestmove: T, ponder: Option<T>) -> Result<()> {
         // https://backscattering.de/chess/uci/#engine-bestmove-info
-        let info = self
-            .info
-            .read()
-            .expect("Failed to acquire read access to engine.info");
-        self.info(info.clone())?;
+        // let info = self
+        //     .info
+        //     .read()
+        //     .expect("Failed to acquire read access to engine.info");
+        // self.info(info.clone())?;
 
-        self.send(UciResponse::BestMove(bestmove, ponder))
+        self.send_uci_response(UciResponse::BestMove(bestmove, ponder))
     }
 
     fn option(&self) -> Result<()> {
         for opt in self.get_uci_options() {
-            self.send(UciResponse::Option(opt))?;
+            self.send_uci_response(UciResponse::Option(opt))?;
         }
         Ok(())
     }
@@ -604,7 +692,6 @@ impl Default for Engine {
             is_searching: Arc::default(),
             // search_status: Arc::default(),
             search_result: Arc::default(),
-            info: Arc::default(),
             pool: ThreadPool::new(num_cpus::get()),
             sender: None,
         }
