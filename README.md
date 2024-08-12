@@ -1,6 +1,6 @@
 # Brogle
 
-Brogle (pronounced like 'broccoli') is a UCI-compatible chess engine.
+Brogle (pronounced 'brog-lee' (like 'broccoli')) is a UCI-compatible chess engine.
 
 This repository is a _huge_ work-in-progress.
 Once the code reaches a state that I am content with, I will release a version 1.0.
