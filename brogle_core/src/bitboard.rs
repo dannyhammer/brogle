@@ -1,9 +1,10 @@
 use std::{
     fmt,
     ops::{Index, Not, Shl, Shr},
+    str::FromStr,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail};
 
 use super::{Color, File, Rank, Tile};
 
@@ -127,43 +128,7 @@ impl BitBoard {
     /// assert_eq!(board.to_hex_string(), "0x00FF000000000000");
     /// ```
     pub const fn from_rank(rank: Rank) -> Self {
-        Self::new(Self::RANK_1.0 << rank.0 * 8)
-    }
-
-    /// Constructs a new [`BitBoard`] from the provided string.
-    ///
-    /// The string may be a binary or hexadecimal number, and may be proceeded with `0b` or `0x`.
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::BitBoard;
-    /// let board1 = BitBoard::from_str("0x00FF000000000000").unwrap();
-    /// let board2 = BitBoard::from_str("00FF000000000000").unwrap();
-    /// let board3 = BitBoard::from_str("0000000011111111000000000000000000000000000000000000000000000000").unwrap();
-    /// let board4 = BitBoard::from_str("0b0000000011111111000000000000000000000000000000000000000000000000").unwrap();
-    /// assert_eq!(board1, board2);
-    /// assert_eq!(board1, board3);
-    /// assert_eq!(board1, board4);
-    /// assert_eq!(board1.to_hex_string(), "0x00FF000000000000");
-    /// ```
-    pub fn from_str(bits: &str) -> Result<Self> {
-        let bits = bits.to_lowercase();
-
-        if bits.len() == 64 || bits.len() == 66 {
-            let bits = bits.trim_start_matches("0b");
-            let bits = u64::from_str_radix(bits, 2).map_err(|_| {
-                anyhow!("Invalid BitBoard string: Expected binary digits, got {bits}")
-            })?;
-            Ok(Self::new(bits))
-        } else if bits.len() == 16 || bits.len() == 18 {
-            let bits = bits.trim_start_matches("0x");
-            let bits = u64::from_str_radix(bits, 16).map_err(|_| {
-                anyhow!("Invalid BitBoard string: Expected hexadecimal digits, got {bits}")
-            })?;
-            Ok(Self::new(bits))
-        } else {
-            bail!("Invalid BitBoard string: Invalid length {}. Length must be either 64 (binary) or 16 (hexadecimal)", bits.len())
-        }
+        Self::new(Self::RANK_1.0 << (rank.0 * 8))
     }
 
     /// Returns [`BitBoard::FULL_BOARD`] if `true`, else [`BitBoard::EMPTY_BOARD`].
@@ -707,6 +672,46 @@ impl BitBoard {
     }
 }
 
+impl FromStr for BitBoard {
+    type Err = anyhow::Error;
+    /// Constructs a new [`BitBoard`] from the provided string.
+    ///
+    /// The string may be a binary or hexadecimal number, and may be proceeded with `0b` or `0x`.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_core::BitBoard;
+    /// use std::str::FromStr;
+    /// let board1 = BitBoard::from_str("0x00FF000000000000").unwrap();
+    /// let board2 = BitBoard::from_str("00FF000000000000").unwrap();
+    /// let board3 = BitBoard::from_str("0000000011111111000000000000000000000000000000000000000000000000").unwrap();
+    /// let board4 = BitBoard::from_str("0b0000000011111111000000000000000000000000000000000000000000000000").unwrap();
+    /// assert_eq!(board1, board2);
+    /// assert_eq!(board1, board3);
+    /// assert_eq!(board1, board4);
+    /// assert_eq!(board1.to_hex_string(), "0x00FF000000000000");
+    /// ```
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let bits = s.to_lowercase();
+
+        if bits.len() == 64 || bits.len() == 66 {
+            let bits = bits.trim_start_matches("0b");
+            let bits = u64::from_str_radix(bits, 2).map_err(|_| {
+                anyhow!("Invalid BitBoard string: Expected binary digits, got {bits}")
+            })?;
+            Ok(Self::new(bits))
+        } else if bits.len() == 16 || bits.len() == 18 {
+            let bits = bits.trim_start_matches("0x");
+            let bits = u64::from_str_radix(bits, 16).map_err(|_| {
+                anyhow!("Invalid BitBoard string: Expected hexadecimal digits, got {bits}")
+            })?;
+            Ok(Self::new(bits))
+        } else {
+            bail!("Invalid BitBoard string: Invalid length {}. Length must be either 64 (binary) or 16 (hexadecimal)", bits.len())
+        }
+    }
+}
+
 macro_rules! impl_bitwise_op {
     // Impl op and op_assign for Self
     ($op:tt, $op_assign:tt, $func:ident, $func_assign:ident, $op_tok:tt) => {
@@ -755,14 +760,14 @@ impl Shr<File> for BitBoard {
 impl Shl<Rank> for BitBoard {
     type Output = Self;
     fn shl(self, rhs: Rank) -> Self::Output {
-        Self::new(self.0 << rhs.0 * 8)
+        Self::new(self.0 << (rhs.0 * 8))
     }
 }
 
 impl Shr<Rank> for BitBoard {
     type Output = Self;
     fn shr(self, rhs: Rank) -> Self::Output {
-        Self::new(self.0 >> rhs.0 * 8)
+        Self::new(self.0 >> (rhs.0 * 8))
     }
 }
 

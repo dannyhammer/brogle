@@ -150,7 +150,7 @@ impl<'a> Search<'a> {
         if let Err(err) = self
             .sender
             .send(EngineCommand::UciResponse(Box::new(UciResponse::Info(
-                info,
+                Box::new(info),
             ))))
         {
             //

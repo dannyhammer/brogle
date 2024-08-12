@@ -1,6 +1,7 @@
 use std::{
-    fmt,
+    fmt::{self, Write},
     ops::{Deref, Index, IndexMut},
+    str::FromStr,
 };
 
 use anyhow::{anyhow, bail, Result};
@@ -45,11 +46,6 @@ impl Game {
             history: Vec::with_capacity(128),
             moves: Vec::with_capacity(128),
         }
-    }
-
-    /// Creates a new [`Game`] with the standard piece setup.
-    pub fn default() -> Self {
-        Self::from_fen(FEN_STARTPOS).unwrap()
     }
 
     /// Creates a new [`Game`] from the provided FEN string.
@@ -99,7 +95,8 @@ impl Game {
     pub fn make_move_checked(&mut self, chessmove: Move) -> Result<()> {
         let (is_legal, reason) = self.is_legal(chessmove);
         if is_legal {
-            Ok(self.make_move(chessmove))
+            self.make_move(chessmove);
+            Ok(())
         } else {
             bail!("{reason}")
         }
@@ -182,16 +179,16 @@ impl CastlingRights {
         let mut castling = String::with_capacity(4);
 
         if self.kingside[Color::White] {
-            castling.push_str("K");
+            castling.push('K');
         }
         if self.queenside[Color::White] {
-            castling.push_str("Q");
+            castling.push('Q');
         }
         if self.kingside[Color::Black] {
-            castling.push_str("k");
+            castling.push('k');
         }
         if self.queenside[Color::Black] {
-            castling.push_str("q")
+            castling.push('q')
         }
 
         if castling.is_empty() {
@@ -270,24 +267,24 @@ impl Position {
         ))?;
         pos.board = ChessBoard::from_fen(placements)?;
 
-        let active_color = split.next().unwrap_or_else(|| "w");
+        let active_color = split.next().unwrap_or("w");
         pos.current_player = Color::from_str(active_color)?;
 
-        let castling = split.next().unwrap_or_else(|| "KQkq");
+        let castling = split.next().unwrap_or("KQkq");
         pos.castling_rights = CastlingRights::from_uci(castling)?;
 
-        let en_passant_target = split.next().unwrap_or_else(|| "-");
+        let en_passant_target = split.next().unwrap_or("-");
         pos.ep_tile = match en_passant_target {
             "-" => None,
             tile => Some(Tile::from_uci(tile)?),
         };
 
-        let halfmove = split.next().unwrap_or_else(|| "0");
+        let halfmove = split.next().unwrap_or("0");
         pos.halfmove = halfmove.parse().or(Err(anyhow!(
             "Invalid FEN string: FEN string must have valid halfmove counter. Got {halfmove}"
         )))?;
 
-        let fullmove = split.next().unwrap_or_else(|| "1");
+        let fullmove = split.next().unwrap_or("1");
         pos.fullmove = fullmove.parse().or(Err(anyhow!(
             "Invalid FEN string: FEN string must have valid fullmove counter. Got {fullmove}"
         )))?;
@@ -419,13 +416,13 @@ impl Position {
             }
             // If castling, ensure we have the right to
             MoveKind::KingsideCastle => {
-                if self.castling_rights.kingside[piece.color()] == false {
+                if !self.castling_rights.kingside[piece.color()] {
                     return (false, "Tried to castle (kingside) without rights");
                 }
             }
             // If castling, ensure we have the right to
             MoveKind::QueensideCastle => {
-                if self.castling_rights.queenside[piece.color()] == false {
+                if !self.castling_rights.queenside[piece.color()] {
                     return (false, "Tried to castle (queenside) without rights");
                 }
             }
@@ -440,7 +437,8 @@ impl Position {
     pub fn make_move_checked(&mut self, chessmove: Move) -> Result<()> {
         let (is_legal, reason) = self.is_legal(chessmove);
         if is_legal {
-            Ok(self.make_move(chessmove))
+            self.make_move(chessmove);
+            Ok(())
         } else {
             bail!("{reason}")
         }
@@ -543,6 +541,13 @@ impl Position {
         //
     }
     */
+}
+
+impl FromStr for Position {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Self::from_fen(s)
+    }
 }
 
 impl Deref for Position {
@@ -1062,9 +1067,9 @@ impl ChessBoard {
     }
 
     /// Creates a [`BoardIter`] to iterate over all occupied [`Tile`]s in this [`ChessBoard`].
-    pub const fn iter<'a>(&'a self) -> BoardIter<'a> {
+    pub const fn iter(&self) -> BoardIter<'_> {
         BoardIter {
-            board: &self,
+            board: self,
             occupancy: self.occupied(),
         }
     }
@@ -1128,7 +1133,7 @@ impl fmt::Display for ChessBoard {
         }
         board += " +";
         for _ in File::iter() {
-            board += &format!("--");
+            board += "--";
         }
         board += "\n   ";
         for file in File::iter() {
@@ -1192,21 +1197,22 @@ impl fmt::Debug for ChessBoard {
                 .map(|(b, _)| b.split('\n').collect::<Vec<_>>())
                 .collect::<Vec<_>>();
 
-            let labels = strings
-                .iter()
-                .map(|(_, s)| format!("{s:10}\t\t"))
-                .collect::<String>();
+            let labels = strings.iter().fold(String::new(), |mut acc, (_, s)| {
+                _ = write!(acc, "{s:10}\t\t");
+                acc
+            });
 
-            let boards = (0..8)
-                .map(|i| {
-                    format!(
-                        "{}\n",
-                        (0..splits.len())
-                            .map(|j| format!("{}\t\t", splits[j][i]))
-                            .collect::<String>()
-                    )
-                })
-                .collect::<String>();
+            let boards = (0..8).fold(String::new(), |mut acc, i| {
+                _ = writeln!(
+                    acc,
+                    "{}",
+                    (0..splits.len()).fold(String::new(), |mut output, j| {
+                        _ = write!(output, "{}\t", splits[j][i]);
+                        output
+                    })
+                );
+                acc
+            });
 
             format!("{labels}\n{boards}")
         };
@@ -1227,7 +1233,7 @@ impl fmt::Debug for ChessBoard {
             (self.colors[Color::Black], "Black"),
         ]);
 
-        write!(f, "Game State:\n{pieces}\n\n{metadata}")
+        write!(f, "BitBoards:\n{pieces}\n\n{metadata}")
     }
 }
 

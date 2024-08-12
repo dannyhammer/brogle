@@ -160,7 +160,7 @@ pub fn print_perft<const PRETTY: bool, const SPLIT: bool>(position: &Position, d
             println!("{mv:>8} {nodes:>width$}", width = depth * 2 + 1);
             total_nodes += nodes;
         }
-        println!(""); // Empty line between last splitperft and total_nodes
+        println!(); // Empty line between last splitperft and total_nodes
     } else {
         // Time the perft
         total_nodes = perft(position, depth);

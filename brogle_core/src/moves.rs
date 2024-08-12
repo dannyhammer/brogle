@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, str::FromStr};
 
 use anyhow::{anyhow, Result};
 
@@ -63,14 +63,14 @@ impl Move {
     const FLG_BITS: u16 = 12;
 
     /// Flags fetched from [here](https://www.chessprogramming.org/Encoding_Moves#From-To_Based)
-    const FLAG_QUIET: u16 = 00 << Self::FLG_BITS;
-    const FLAG_PAWN_DOUBLE: u16 = 01 << Self::FLG_BITS;
-    const FLAG_CASTLE_SHORT: u16 = 02 << Self::FLG_BITS;
-    const FLAG_CASTLE_LONG: u16 = 03 << Self::FLG_BITS;
-    const FLAG_CAPTURE: u16 = 04 << Self::FLG_BITS;
-    const FLAG_EP_CAPTURE: u16 = 05 << Self::FLG_BITS;
-    const FLAG_PROMO_KNIGHT: u16 = 08 << Self::FLG_BITS;
-    const FLAG_PROMO_BISHOP: u16 = 09 << Self::FLG_BITS;
+    const FLAG_QUIET: u16 = 0 << Self::FLG_BITS;
+    const FLAG_PAWN_DOUBLE: u16 = 1 << Self::FLG_BITS;
+    const FLAG_CASTLE_SHORT: u16 = 2 << Self::FLG_BITS;
+    const FLAG_CASTLE_LONG: u16 = 3 << Self::FLG_BITS;
+    const FLAG_CAPTURE: u16 = 4 << Self::FLG_BITS;
+    const FLAG_EP_CAPTURE: u16 = 5 << Self::FLG_BITS;
+    const FLAG_PROMO_KNIGHT: u16 = 8 << Self::FLG_BITS;
+    const FLAG_PROMO_BISHOP: u16 = 9 << Self::FLG_BITS;
     const FLAG_PROMO_ROOK: u16 = 10 << Self::FLG_BITS;
     const FLAG_PROMO_QUEEN: u16 = 11 << Self::FLG_BITS;
     const FLAG_CAPTURE_PROMO_KNIGHT: u16 = 12 << Self::FLG_BITS;
@@ -375,22 +375,21 @@ impl Move {
             } else {
                 MoveKind::Quiet
             }
-        } else {
+        } else if piece.is_king() {
             // TODO: Support for castling in Chess960
-            if uci == "e1g1" && piece.is_king() && piece.is_white() {
-                // I don't think these color checks are necessary, as the Black King can't e1g1 anyway
+            if uci == "e1g1" || uci == "e8g8" {
                 MoveKind::KingsideCastle
-            } else if uci == "e8g8" && piece.is_king() && piece.is_black() {
-                MoveKind::KingsideCastle
-            } else if uci == "e1c1" && piece.is_king() && piece.is_white() {
-                MoveKind::QueensideCastle
-            } else if uci == "e8c8" && piece.is_king() && piece.is_black() {
+            } else if uci == "e1c1" || uci == "e8c8" {
                 MoveKind::QueensideCastle
             } else if position.board().has(to) {
                 MoveKind::Capture
             } else {
                 MoveKind::Quiet
             }
+        } else if position.board().has(to) {
+            MoveKind::Capture
+        } else {
+            MoveKind::Quiet
         };
 
         Ok(Self::new(from, to, kind))

@@ -1,6 +1,7 @@
 use std::{
     fmt,
     ops::{Index, IndexMut},
+    str::FromStr,
 };
 
 use anyhow::{bail, Result};
@@ -141,18 +142,6 @@ impl PieceKind {
         Self::from_uci(kind)
     }
 
-    /// Does the same as [`PieceKind::from_uci`], but only if `kind` is one character in length.
-    pub fn from_str(kind: &str) -> Result<Self> {
-        if kind.is_empty() || kind.len() > 1 {
-            bail!(
-                "Invalid str for PieceKind: Must be a str of len 1. Got {}",
-                kind.len()
-            );
-        }
-
-        Self::from_char(kind.as_bytes()[0] as char)
-    }
-
     /// Fetches a human-readable name for this [`PieceKind`].
     ///
     /// # Example
@@ -217,6 +206,21 @@ impl PieceKind {
             Self::Queen => "q",
             Self::King => "k",
         }
+    }
+}
+
+impl FromStr for PieceKind {
+    type Err = anyhow::Error;
+    /// Does the same as [`PieceKind::from_uci`], but only if `kind` is one character in length.
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        if s.is_empty() || s.len() > 1 {
+            bail!(
+                "Invalid str for PieceKind: Must be a str of len 1. Got {}",
+                s.len()
+            );
+        }
+
+        Self::from_char(s.as_bytes()[0] as char)
     }
 }
 
@@ -383,26 +387,20 @@ impl Piece {
 
     /// Returns `true` if this [`Piece`] is a slider (Rook, Bishop, Queen).
     pub const fn is_slider(&self) -> bool {
-        match self.kind() {
-            PieceKind::Queen | PieceKind::Rook | PieceKind::Bishop => true,
-            _ => false,
-        }
+        matches!(
+            self.kind(),
+            PieceKind::Queen | PieceKind::Rook | PieceKind::Bishop
+        )
     }
 
     /// Returns `true` if this [`Piece`] is an orthogonal slider (Rook, Queen).
     pub const fn is_orthogonal_slider(&self) -> bool {
-        match self.kind() {
-            PieceKind::Queen | PieceKind::Rook => true,
-            _ => false,
-        }
+        matches!(self.kind(), PieceKind::Queen | PieceKind::Rook)
     }
 
     /// Returns `true` if this [`Piece`] is a diagonal slider (Bishop, Queen).
     pub const fn is_diagonal_slider(&self) -> bool {
-        match self.kind() {
-            PieceKind::Queen | PieceKind::Bishop => true,
-            _ => false,
-        }
+        matches!(self.kind(), PieceKind::Queen | PieceKind::Bishop)
     }
 
     /// Fetches the [`Color`] and [`PieceKind`] of this [`Piece`].

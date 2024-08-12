@@ -928,7 +928,7 @@ pub trait UciEngine {
     /// of `info <info>`.
     fn info(&self, info: UciInfo) -> Result<()> {
         // info!("using default implementation of UciEngine::info({info:?})");
-        self.send_uci_response(UciResponse::<String>::Info(info))
+        self.send_uci_response(UciResponse::<String>::Info(Box::new(info)))
     }
 
     /// Send the `option` message to `stdout` as follows:
@@ -1454,7 +1454,7 @@ pub enum UciResponse<T: fmt::Display = String> {
     /// ```text
     /// info [depth <x>] [seldepth <x>] [time <x>] [nodes <x>] [pv <move_1> [<move_2> ... <move_i>]] [score [cp <x> | mate <y>] [lowerbound | upperbound]] [currmove <move>] [currmovenumber <x>] [hashfull <x>] [nps <x>] [tbhits <x>] [sbhits <x>] [cpuload <x>] [string <str>] [refutation <move_1> <move_2> [... <move_i>]] [currline [cpunr] <move_1> [... <move_i>]]
     /// ```
-    Info(UciInfo),
+    Info(Box<UciInfo>),
 
     /// ```text
     /// option name <id> type <t> [default <x>] [min <x>] [max <x>] [var <x>]

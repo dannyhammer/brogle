@@ -1,6 +1,7 @@
 use std::{
     fmt,
     ops::{Index, IndexMut, Neg},
+    str::FromStr,
 };
 
 use anyhow::{bail, Result};
@@ -176,28 +177,6 @@ impl Color {
         }
     }
 
-    /// Creates a [`Color`] from a `str`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::Color;
-    /// let white = Color::from_str("w");
-    /// assert!(white.is_ok());
-    /// assert_eq!(white.unwrap(), Color::White);
-    ///
-    /// let err = Color::from_str("x");
-    /// assert!(err.is_err());
-    /// ```
-    pub fn from_str(color: &str) -> Result<Self> {
-        match color {
-            "w" | "W" => Ok(Self::White),
-            "b" | "B" => Ok(Self::Black),
-            _ => {
-                bail!("Color must be either \"w\" or \"b\" (case-insensitive). Found {color}")
-            }
-        }
-    }
-
     /// Creates a [`Color`] based on the ASCII case of the provided character, with uppercase being White and lowercase being Black.
     ///
     /// Note this is intended to follow the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation, but can be used in odd ways, such as trying to find the color of the char `'z'` (Black).
@@ -271,6 +250,32 @@ impl Neg for Color {
     /// Negating [`Color::White`] yields [`Color::Black`] and vice versa.
     fn neg(self) -> Self::Output {
         self.opponent()
+    }
+}
+
+impl FromStr for Color {
+    type Err = anyhow::Error;
+    /// Creates a [`Color`] from a `str`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_core::Color;
+    /// use std::str::FromStr;
+    /// let white = Color::from_str("w");
+    /// assert!(white.is_ok());
+    /// assert_eq!(white.unwrap(), Color::White);
+    ///
+    /// let err = Color::from_str("x");
+    /// assert!(err.is_err());
+    /// ```
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "w" | "W" => Ok(Self::White),
+            "b" | "B" => Ok(Self::Black),
+            _ => {
+                bail!("Color must be either \"w\" or \"b\" (case-insensitive). Found {s}")
+            }
+        }
     }
 }
 
