@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::{BitBoard, Color, Rank, Tile};
+use super::{Bitboard, Color, Rank, Tile};
 
 pub const FEN_STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 pub const FEN_KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
@@ -72,8 +72,8 @@ pub fn generate_ray_table_blobs<P: AsRef<Path>>(outdir: P) -> std::io::Result<()
     Ok(())
 }
 
-pub fn generate_ray_between_inclusive_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
-    let mut rays = [[BitBoard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
+pub fn generate_ray_between_inclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
+    let mut rays = [[Bitboard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
 
     for from in Tile::iter() {
         for (df, dr) in QUEEN_DELTAS {
@@ -90,12 +90,12 @@ pub fn generate_ray_between_inclusive_table() -> [[BitBoard; Tile::COUNT]; Tile:
     rays
 }
 
-pub fn generate_ray_between_exclusive_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
-    let mut rays = [[BitBoard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
+pub fn generate_ray_between_exclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
+    let mut rays = [[Bitboard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
 
     for from in Tile::iter() {
         for (df, dr) in QUEEN_DELTAS {
-            let mut ray = BitBoard::default(); // Do not include `from`
+            let mut ray = Bitboard::default(); // Do not include `from`
             let mut to = from;
             while let Some(shifted) = to.offset(df, dr) {
                 ray.set(shifted);
@@ -108,8 +108,8 @@ pub fn generate_ray_between_exclusive_table() -> [[BitBoard; Tile::COUNT]; Tile:
     rays
 }
 
-pub fn generate_ray_containing_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT] {
-    let mut rays = [[BitBoard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
+pub fn generate_ray_containing_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
+    let mut rays = [[Bitboard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
 
     for from in Tile::iter() {
         let fr = from.rank();
@@ -118,11 +118,11 @@ pub fn generate_ray_containing_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT]
             let tr = to.rank();
             let tf = to.file();
             if from == to {
-                rays[from][to] = BitBoard::from_tile(from);
+                rays[from][to] = Bitboard::from_tile(from);
             } else if fr == tr {
-                rays[from][to] = BitBoard::from_rank(fr);
+                rays[from][to] = Bitboard::from_rank(fr);
             } else if ff == tf {
-                rays[from][to] = BitBoard::from_file(ff);
+                rays[from][to] = Bitboard::from_file(ff);
             } else {
                 // To check if these lie on a diagonal, compute (y1 - y2) / (x1 - x2)
                 let file_diff = from.file().inner() as i32 - to.file().inner() as i32;
@@ -188,7 +188,7 @@ pub fn generate_ray_containing_table() -> [[BitBoard; Tile::COUNT]; Tile::COUNT]
 ///
 /// You can use `include_bytes!()` to read from these blobs like so:
 /// ```compile_fail
-/// const KNIGHT_MOVES: [BitBoard; 64] = unsafe { std::mem::transmute(*include_bytes!("knight_mobility.blob")) };
+/// const KNIGHT_MOVES: [Bitboard; 64] = unsafe { std::mem::transmute(*include_bytes!("knight_mobility.blob")) };
 /// ```
 pub fn generate_mobility_blobs<P: AsRef<Path>>(outdir: P) -> std::io::Result<()> {
     // Generate the blobs
@@ -225,10 +225,10 @@ pub fn generate_mobility_blobs<P: AsRef<Path>>(outdir: P) -> std::io::Result<()>
 /// Generates the default push mobility for Pawns.
 ///
 /// Pawns, by default, may push forward by one, except when pushing from their starting rank (rank 2 for White, rank 7 for Black), in which case they may push forward by two.
-fn generate_pawn_pushes(color: Color) -> [BitBoard; 64] {
-    let mut boards = [BitBoard::default(); Tile::COUNT];
+fn generate_pawn_pushes(color: Color) -> [Bitboard; 64] {
+    let mut boards = [Bitboard::default(); Tile::COUNT];
     for tile in Tile::iter() {
-        let bb = BitBoard::from_tile(tile);
+        let bb = Bitboard::from_tile(tile);
 
         if tile.rank() == Rank::second(color) {
             boards[tile] = bb.advance_by(color, 1) | bb.advance_by(color, 2);
@@ -242,10 +242,10 @@ fn generate_pawn_pushes(color: Color) -> [BitBoard; 64] {
 /// Generates the default attack mobility for Pawns.
 ///
 /// Pawns, by default, may capture diagonally forward by one.
-fn generate_pawn_attacks(color: Color) -> [BitBoard; 64] {
-    let mut boards = [BitBoard::default(); Tile::COUNT];
+fn generate_pawn_attacks(color: Color) -> [Bitboard; 64] {
+    let mut boards = [Bitboard::default(); Tile::COUNT];
     for tile in Tile::iter() {
-        let bb = BitBoard::from_tile(tile);
+        let bb = Bitboard::from_tile(tile);
 
         boards[tile] = bb.advance_by(color, 1).east() | bb.advance_by(color, 1).west();
     }
@@ -256,14 +256,14 @@ fn generate_pawn_attacks(color: Color) -> [BitBoard; 64] {
 /// Leapers may "leap" or "jump" to a square a specified distance away.
 ///
 /// In standard chess, the Leapers are the King and Knight.
-fn generate_leaper_mobility(deltas: &[(i8, i8)]) -> [BitBoard; Tile::COUNT] {
+fn generate_leaper_mobility(deltas: &[(i8, i8)]) -> [Bitboard; Tile::COUNT] {
     // Represents all locations this piece can reach from that tile/index.
-    let mut mobility = [BitBoard::default(); Tile::COUNT];
+    let mut mobility = [Bitboard::default(); Tile::COUNT];
 
     for tile in Tile::iter() {
         // All reachable locations from `tile`.
         // This is empty because we cannot "move to" the tile where we are currently.
-        let mut movement = BitBoard::default();
+        let mut movement = Bitboard::default();
 
         // Loop over every pair of deltas
         for (df, dr) in deltas {
@@ -284,14 +284,14 @@ fn generate_leaper_mobility(deltas: &[(i8, i8)]) -> [BitBoard; Tile::COUNT] {
 /// Riders may "ride" or "slide" an unlimited number of squares in a direction.
 ///
 /// In standard chess, the Riders are the Rook, Bishop, and Queen.
-fn generate_rider_mobility(deltas: &[(i8, i8)]) -> [BitBoard; Tile::COUNT] {
+fn generate_rider_mobility(deltas: &[(i8, i8)]) -> [Bitboard; Tile::COUNT] {
     // Represents all locations this piece can reach from that tile/index.
-    let mut mobility = [BitBoard::default(); Tile::COUNT];
+    let mut mobility = [Bitboard::default(); Tile::COUNT];
 
     for tile in Tile::iter() {
         // All reachable locations from `tile`.
         // This is empty because we cannot "move to" the tile where we are currently.
-        let mut movement = BitBoard::default();
+        let mut movement = Bitboard::default();
 
         // Loop over every pair of deltas
         for (df, dr) in deltas {
@@ -313,32 +313,32 @@ fn generate_rider_mobility(deltas: &[(i8, i8)]) -> [BitBoard; Tile::COUNT] {
 }
 
 /// Generates the default mobility for the King.
-fn generate_king_mobility() -> [BitBoard; 64] {
+fn generate_king_mobility() -> [Bitboard; 64] {
     generate_leaper_mobility(&QUEEN_DELTAS)
 }
 
 /// Generates the default mobility for the Knight.
-fn generate_knight_mobility() -> [BitBoard; 64] {
+fn generate_knight_mobility() -> [Bitboard; 64] {
     generate_leaper_mobility(&KNIGHT_DELTAS)
 }
 
 /// Generates the default mobility for the Rook.
-fn generate_rook_mobility() -> [BitBoard; Tile::COUNT] {
+fn generate_rook_mobility() -> [Bitboard; Tile::COUNT] {
     generate_rider_mobility(&ROOK_DELTAS)
 }
 
 /// Generates the default mobility for the Bishop.
-fn generate_bishop_mobility() -> [BitBoard; Tile::COUNT] {
+fn generate_bishop_mobility() -> [Bitboard; Tile::COUNT] {
     generate_rider_mobility(&BISHOP_DELTAS)
 }
 
 /// Generates the default mobility for the Queen.
-fn generate_queen_mobility() -> [BitBoard; Tile::COUNT] {
+fn generate_queen_mobility() -> [Bitboard; Tile::COUNT] {
     generate_rider_mobility(&QUEEN_DELTAS)
 }
 
 /// Generates the default mobility for the Dragon (Queen + Knight).
-fn generate_dragon_mobility() -> [BitBoard; Tile::COUNT] {
+fn generate_dragon_mobility() -> [Bitboard; Tile::COUNT] {
     let mut dragon = generate_rider_mobility(&QUEEN_DELTAS);
     let knight = generate_leaper_mobility(&KNIGHT_DELTAS);
 

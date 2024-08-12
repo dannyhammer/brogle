@@ -1,17 +1,17 @@
 use macroquad::prelude::*;
 
-use brogle_core::{BitBoard, File, Rank, Tile};
+use brogle_core::{Bitboard, File, Rank, Tile};
 
 fn draw_centered_text(text: &str, x: f32, y: f32, font_size: f32, color: Color) {
     let center = get_text_center(text, None, font_size as u16, 1.0, 0.0);
     draw_text(text, x - center.x, y - center.y, font_size, color);
 }
 
-fn parse_args() -> BitBoard {
+fn parse_args() -> Bitboard {
     let mut args = std::env::args().skip(1);
 
     if args.len() < 1 {
-        BitBoard::default()
+        Bitboard::default()
     } else {
         let bit_string = args.next().unwrap().to_lowercase();
         let radix = if bit_string.starts_with("0x") || bit_string.len() == 16 {
@@ -23,7 +23,7 @@ fn parse_args() -> BitBoard {
         let bits = u64::from_str_radix(bit_string, radix)
             .expect("Expected argument of hexadecimal or binary number");
 
-        BitBoard::new(bits)
+        Bitboard::new(bits)
     }
 }
 

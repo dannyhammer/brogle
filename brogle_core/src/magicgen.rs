@@ -1,6 +1,6 @@
 use rand::random;
 
-use super::{BitBoard, Tile};
+use super::{Bitboard, Tile};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 struct MagicEntry {
@@ -10,7 +10,7 @@ struct MagicEntry {
     // pub(crate) offset: usize,
 }
 
-fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
+fn magic_index(entry: &MagicEntry, blockers: Bitboard) -> usize {
     let blockers = blockers.0 & entry.mask;
     let hash = blockers.wrapping_mul(entry.magic);
     let index = (hash >> entry.shift) as usize;
@@ -32,8 +32,8 @@ impl SlidingPiece {
         deltas: [(1, 1), (1, -1), (-1, -1), (-1, 1)],
     };
 
-    fn blockers(&self, tile: Tile) -> BitBoard {
-        let mut blockers = BitBoard::default();
+    fn blockers(&self, tile: Tile) -> Bitboard {
+        let mut blockers = Bitboard::default();
         for (df, dr) in self.deltas {
             let mut ray = tile;
             while let Some(shifted) = ray.offset(df, dr) {
@@ -46,8 +46,8 @@ impl SlidingPiece {
         blockers
     }
 
-    fn moves(&self, tile: Tile, blockers: BitBoard) -> BitBoard {
-        let mut moves = BitBoard::EMPTY_BOARD;
+    fn moves(&self, tile: Tile, blockers: Bitboard) -> Bitboard {
+        let mut moves = Bitboard::EMPTY_BOARD;
 
         for (df, dr) in self.deltas {
             let mut ray = tile;
@@ -65,7 +65,7 @@ impl SlidingPiece {
     }
 }
 
-fn find_magic(slider: &SlidingPiece, tile: Tile, index_bits: u8) -> (MagicEntry, Vec<BitBoard>) {
+fn find_magic(slider: &SlidingPiece, tile: Tile, index_bits: u8) -> (MagicEntry, Vec<Bitboard>) {
     let mask = slider.blockers(tile).0;
     let shift = 64 - index_bits;
     loop {
@@ -80,11 +80,11 @@ fn try_make_table(
     slider: &SlidingPiece,
     tile: Tile,
     magic_entry: &MagicEntry,
-) -> Result<Vec<BitBoard>, &'static str> {
+) -> Result<Vec<Bitboard>, &'static str> {
     let index_bits = 64 - magic_entry.shift;
-    let mut table = vec![BitBoard::EMPTY_BOARD; 1 << index_bits];
+    let mut table = vec![Bitboard::EMPTY_BOARD; 1 << index_bits];
 
-    let mut blockers = BitBoard::EMPTY_BOARD;
+    let mut blockers = Bitboard::EMPTY_BOARD;
     loop {
         let moves = slider.moves(tile, blockers);
         let table_entry = &mut table[magic_index(magic_entry, blockers)];
@@ -95,7 +95,7 @@ fn try_make_table(
             return Err("Table Fill Error");
         }
 
-        blockers.carry_rippler(BitBoard(magic_entry.mask));
+        blockers.carry_rippler(Bitboard(magic_entry.mask));
         if blockers.is_empty() {
             break;
         }
@@ -133,20 +133,20 @@ pub fn print_magics() {
 ////////////////////// Below is for move generation, and requires magics to be generated
 
 /*
-fn make_table(slider: &SlidingPiece,size: usize, magics: &[MagicEntry; Tile::COUNT]) -> Vec<BitBoard> {
-    let mut table = vec![BitBoard::default(); size];
+fn make_table(slider: &SlidingPiece,size: usize, magics: &[MagicEntry; Tile::COUNT]) -> Vec<Bitboard> {
+    let mut table = vec![Bitboard::default(); size];
 
     for tile in Tile::iter() {
         let magic_entry = &magics[tile];
-        let mask = BitBoard::new(magic_entry.mask);
+        let mask = Bitboard::new(magic_entry.mask);
 
-        let mut blockers = BitBoard::EMPTY_BOARD;
+        let mut blockers = Bitboard::EMPTY_BOARD;
         loop {
         let moves = slider.moves(tile, blockers);
         table[magic_index(magic_entry, blockers)] = moves;
 
 
-        blockers.carry_rippler(BitBoard(magic_entry.mask));
+        blockers.carry_rippler(Bitboard(magic_entry.mask));
         if blockers.is_empty() {
             break;
         }
@@ -184,7 +184,7 @@ fn write_magics(
     for entry in magics {
 
         write!(out,
-            "  MagicEntry {{ mask: BitBoard(0x{:016X}), magic: 0x{:016X}, shift: {}, offset: {} }},",
+            "  MagicEntry {{ mask: Bitboard(0x{:016X}), magic: 0x{:016X}, shift: {}, offset: {} }},",
             entry.mask,entry.magic, entry.shift, entry.offset)?;
     }
 
@@ -198,7 +198,7 @@ pub fn magics_gen() {
     let mut out = PathBuf::from("src/core");
     out.push("magics.rs");
     let mut out = BufWriter::new(File::create(out).unwrap());
-    write!(out, "use super::{{BitBoard, MagicEntry, Tile}};").unwrap();
+    write!(out, "use super::{{Bitboard, MagicEntry, Tile}};").unwrap();
 
     let (rook_magics, rook_table_size) = find_magics(&SlidingPiece::ROOK);
     let (bishop_magics, bishop_table_size) = find_magics(&SlidingPiece::ROOK);

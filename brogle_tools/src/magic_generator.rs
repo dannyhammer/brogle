@@ -3,19 +3,19 @@ use std::io::prelude::*;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use brogle_core::{BitBoard, Tile};
+use brogle_core::{Bitboard, Tile};
 mod magics;
 use crate::magics::*;
 
-fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
+fn magic_index(entry: &MagicEntry, blockers: Bitboard) -> usize {
     let blockers = blockers.inner() & entry.mask;
     let hash = blockers.wrapping_mul(entry.magic);
     let index = (hash >> entry.shift) as usize;
     entry.offset + index
 }
 
-fn slider_moves(slider_deltas: &[(i8, i8)], tile: Tile, blockers: BitBoard) -> BitBoard {
-    let mut moves = BitBoard::EMPTY_BOARD;
+fn slider_moves(slider_deltas: &[(i8, i8)], tile: Tile, blockers: Bitboard) -> Bitboard {
+    let mut moves = Bitboard::EMPTY_BOARD;
     for &(df, dr) in slider_deltas {
         let mut ray = tile;
         while !blockers.get(ray) {
@@ -34,18 +34,18 @@ fn make_table(
     table_size: usize,
     slider_deltas: &[(i8, i8)],
     magics: &[MagicEntry; Tile::COUNT],
-) -> Vec<BitBoard> {
-    let mut table = vec![BitBoard::EMPTY_BOARD; table_size];
+) -> Vec<Bitboard> {
+    let mut table = vec![Bitboard::EMPTY_BOARD; table_size];
     for tile in Tile::iter() {
         let magic_entry = &magics[tile];
-        let mask = BitBoard::new(magic_entry.mask);
+        let mask = Bitboard::new(magic_entry.mask);
 
-        let mut blockers = BitBoard::EMPTY_BOARD;
+        let mut blockers = Bitboard::EMPTY_BOARD;
         loop {
             let moves = slider_moves(slider_deltas, tile, blockers);
             table[magic_index(magic_entry, blockers)] = moves;
 
-            blockers.carry_rippler(mask);
+            blockers = blockers.carry_rippler(mask);
             if blockers.is_empty() {
                 break;
             }
@@ -54,7 +54,7 @@ fn make_table(
     table
 }
 
-fn write_table(name: &str, table: &[BitBoard], out: &mut impl Write) -> std::io::Result<()> {
+fn write_table(name: &str, table: &[Bitboard], out: &mut impl Write) -> std::io::Result<()> {
     write!(out, "const {}_MOVES: &[u64; {}] = &[", name, table.len())?;
     for entry in table {
         write!(out, "{},", entry.inner())?;

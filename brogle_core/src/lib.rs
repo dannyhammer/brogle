@@ -1,4 +1,4 @@
-/// All things related to BitBoards!
+/// All things related to Bitboards!
 pub mod bitboard;
 
 /// Simple enum for white and black colors.

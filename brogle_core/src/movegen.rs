@@ -3,7 +3,7 @@ use std::ops::Deref;
 use arrayvec::ArrayVec;
 
 use super::{
-    BitBoard, ChessBoard, Color, Move, MoveKind, Piece, PieceKind, Position, Rank, Tile,
+    Bitboard, ChessBoard, Color, Move, MoveKind, Piece, PieceKind, Position, Rank, Tile,
     MAX_NUM_MOVES, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
@@ -11,25 +11,25 @@ include!("blobs/magics.rs"); // TODO: Make these into blobs
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MoveGenerator {
-    pub(crate) position: Position,
-    attacks_by_color: [BitBoard; NUM_COLORS],
-    attacks_by_tile: [BitBoard; Tile::COUNT],
-    pinmasks: (BitBoard, BitBoard),
-    checkers: BitBoard,
-    discoverable_checks: BitBoard,
-    legal_mobility: [BitBoard; Tile::COUNT],
+    position: Position,
+    attacks_by_color: [Bitboard; NUM_COLORS],
+    attacks_by_tile: [Bitboard; Tile::COUNT],
+    pinmasks: (Bitboard, Bitboard),
+    checkers: Bitboard,
+    discoverable_checks: Bitboard,
+    legal_mobility: [Bitboard; Tile::COUNT],
 }
 
 impl MoveGenerator {
     pub fn new(position: Position) -> Self {
         let mut movegen = Self {
             position,
-            attacks_by_color: [BitBoard::default(); NUM_COLORS],
-            pinmasks: (BitBoard::default(), BitBoard::default()),
-            checkers: BitBoard::default(),
-            discoverable_checks: BitBoard::default(),
-            attacks_by_tile: [BitBoard::default(); Tile::COUNT],
-            legal_mobility: [BitBoard::default(); Tile::COUNT],
+            attacks_by_color: [Bitboard::default(); NUM_COLORS],
+            pinmasks: (Bitboard::default(), Bitboard::default()),
+            checkers: Bitboard::default(),
+            discoverable_checks: Bitboard::default(),
+            attacks_by_tile: [Bitboard::default(); Tile::COUNT],
+            legal_mobility: [Bitboard::default(); Tile::COUNT],
         };
 
         movegen.generate_pseudo_legal();
@@ -60,31 +60,31 @@ impl MoveGenerator {
         &self.position
     }
 
-    pub const fn attacks_by_color(&self, color: Color) -> BitBoard {
+    pub const fn attacks_by_color(&self, color: Color) -> Bitboard {
         self.attacks_by_color[color.index()]
     }
 
-    pub const fn attacks_by_tile(&self, tile: Tile) -> BitBoard {
+    pub const fn attacks_by_tile(&self, tile: Tile) -> Bitboard {
         self.attacks_by_tile[tile.index()]
     }
 
-    pub const fn pinmasks(&self) -> (BitBoard, BitBoard) {
+    pub const fn pinmasks(&self) -> (Bitboard, Bitboard) {
         self.pinmasks
     }
 
-    pub const fn pinmask(&self) -> BitBoard {
+    pub const fn pinmask(&self) -> Bitboard {
         self.pinmask_ortho().or(self.pinmask_diag())
     }
 
-    pub const fn pinmask_ortho(&self) -> BitBoard {
+    pub const fn pinmask_ortho(&self) -> Bitboard {
         self.pinmasks().0
     }
 
-    pub const fn pinmask_diag(&self) -> BitBoard {
+    pub const fn pinmask_diag(&self) -> Bitboard {
         self.pinmasks().1
     }
 
-    pub const fn checkers(&self) -> BitBoard {
+    pub const fn checkers(&self) -> Bitboard {
         self.checkers
     }
 
@@ -133,7 +133,7 @@ impl MoveGenerator {
         let enemy_or_empty = self.enemy_or_empty(color);
         let checkmask = match self.checkers.population() {
             // Not in check; checkmask is irrelevant
-            0 => BitBoard::FULL_BOARD,
+            0 => Bitboard::FULL_BOARD,
             // In single-check, so something must capture or block the check, or the king must leave check
             1 => {
                 // Need to OR so that the attacking piece appears in the checkmask (Knights)
@@ -182,7 +182,7 @@ impl MoveGenerator {
     fn compute_pawn_moves(
         &self,
         color: Color,
-        checkmask: BitBoard,
+        checkmask: Bitboard,
         moves: &mut ArrayVec<Move, MAX_NUM_MOVES>,
     ) {
         // Fetch all pinned and unpinned pawns
@@ -202,7 +202,7 @@ impl MoveGenerator {
         let legal_push_mask = !self.occupied() & checkmask;
         let single_pushes = pushes & legal_push_mask;
         // If it can push once, check if it's on the third rank. If so, it can push again.
-        let third_rank = BitBoard::third_rank(color);
+        let third_rank = Bitboard::third_rank(color);
         let double_pushes = (single_pushes & third_rank).advance_by(color, 1) & legal_push_mask;
 
         // eprintln!("DOUBLE PUSHES:\n{double_pushes:?}");
@@ -264,10 +264,10 @@ impl MoveGenerator {
     fn compute_pawn_moves(
         &self,
         color: Color,
-        checkmask: BitBoard,
+        checkmask: Bitboard,
         moves: &mut ArrayVec<Move, MAX_NUM_MOVES>,
     ) {
-        // A BitBoard of our King
+        // A Bitboard of our King
         let king_bb = self.king(color);
 
         for from in self.piece_parts(color, PieceKind::Pawn) {
@@ -276,7 +276,7 @@ impl MoveGenerator {
 
             // Check if this piece is pinned along any of the pinmasks
             let is_pinned = self.pinmask().get(from);
-            let pinmask = BitBoard::from_bool(!is_pinned) | pinning_ray;
+            let pinmask = Bitboard::from_bool(!is_pinned) | pinning_ray;
             // println!("PAWN PINMASK ({is_pinned}):\n{pinmask:?}");
 
             //
@@ -285,7 +285,7 @@ impl MoveGenerator {
             //  - If pinned on a rank, it cannot do anything
             //  - If pinned on a diagonal, it can only capture, and only along that diagonal
 
-            // A BitBoard of this piece
+            // A Bitboard of this piece
             let piece_bb = from.bitboard();
             // All pseudo-legal attacks for this Pawn
             let attacks = pawn_attacks(from, color);
@@ -308,10 +308,10 @@ impl MoveGenerator {
 
                 // If the enemy could now attack our King, en passant is not legal
                 // eprintln!("EP IS SAFE");
-                BitBoard::from_bool(!enemy_attacks.contains(&king_bb)) & ep_bb
+                Bitboard::from_bool(!enemy_attacks.contains(&king_bb)) & ep_bb
             } else {
                 // eprintln!("EP IS NOT SAFE");
-                BitBoard::default()
+                Bitboard::default()
             };
 
             // eprintln!("EP:\n{ep_bb}");
@@ -380,7 +380,7 @@ impl MoveGenerator {
         &self,
         color: Color,
         king_tile: Tile,
-        checkmask: BitBoard,
+        checkmask: Bitboard,
         moves: &mut ArrayVec<Move, MAX_NUM_MOVES>,
     ) {
         // Loop over every tile containing this piece
@@ -391,7 +391,7 @@ impl MoveGenerator {
 
             // Check if this piece is pinned along any of the pinmasks
             let is_pinned = self.pinmask().get(from);
-            let pinmask = BitBoard::from_bool(!is_pinned) | ray_containing(from, king_tile);
+            let pinmask = Bitboard::from_bool(!is_pinned) | ray_containing(from, king_tile);
 
             for to in pseudo_legal & checkmask & pinmask & self.enemy_or_empty(color) {
                 let kind = if self.position().board().has(to) {
@@ -408,7 +408,7 @@ impl MoveGenerator {
     fn compute_king_moves(
         &self,
         color: Color,
-        blockers: BitBoard,
+        blockers: Bitboard,
         moves: &mut ArrayVec<Move, MAX_NUM_MOVES>,
     ) {
         // Loop over every tile containing this piece
@@ -420,7 +420,7 @@ impl MoveGenerator {
 
             let castling_availability = |side: [bool; 2], rook_tile, dst_tile| {
                 // Check if we can castle at all on this side
-                let can_castle = BitBoard::from_bool(side[color]);
+                let can_castle = Bitboard::from_bool(side[color]);
 
                 // No squares between the Rook and King may be under attack by the enemy
                 let castling = can_castle & ray_between_inclusive(from, rook_tile);
@@ -435,7 +435,7 @@ impl MoveGenerator {
                 if not_attacked && is_clear {
                     castling
                 } else {
-                    BitBoard::EMPTY_BOARD
+                    Bitboard::EMPTY_BOARD
                 }
             };
 
@@ -499,9 +499,9 @@ impl MoveGenerator {
         }
     }
 
-    /// Computes a [`BitBoard`] of all of the squares that can be attacked by [`Color`] pieces.
-    fn compute_squares_attacked_by(&self, board: &ChessBoard, color: Color) -> BitBoard {
-        let mut attacks = BitBoard::EMPTY_BOARD;
+    /// Computes a [`Bitboard`] of all of the squares that can be attacked by [`Color`] pieces.
+    fn compute_squares_attacked_by(&self, board: &ChessBoard, color: Color) -> Bitboard {
+        let mut attacks = Bitboard::EMPTY_BOARD;
 
         // All occupied spaces
         let blockers = board.occupied();
@@ -516,13 +516,13 @@ impl MoveGenerator {
         attacks
     }
 
-    /// Computes a [`BitBoard`] of all the pieces that attack the provided [`Tile`].
+    /// Computes a [`Bitboard`] of all the pieces that attack the provided [`Tile`].
     const fn compute_attacks_to(
         &self,
         board: &ChessBoard,
         tile: Tile,
         attacker_color: Color,
-    ) -> BitBoard {
+    ) -> Bitboard {
         let pawns = board.piece_parts(attacker_color, PieceKind::Pawn);
         let knights = board.piece_parts(attacker_color, PieceKind::Knight);
         let bishops = board.piece_parts(attacker_color, PieceKind::Bishop);
@@ -544,9 +544,9 @@ impl MoveGenerator {
         board: &ChessBoard,
         tile: Tile,
         color: Color,
-    ) -> (BitBoard, BitBoard) {
-        let mut pinmask_ortho = BitBoard::default();
-        let mut pinmask_diag = BitBoard::default();
+    ) -> (Bitboard, Bitboard) {
+        let mut pinmask_ortho = Bitboard::default();
+        let mut pinmask_diag = Bitboard::default();
         let opponent = color.opponent();
         let occupied = board.occupied();
 
@@ -592,49 +592,49 @@ impl Default for MoveGenerator {
         Self {
             position: Position::default(),
             attacks_by_color: Default::default(),
-            attacks_by_tile: [BitBoard::default(); Tile::COUNT],
+            attacks_by_tile: [Bitboard::default(); Tile::COUNT],
             pinmasks: Default::default(),
             checkers: Default::default(),
             discoverable_checks: Default::default(),
-            legal_mobility: [BitBoard::default(); Tile::COUNT],
+            legal_mobility: [Bitboard::default(); Tile::COUNT],
         }
     }
 }
 
-const RAY_BETWEEN_EXCLUSIVE: [[BitBoard; Tile::COUNT]; Tile::COUNT] =
+const RAY_BETWEEN_EXCLUSIVE: [[Bitboard; Tile::COUNT]; Tile::COUNT] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/ray_between_exclusive.blob")) };
 
-const RAY_BETWEEN_INCLUSIVE: [[BitBoard; Tile::COUNT]; Tile::COUNT] =
+const RAY_BETWEEN_INCLUSIVE: [[Bitboard; Tile::COUNT]; Tile::COUNT] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/ray_between_inclusive.blob")) };
 
-const RAY_CONTAINING: [[BitBoard; Tile::COUNT]; Tile::COUNT] =
+const RAY_CONTAINING: [[Bitboard; Tile::COUNT]; Tile::COUNT] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/ray_containing.blob")) };
 
-const KNIGHT_ATTACKS: [BitBoard; 64] =
+const KNIGHT_ATTACKS: [Bitboard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/knight_mobility.blob")) };
 
-// const QUEEN_ATTACKS: [BitBoard; 64] =
+// const QUEEN_ATTACKS: [Bitboard; 64] =
 //     unsafe { std::mem::transmute(*include_bytes!("blobs/queen_mobility.blob")) };
 
-const ROOK_MOBILITY: [BitBoard; 64] =
+const ROOK_MOBILITY: [Bitboard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/rook_mobility.blob")) };
 
-const BISHOP_MOBILITY: [BitBoard; 64] =
+const BISHOP_MOBILITY: [Bitboard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/bishop_mobility.blob")) };
 
-const KING_ATTACKS: [BitBoard; 64] =
+const KING_ATTACKS: [Bitboard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/king_mobility.blob")) };
 
-const WHITE_PAWN_PUSHES: [BitBoard; 64] =
+const WHITE_PAWN_PUSHES: [Bitboard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/white_pawn_push_mobility.blob")) };
 
-const BLACK_PAWN_PUSHES: [BitBoard; 64] =
+const BLACK_PAWN_PUSHES: [Bitboard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/black_pawn_push_mobility.blob")) };
 
-const WHITE_PAWN_ATTACKS: [BitBoard; 64] =
+const WHITE_PAWN_ATTACKS: [Bitboard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/white_pawn_attack_mobility.blob")) };
 
-const BLACK_PAWN_ATTACKS: [BitBoard; 64] =
+const BLACK_PAWN_ATTACKS: [Bitboard; 64] =
     unsafe { std::mem::transmute(*include_bytes!("blobs/black_pawn_attack_mobility.blob")) };
 
 struct MagicEntry {
@@ -644,11 +644,11 @@ struct MagicEntry {
     offset: u32,
 }
 
-pub fn pseudo_legal_movement_for(piece: &Piece, tile: Tile, blockers: BitBoard) -> BitBoard {
+pub fn pseudo_legal_movement_for(piece: &Piece, tile: Tile, blockers: Bitboard) -> Bitboard {
     MOVE_HELPERS[piece.kind().index()](tile, blockers, piece.color())
 }
 
-const MOVE_HELPERS: [fn(Tile, BitBoard, Color) -> BitBoard; NUM_PIECE_TYPES] = [
+const MOVE_HELPERS: [fn(Tile, Bitboard, Color) -> Bitboard; NUM_PIECE_TYPES] = [
     pawn_move_helper,
     knight_move_helper,
     bishop_move_helper,
@@ -657,85 +657,85 @@ const MOVE_HELPERS: [fn(Tile, BitBoard, Color) -> BitBoard; NUM_PIECE_TYPES] = [
     king_move_helper,
 ];
 
-const fn pawn_move_helper(tile: Tile, _blockers: BitBoard, color: Color) -> BitBoard {
+const fn pawn_move_helper(tile: Tile, _blockers: Bitboard, color: Color) -> Bitboard {
     pawn_attacks(tile, color)
     // pawn_moves(tile, color, blockers)
 }
 
-const fn knight_move_helper(tile: Tile, _: BitBoard, _: Color) -> BitBoard {
+const fn knight_move_helper(tile: Tile, _: Bitboard, _: Color) -> Bitboard {
     knight_attacks(tile)
 }
 
-const fn bishop_move_helper(tile: Tile, blockers: BitBoard, _: Color) -> BitBoard {
+const fn bishop_move_helper(tile: Tile, blockers: Bitboard, _: Color) -> Bitboard {
     bishop_attacks(tile, blockers)
 }
 
-const fn rook_move_helper(tile: Tile, blockers: BitBoard, _: Color) -> BitBoard {
+const fn rook_move_helper(tile: Tile, blockers: Bitboard, _: Color) -> Bitboard {
     rook_attacks(tile, blockers)
 }
 
-const fn queen_move_helper(tile: Tile, blockers: BitBoard, _: Color) -> BitBoard {
+const fn queen_move_helper(tile: Tile, blockers: Bitboard, _: Color) -> Bitboard {
     rook_attacks(tile, blockers).or(bishop_attacks(tile, blockers))
 }
 
-const fn king_move_helper(tile: Tile, _: BitBoard, _: Color) -> BitBoard {
+const fn king_move_helper(tile: Tile, _: Bitboard, _: Color) -> Bitboard {
     king_attacks(tile)
 }
 
-const fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
+const fn magic_index(entry: &MagicEntry, blockers: Bitboard) -> usize {
     let blockers = blockers.0 & entry.mask;
     let hash = blockers.wrapping_mul(entry.magic);
     let index = (hash >> entry.shift) as usize;
     entry.offset as usize + index
 }
 
-/// Fetches a [`BitBoard`] with all of the bits along the ray between `from` and `to` (inclusive) set to `1`.
-pub const fn ray_between_inclusive(from: Tile, to: Tile) -> BitBoard {
+/// Fetches a [`Bitboard`] with all of the bits along the ray between `from` and `to` (inclusive) set to `1`.
+pub const fn ray_between_inclusive(from: Tile, to: Tile) -> Bitboard {
     RAY_BETWEEN_INCLUSIVE[from.index()][to.index()]
 }
 
-/// Fetches a [`BitBoard`] with all of the bits along the ray between `from` and `to` (exclusive) set to `1`.
-pub const fn ray_between_exclusive(from: Tile, to: Tile) -> BitBoard {
+/// Fetches a [`Bitboard`] with all of the bits along the ray between `from` and `to` (exclusive) set to `1`.
+pub const fn ray_between_exclusive(from: Tile, to: Tile) -> Bitboard {
     RAY_BETWEEN_EXCLUSIVE[from.index()][to.index()]
 }
 
-/// Fetches a [`BitBoard`] with all of the bits along the ray containing `from` and `to` set to `1`.
-pub const fn ray_containing(from: Tile, to: Tile) -> BitBoard {
+/// Fetches a [`Bitboard`] with all of the bits along the ray containing `from` and `to` set to `1`.
+pub const fn ray_containing(from: Tile, to: Tile) -> Bitboard {
     RAY_CONTAINING[from.index()][to.index()]
 }
 
 /// Computes the possible moves for a Rook at a given [`Tile`] with the provided blockers.
 ///
-/// This will yield a [`BitBoard`] that allows the Rook to capture the first blocker.
-pub const fn rook_attacks(tile: Tile, blockers: BitBoard) -> BitBoard {
+/// This will yield a [`Bitboard`] that allows the Rook to capture the first blocker.
+pub const fn rook_attacks(tile: Tile, blockers: Bitboard) -> Bitboard {
     let magic = &ROOK_MAGICS[tile.index()];
-    BitBoard(ROOK_MOVES[magic_index(magic, blockers)])
+    Bitboard(ROOK_MOVES[magic_index(magic, blockers)])
 }
 
 /// Computes the possible moves for a Bishop at a given [`Tile`] with the provided blockers.
 ///
-/// This will yield a [`BitBoard`] that allows the Bishop to capture the first blocker.
-pub const fn bishop_attacks(tile: Tile, blockers: BitBoard) -> BitBoard {
+/// This will yield a [`Bitboard`] that allows the Bishop to capture the first blocker.
+pub const fn bishop_attacks(tile: Tile, blockers: Bitboard) -> Bitboard {
     let magic = &BISHOP_MAGICS[tile.index()];
-    BitBoard(BISHOP_MOVES[magic_index(magic, blockers)])
+    Bitboard(BISHOP_MOVES[magic_index(magic, blockers)])
 }
 
 /// Computes the possible moves for a Queen at a given [`Tile`] with the provided blockers.
 ///
-/// This will yield a [`BitBoard`] that allows the Queen to capture the first blocker.
-pub const fn queen_attacks(tile: Tile, blockers: BitBoard) -> BitBoard {
+/// This will yield a [`Bitboard`] that allows the Queen to capture the first blocker.
+pub const fn queen_attacks(tile: Tile, blockers: Bitboard) -> Bitboard {
     rook_attacks(tile, blockers).or(bishop_attacks(tile, blockers))
 }
 
-pub const fn knight_attacks(tile: Tile) -> BitBoard {
+pub const fn knight_attacks(tile: Tile) -> Bitboard {
     KNIGHT_ATTACKS[tile.index()]
 }
 
-pub const fn king_attacks(tile: Tile) -> BitBoard {
+pub const fn king_attacks(tile: Tile) -> Bitboard {
     KING_ATTACKS[tile.index()]
 }
 
-pub const fn pawn_moves(tile: Tile, color: Color, blockers: BitBoard) -> BitBoard {
+pub const fn pawn_moves(tile: Tile, color: Color, blockers: Bitboard) -> Bitboard {
     // By default, a pawn can push forward two on it's starting rank, and one elsewhere
     // We get a mask of all the blockers (minus this piece) and shift it twice forward
     // So, if this pawn *could* move forward twice, but there was a piece directly in front of it, it now cannot move
@@ -751,14 +751,14 @@ pub const fn pawn_moves(tile: Tile, color: Color, blockers: BitBoard) -> BitBoar
     pushes.or(attacks)
 }
 
-pub const fn pawn_pushes(tile: Tile, color: Color) -> BitBoard {
+pub const fn pawn_pushes(tile: Tile, color: Color) -> Bitboard {
     [
         WHITE_PAWN_PUSHES[tile.index()],
         BLACK_PAWN_PUSHES[tile.index()],
     ][color.index()]
 }
 
-pub const fn pawn_attacks(tile: Tile, color: Color) -> BitBoard {
+pub const fn pawn_attacks(tile: Tile, color: Color) -> Bitboard {
     [
         WHITE_PAWN_ATTACKS[tile.index()],
         BLACK_PAWN_ATTACKS[tile.index()],
@@ -770,7 +770,7 @@ mod test {
     use super::*;
 
     /// Checks if `moves` and `legal_moves` contain all the same elements, ignoring order
-    fn lists_match(moves: BitBoard, legal_moves: &[Tile]) {
+    fn lists_match(moves: Bitboard, legal_moves: &[Tile]) {
         assert_eq!(
             moves.population() as usize,
             legal_moves.len(),
@@ -814,7 +814,7 @@ mod test {
         // . . . X . X . .
         // . . . . . . . .
         let blockers =
-            BitBoard::new(0b1000100000000000000010000000000010000000000001000010100000000000);
+            Bitboard::new(0b1000100000000000000010000000000010000000000001000010100000000000);
 
         let moves = rook_attacks(Tile::D4, blockers);
 

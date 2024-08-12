@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use brogle_core::{print_perft, BitBoard, Game, Move, Position, Tile, FEN_STARTPOS};
+use brogle_core::{print_perft, Bitboard, Game, Move, Position, Tile, FEN_STARTPOS};
 use log::{error, warn};
 use threadpool::ThreadPool;
 
@@ -401,9 +401,9 @@ impl Engine {
                 .legal_moves()
                 .into_iter()
                 .filter(|mv| mv.from() == from);
-            let mut mobility = BitBoard::default();
+            let mut mobility = Bitboard::default();
             for mv in moves {
-                mobility |= BitBoard::from_tile(mv.to());
+                mobility |= Bitboard::from_tile(mv.to());
             }
             println!("{mobility}");
         } else {

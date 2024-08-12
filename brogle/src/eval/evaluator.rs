@@ -1,4 +1,4 @@
-use brogle_core::{BitBoard, ChessBoard, Color, Game, PieceKind};
+use brogle_core::{Bitboard, ChessBoard, Color, Game, PieceKind};
 
 // use super::piece_square_tables::{CONTROL_CENTER, KING_SAFETY, PAWN_PUSH};
 
@@ -104,7 +104,7 @@ const fn count_material(board: &ChessBoard, color: Color) -> i32 {
 }
 
 /// Counts the material value of the specified piece kind/color on the board.
-const fn count_material_of(board: &ChessBoard, color: BitBoard, kind: PieceKind) -> i32 {
+const fn count_material_of(board: &ChessBoard, color: Bitboard, kind: PieceKind) -> i32 {
     let value = value_of(kind);
     let pieces = color.and(board.kind(kind));
     (pieces.population() as i32) * value

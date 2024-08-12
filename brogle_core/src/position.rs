@@ -7,7 +7,7 @@ use std::{
 use anyhow::{anyhow, bail, Result};
 
 use super::{
-    utils::FEN_STARTPOS, BitBoard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind,
+    utils::FEN_STARTPOS, Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind,
     Rank, Tile, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
@@ -48,8 +48,24 @@ impl Game {
     /// Returns `true` if the game is in a position that is identical to the position it was in before.
     ///
     /// This is for checking "two-fold" repetition.
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_core::{Game, Move};
+    /// let mut game = Game::default();
+    /// game.make_move(Move::from_uci(&game, "b1a3").unwrap());
+    /// assert_eq!(game.is_repetition(), false);
+    /// game.make_move(Move::from_uci(&game, "b8a6").unwrap());
+    /// assert_eq!(game.is_repetition(), false);
+    /// game.make_move(Move::from_uci(&game, "a3b1").unwrap());
+    /// assert_eq!(game.is_repetition(), false);
+    /// game.make_move(Move::from_uci(&game, "a6b8").unwrap());
+    /// assert_eq!(game.is_repetition(), true);
+    /// ```
     pub fn is_repetition(&self) -> bool {
         for prev_pos in self.history.iter().rev().skip(1).step_by(2) {
+            println!("Checking if {prev_pos} == {}", self.position());
             if prev_pos == self.position() {
                 return true;
             }
@@ -84,7 +100,7 @@ impl Game {
 
     /// Applies the provided [`Move`]. No enforcement of legality.
     pub fn make_move(&mut self, chessmove: Move) {
-        self.history.push(self.position.clone());
+        self.history.push(self.position().clone());
         self.moves.push(chessmove);
         let new_pos = self.position().clone().with_move_made(chessmove);
         self.movegen = MoveGenerator::new_legal(new_pos);
@@ -190,7 +206,7 @@ impl fmt::Display for CastlingRights {
 /// Analogous to a FEN string.
 #[derive(Clone)]
 pub struct Position {
-    /// BitBoard representation of the game board.
+    /// Bitboard representation of the game board.
     board: ChessBoard,
 
     /// Side to move.
@@ -614,17 +630,17 @@ impl fmt::Debug for Position {
 ///
 /// Has no knowledge of castling rights, en passant, or move counters.
 ///
-/// Internally uses a collection of [`BitBoard`]s to keep track of piece/color locations.
+/// Internally uses a collection of [`Bitboard`]s to keep track of piece/color locations.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ChessBoard {
     /// All tiles occupied by a piece of any kind or color.
-    occupied: BitBoard,
+    occupied: Bitboard,
 
     /// All tiles occupied by a specific color
-    colors: [BitBoard; NUM_COLORS],
+    colors: [Bitboard; NUM_COLORS],
 
     /// All tiles occupied by a specific piece kind
-    pieces: [BitBoard; NUM_PIECE_TYPES],
+    pieces: [Bitboard; NUM_PIECE_TYPES],
 }
 
 impl ChessBoard {
@@ -638,9 +654,9 @@ impl ChessBoard {
     /// ```
     pub const fn new() -> Self {
         Self {
-            occupied: BitBoard::EMPTY_BOARD,
-            colors: [BitBoard::EMPTY_BOARD; NUM_COLORS],
-            pieces: [BitBoard::EMPTY_BOARD; NUM_PIECE_TYPES],
+            occupied: Bitboard::EMPTY_BOARD,
+            colors: [Bitboard::EMPTY_BOARD; NUM_COLORS],
+            pieces: [Bitboard::EMPTY_BOARD; NUM_PIECE_TYPES],
         }
     }
 
@@ -703,7 +719,7 @@ impl ChessBoard {
             let rank = rank as u8;
 
             for piece_char in placements.chars() {
-                // If the next char is a piece, we need to update the relevant BitBoards
+                // If the next char is a piece, we need to update the relevant Bitboards
                 if let Ok(piece) = Piece::from_uci(piece_char) {
                     // Firstly, create a tile and set the "Occupied" board at this location.
                     let tile = Tile::new(File::new_unchecked(file), Rank::new_unchecked(rank));
@@ -733,7 +749,7 @@ impl ChessBoard {
     }
 
     /// Returns an instance of this [`ChessBoard`] that has all bits specified by `mask` cleared.
-    pub const fn without(&self, mask: BitBoard) -> Self {
+    pub const fn without(&self, mask: Bitboard) -> Self {
         let not_mask = mask.not();
         let occupied = self.occupied().and(not_mask);
         let mut colors = self.colors;
@@ -758,7 +774,7 @@ impl ChessBoard {
     /// Returns an instance of this [`ChessBoard`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
     ///
     /// If `mask` contains only 1 tile, use [`ChessBoard::with_piece`] instead, as it is likely to be faster.
-    pub const fn with(&self, mask: BitBoard, piece: Piece) -> Self {
+    pub const fn with(&self, mask: Bitboard, piece: Piece) -> Self {
         let occupied = self.occupied().or(mask);
         let (color, kind) = piece.parts();
 
@@ -940,96 +956,96 @@ impl ChessBoard {
         }
     }
 
-    /// Fetches the [`BitBoard`] corresponding to the supplied [`PieceKind`].
+    /// Fetches the [`Bitboard`] corresponding to the supplied [`PieceKind`].
     ///
-    /// The returned [`BitBoard`] will hold the locations of every occurrence of each [`Piece`] matching the supplied [`PieceKind`].
+    /// The returned [`Bitboard`] will hold the locations of every occurrence of each [`Piece`] matching the supplied [`PieceKind`].
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, PieceKind, BitBoard};
+    /// # use brogle_core::{ChessBoard, PieceKind, Bitboard};
     /// let board = ChessBoard::default();
     /// let pawns = board.kind(PieceKind::Pawn);
-    /// assert_eq!(pawns, BitBoard::RANK_2 | BitBoard::RANK_7);
+    /// assert_eq!(pawns, Bitboard::RANK_2 | Bitboard::RANK_7);
     /// ```
-    pub const fn kind(&self, kind: PieceKind) -> BitBoard {
+    pub const fn kind(&self, kind: PieceKind) -> Bitboard {
         self.pieces[kind.index()]
     }
 
-    /// Fetches the [`BitBoard`] corresponding to the supplied [`Color`].
+    /// Fetches the [`Bitboard`] corresponding to the supplied [`Color`].
     ///
-    /// The returned [`BitBoard`] will hold the locations of every occurrence each [`Piece`] matching the supplied [`Color`].
+    /// The returned [`Bitboard`] will hold the locations of every occurrence each [`Piece`] matching the supplied [`Color`].
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, Color, Piece, BitBoard};
+    /// # use brogle_core::{ChessBoard, Color, Piece, Bitboard};
     /// let board = ChessBoard::default();
     /// let white_pieces = board.color(Color::White);
-    /// assert_eq!(white_pieces, BitBoard::RANK_1 | BitBoard::RANK_2);
+    /// assert_eq!(white_pieces, Bitboard::RANK_1 | Bitboard::RANK_2);
     /// ```
-    pub const fn color(&self, color: Color) -> BitBoard {
+    pub const fn color(&self, color: Color) -> Bitboard {
         self.colors[color.index()]
     }
 
-    /// Fetches a [`BitBoard`] of all occupied squares on the board.
-    pub const fn occupied(&self) -> BitBoard {
+    /// Fetches a [`Bitboard`] of all occupied squares on the board.
+    pub const fn occupied(&self) -> Bitboard {
         self.occupied
     }
 
-    /// Fetches a [`BitBoard`] of all non-occupied squares on the board.
-    pub const fn empty(&self) -> BitBoard {
+    /// Fetches a [`Bitboard`] of all non-occupied squares on the board.
+    pub const fn empty(&self) -> Bitboard {
         self.occupied().not()
     }
 
-    /// Fetches the [`BitBoard`] corresponding to the supplied [`Piece`].
+    /// Fetches the [`Bitboard`] corresponding to the supplied [`Piece`].
     ///
-    /// The returned [`BitBoard`] will hold the locations of every occurrence of the supplied [`Piece`].
+    /// The returned [`Bitboard`] will hold the locations of every occurrence of the supplied [`Piece`].
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, PieceKind, Color, Piece, BitBoard};
+    /// # use brogle_core::{ChessBoard, PieceKind, Color, Piece, Bitboard};
     /// let board = ChessBoard::default();
     /// let white_pawn = Piece::new(Color::White, PieceKind::Pawn);
     /// let white_pawns = board.piece(white_pawn);
-    /// assert_eq!(white_pawns, BitBoard::RANK_2);
+    /// assert_eq!(white_pawns, Bitboard::RANK_2);
     /// ```
-    pub const fn piece(&self, piece: Piece) -> BitBoard {
+    pub const fn piece(&self, piece: Piece) -> Bitboard {
         self.piece_parts(piece.color(), piece.kind())
     }
 
     /// Analogous to [`ChessBoard::piece`] with a [`Piece`]'s individual components
-    pub const fn piece_parts(&self, color: Color, kind: PieceKind) -> BitBoard {
+    pub const fn piece_parts(&self, color: Color, kind: PieceKind) -> Bitboard {
         let color = self.color(color);
         let kind = self.kind(kind);
         color.and(kind)
     }
 
-    /// Fetches a [`BitBoard`] containing the locations of all orthogonal sliding pieces (Rook, Queen).
-    pub const fn orthogonal_sliders(&self, color: Color) -> BitBoard {
+    /// Fetches a [`Bitboard`] containing the locations of all orthogonal sliding pieces (Rook, Queen).
+    pub const fn orthogonal_sliders(&self, color: Color) -> Bitboard {
         (self.pieces[PieceKind::Rook.index()].or(self.pieces[PieceKind::Queen.index()]))
             .and(self.color(color))
     }
 
-    /// Fetches a [`BitBoard`] containing the locations of all diagonal sliding pieces (Bishop, Queen).
-    pub const fn diagonal_sliders(&self, color: Color) -> BitBoard {
+    /// Fetches a [`Bitboard`] containing the locations of all diagonal sliding pieces (Bishop, Queen).
+    pub const fn diagonal_sliders(&self, color: Color) -> Bitboard {
         (self.pieces[PieceKind::Bishop.index()].or(self.pieces[PieceKind::Queen.index()]))
             .and(self.color(color))
     }
 
-    /// Fetches a [`BitBoard`] containing the locations of all sliding pieces (Rook, Bishop, Queen).
-    pub const fn sliders(&self, color: Color) -> BitBoard {
+    /// Fetches a [`Bitboard`] containing the locations of all sliding pieces (Rook, Bishop, Queen).
+    pub const fn sliders(&self, color: Color) -> Bitboard {
         (self.pieces[PieceKind::Rook.index()]
             .or(self.pieces[PieceKind::Bishop.index()])
             .or(self.pieces[PieceKind::Queen.index()]))
         .and(self.color(color))
     }
 
-    /// Fetches the [`BitBoard`] for the King of the provided color.
-    pub const fn king(&self, color: Color) -> BitBoard {
+    /// Fetches the [`Bitboard`] for the King of the provided color.
+    pub const fn king(&self, color: Color) -> Bitboard {
         self.piece_parts(color, PieceKind::King)
     }
 
-    /// Fetches the [`BitBoard`] for the Pawns of the provided color.
-    pub const fn pawns(&self, color: Color) -> BitBoard {
+    /// Fetches the [`Bitboard`] for the Pawns of the provided color.
+    pub const fn pawns(&self, color: Color) -> Bitboard {
         self.piece_parts(color, PieceKind::Pawn)
     }
 
@@ -1037,12 +1053,12 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, ChessBoard, Color};
+    /// # use brogle_core::{Bitboard, ChessBoard, Color};
     /// let board = ChessBoard::default();
     /// let not_white = board.enemy_or_empty(Color::White);
     /// assert_eq!(not_white.to_hex_string(), "0xFFFFFFFFFFFF0000");
     /// ```
-    pub const fn enemy_or_empty(&self, color: Color) -> BitBoard {
+    pub const fn enemy_or_empty(&self, color: Color) -> Bitboard {
         self.color(color).not()
     }
 
@@ -1139,7 +1155,7 @@ impl From<[Option<Piece>; 64]> for ChessBoard {
 }
 
 impl Index<PieceKind> for ChessBoard {
-    type Output = BitBoard;
+    type Output = Bitboard;
     fn index(&self, index: PieceKind) -> &Self::Output {
         &self.pieces[index]
     }
@@ -1152,7 +1168,7 @@ impl IndexMut<PieceKind> for ChessBoard {
 }
 
 impl Index<Color> for ChessBoard {
-    type Output = BitBoard;
+    type Output = Bitboard;
     fn index(&self, index: Color) -> &Self::Output {
         &self.colors[index]
     }
@@ -1166,7 +1182,7 @@ impl IndexMut<Color> for ChessBoard {
 
 impl fmt::Debug for ChessBoard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let format = |to_fmt: &[(BitBoard, &str)]| {
+        let format = |to_fmt: &[(Bitboard, &str)]| {
             let strings = to_fmt
                 .iter()
                 .map(|(b, s)| (b.to_string(), s))
@@ -1213,13 +1229,13 @@ impl fmt::Debug for ChessBoard {
             (self.colors[Color::Black], "Black"),
         ]);
 
-        write!(f, "BitBoards:\n{pieces}\n\n{metadata}")
+        write!(f, "Bitboards:\n{pieces}\n\n{metadata}")
     }
 }
 
 pub struct BoardIter<'a> {
     board: &'a ChessBoard,
-    occupancy: BitBoard,
+    occupancy: Bitboard,
 }
 
 impl<'a> Iterator for BoardIter<'a> {

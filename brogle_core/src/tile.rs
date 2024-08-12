@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 
-use super::{BitBoard, Color};
+use super::{Bitboard, Color};
 
 /// Represents a single tile (or square) on an `8x8` chess board.
 ///
@@ -431,9 +431,9 @@ impl Tile {
         format!("{}{}", self.file(), self.rank())
     }
 
-    /// Alias for [`BitBoard::from_tile`].
-    pub const fn bitboard(&self) -> BitBoard {
-        BitBoard::from_tile(*self)
+    /// Alias for [`Bitboard::from_tile`].
+    pub const fn bitboard(&self) -> Bitboard {
+        Bitboard::from_tile(*self)
     }
 
     /// Computes the distance between `self` and `other`.
@@ -832,9 +832,9 @@ impl Rank {
         self.index_le() ^ 56
     }
 
-    /// Alias for [`BitBoard::from_rank`].
-    pub const fn bitboard(&self) -> BitBoard {
-        BitBoard::from_rank(*self)
+    /// Alias for [`Bitboard::from_rank`].
+    pub const fn bitboard(&self) -> Bitboard {
+        Bitboard::from_rank(*self)
     }
 
     /// Attempt to offset this [`Rank`] by the provided `delta`.
@@ -1153,9 +1153,9 @@ impl File {
         self.index_le() ^ 7
     }
 
-    /// Alias for [`BitBoard::from_file`].
-    pub const fn bitboard(&self) -> BitBoard {
-        BitBoard::from_file(*self)
+    /// Alias for [`Bitboard::from_file`].
+    pub const fn bitboard(&self) -> Bitboard {
+        Bitboard::from_file(*self)
     }
 
     /// Attempt to offset this [`File`] by the provided `delta`.

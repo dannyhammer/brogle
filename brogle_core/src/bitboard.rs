@@ -8,7 +8,7 @@ use anyhow::{anyhow, bail};
 
 use super::{Color, File, Rank, Tile};
 
-/// A [`BitBoard`] represents the game board as a set of bits.
+/// A [`Bitboard`] represents the game board as a set of bits.
 /// They are used for various computations, such as fetching valid moves or computing move costs.
 ///
 /// The internal representation is a 64-bit binary number, so the values will represent the entire board.
@@ -31,9 +31,9 @@ use super::{Color, File, Rank, Tile};
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(transparent)]
-pub struct BitBoard(pub(crate) u64);
+pub struct Bitboard(pub(crate) u64);
 
-impl BitBoard {
+impl Bitboard {
     pub const FILE_A: Self = Self(0x0101010101010101);
     pub const FILE_B: Self = Self(0x0202020202020202);
     pub const FILE_C: Self = Self(0x0404040404040404);
@@ -62,26 +62,26 @@ impl BitBoard {
     pub const CORNERS: Self = Self(0x8100000000000081);
     pub const CENTER: Self = Self(0x0000001818000000);
 
-    /// Constructs a new [`BitBoard`] from the provided bit pattern.
+    /// Constructs a new [`Bitboard`] from the provided bit pattern.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// let board = BitBoard::new(255);
+    /// # use brogle_core::Bitboard;
+    /// let board = Bitboard::new(255);
     /// assert_eq!(board.to_hex_string(), "0x00000000000000FF");
     /// ```
     pub const fn new(bits: u64) -> Self {
         Self(bits)
     }
 
-    /// Constructs a new [`BitBoard`] from the provided index.
+    /// Constructs a new [`Bitboard`] from the provided index.
     ///
-    /// The resulting [`BitBoard`] will have only a single bit toggled on.
+    /// The resulting [`Bitboard`] will have only a single bit toggled on.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// let board = BitBoard::from_index(63);
+    /// # use brogle_core::Bitboard;
+    /// let board = Bitboard::from_index(63);
     /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
     /// ```
     pub const fn from_index(index: usize) -> Self {
@@ -89,157 +89,157 @@ impl BitBoard {
         Self::from_tile(Tile::from_index_unchecked(index))
     }
 
-    /// Constructs a new [`BitBoard`] from the provided [`Tile`].
+    /// Constructs a new [`Bitboard`] from the provided [`Tile`].
     ///
-    /// The resulting [`BitBoard`] will have only a single bit toggled on.
+    /// The resulting [`Bitboard`] will have only a single bit toggled on.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Tile};
-    /// let board = BitBoard::from_tile(Tile::H8);
+    /// # use brogle_core::{Bitboard, Tile};
+    /// let board = Bitboard::from_tile(Tile::H8);
     /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
     /// ```
     pub const fn from_tile(tile: Tile) -> Self {
         Self(1 << tile.index())
     }
 
-    /// Constructs a new [`BitBoard`] from the provided [`File`].
+    /// Constructs a new [`Bitboard`] from the provided [`File`].
     ///
-    /// The resulting [`BitBoard`] will have an entire column of bits toggled on.
+    /// The resulting [`Bitboard`] will have an entire column of bits toggled on.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, File};
-    /// let board = BitBoard::from_file(File::F);
+    /// # use brogle_core::{Bitboard, File};
+    /// let board = Bitboard::from_file(File::F);
     /// assert_eq!(board.to_hex_string(), "0x2020202020202020");
     /// ```
     pub const fn from_file(file: File) -> Self {
         Self::new(Self::FILE_A.0 << file.0)
     }
 
-    /// Constructs a new [`BitBoard`] from the provided [`Rank`].
+    /// Constructs a new [`Bitboard`] from the provided [`Rank`].
     ///
-    /// The resulting [`BitBoard`] will have an entire row of bits toggled on.
+    /// The resulting [`Bitboard`] will have an entire row of bits toggled on.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Rank};
-    /// let board = BitBoard::from_rank(Rank::SEVEN);
+    /// # use brogle_core::{Bitboard, Rank};
+    /// let board = Bitboard::from_rank(Rank::SEVEN);
     /// assert_eq!(board.to_hex_string(), "0x00FF000000000000");
     /// ```
     pub const fn from_rank(rank: Rank) -> Self {
         Self::new(Self::RANK_1.0 << (rank.0 * 8))
     }
 
-    /// Returns [`BitBoard::FULL_BOARD`] if `true`, else [`BitBoard::EMPTY_BOARD`].
+    /// Returns [`Bitboard::FULL_BOARD`] if `true`, else [`Bitboard::EMPTY_BOARD`].
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
+    /// # use brogle_core::Bitboard;
     ///
-    /// assert_eq!(BitBoard::from_bool(true), BitBoard::FULL_BOARD);
-    /// assert_eq!(BitBoard::from_bool(false), BitBoard::EMPTY_BOARD);
+    /// assert_eq!(Bitboard::from_bool(true), Bitboard::FULL_BOARD);
+    /// assert_eq!(Bitboard::from_bool(false), Bitboard::EMPTY_BOARD);
     /// ```
     pub const fn from_bool(value: bool) -> Self {
         Self((value as u64).wrapping_neg() & u64::MAX)
     }
 
-    /// Returns a [`BitBoard`] of this [`Color`]'s first rank.
+    /// Returns a [`Bitboard`] of this [`Color`]'s first rank.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Color};
+    /// # use brogle_core::{Bitboard, Color};
     ///
-    /// assert_eq!(BitBoard::first_rank(Color::White), BitBoard::RANK_1);
-    /// assert_eq!(BitBoard::first_rank(Color::Black), BitBoard::RANK_8);
+    /// assert_eq!(Bitboard::first_rank(Color::White), Bitboard::RANK_1);
+    /// assert_eq!(Bitboard::first_rank(Color::Black), Bitboard::RANK_8);
     /// ```
     pub const fn first_rank(color: Color) -> Self {
         [Self::RANK_1, Self::RANK_8][color.index()]
     }
 
-    /// Returns a [`BitBoard`] of this [`Color`]'s second rank.
+    /// Returns a [`Bitboard`] of this [`Color`]'s second rank.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Color};
+    /// # use brogle_core::{Bitboard, Color};
     ///
-    /// assert_eq!(BitBoard::second_rank(Color::White), BitBoard::RANK_2);
-    /// assert_eq!(BitBoard::second_rank(Color::Black), BitBoard::RANK_7);
+    /// assert_eq!(Bitboard::second_rank(Color::White), Bitboard::RANK_2);
+    /// assert_eq!(Bitboard::second_rank(Color::Black), Bitboard::RANK_7);
     /// ```
     pub const fn second_rank(color: Color) -> Self {
         [Self::RANK_2, Self::RANK_7][color.index()]
     }
 
-    /// Returns a [`BitBoard`] of this [`Color`]'s third rank.
+    /// Returns a [`Bitboard`] of this [`Color`]'s third rank.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Color};
+    /// # use brogle_core::{Bitboard, Color};
     ///
-    /// assert_eq!(BitBoard::third_rank(Color::White), BitBoard::RANK_3);
-    /// assert_eq!(BitBoard::third_rank(Color::Black), BitBoard::RANK_6);
+    /// assert_eq!(Bitboard::third_rank(Color::White), Bitboard::RANK_3);
+    /// assert_eq!(Bitboard::third_rank(Color::Black), Bitboard::RANK_6);
     /// ```
     pub const fn third_rank(color: Color) -> Self {
         [Self::RANK_3, Self::RANK_6][color.index()]
     }
 
-    /// Returns a [`BitBoard`] of this [`Color`]'s seventh rank.
+    /// Returns a [`Bitboard`] of this [`Color`]'s seventh rank.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Color};
+    /// # use brogle_core::{Bitboard, Color};
     ///
-    /// assert_eq!(BitBoard::seventh_rank(Color::White), BitBoard::RANK_7);
-    /// assert_eq!(BitBoard::seventh_rank(Color::Black), BitBoard::RANK_2);
+    /// assert_eq!(Bitboard::seventh_rank(Color::White), Bitboard::RANK_7);
+    /// assert_eq!(Bitboard::seventh_rank(Color::Black), Bitboard::RANK_2);
     /// ```
     pub const fn seventh_rank(color: Color) -> Self {
         [Self::RANK_7, Self::RANK_2][color.index()]
     }
 
-    /// Returns a [`BitBoard`] of this [`Color`]'s eighth (last) rank.
+    /// Returns a [`Bitboard`] of this [`Color`]'s eighth (last) rank.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Color};
+    /// # use brogle_core::{Bitboard, Color};
     ///
-    /// assert_eq!(BitBoard::eighth_rank(Color::White), BitBoard::RANK_8);
-    /// assert_eq!(BitBoard::eighth_rank(Color::Black), BitBoard::RANK_1);
+    /// assert_eq!(Bitboard::eighth_rank(Color::White), Bitboard::RANK_8);
+    /// assert_eq!(Bitboard::eighth_rank(Color::Black), Bitboard::RANK_1);
     /// ```
     pub const fn eighth_rank(color: Color) -> Self {
         [Self::RANK_8, Self::RANK_1][color.index()]
     }
 
-    /// Returns the inner `u64` of this [`BitBoard`].
+    /// Returns the inner `u64` of this [`Bitboard`].
     pub const fn inner(&self) -> u64 {
         self.0
     }
 
-    /// Creates a [`Tile`] from this [`BitBoard`] based on the lowest-index bit that is flipped.
+    /// Creates a [`Tile`] from this [`Bitboard`] based on the lowest-index bit that is flipped.
     ///
-    /// If this [`BitBoard`] contains more than a single flipped bit, it is converted into a [`Tile`]
+    /// If this [`Bitboard`] contains more than a single flipped bit, it is converted into a [`Tile`]
     /// based on the index of the lowest bit that is flipped.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Tile};
-    /// let board = BitBoard::from_index(14);
+    /// # use brogle_core::{Bitboard, Tile};
+    /// let board = Bitboard::from_index(14);
     /// assert_eq!(board.to_tile_unchecked(), Tile::G2);
     /// ```
     pub const fn to_tile_unchecked(&self) -> Tile {
         Tile::from_index_unchecked(self.0.trailing_zeros() as usize)
     }
 
-    /// Creates a [`Tile`] from this [`BitBoard`] based on the lowest-index bit that is flipped.
+    /// Creates a [`Tile`] from this [`Bitboard`] based on the lowest-index bit that is flipped.
     ///
-    /// If this [`BitBoard`] contains more than a single flipped bit, it is converted into a [`Tile`]
+    /// If this [`Bitboard`] contains more than a single flipped bit, it is converted into a [`Tile`]
     /// based on the index of the lowest bit that is flipped.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Tile};
-    /// let board = BitBoard::from_index(14);
+    /// # use brogle_core::{Bitboard, Tile};
+    /// let board = Bitboard::from_index(14);
     /// assert_eq!(board.to_tile(), Some(Tile::G2));
-    /// let invalid = BitBoard::RANK_1;
+    /// let invalid = Bitboard::RANK_1;
     /// assert_eq!(invalid.to_tile(), None);
     /// ```
     pub const fn to_tile(&self) -> Option<Tile> {
@@ -250,12 +250,12 @@ impl BitBoard {
         }
     }
 
-    /// Reverse this [`BitBoard`], viewing it from the opponent's perspective.
+    /// Reverse this [`Bitboard`], viewing it from the opponent's perspective.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Rank};
-    /// let board = BitBoard::from_rank(Rank::SEVEN);
+    /// # use brogle_core::{Bitboard, Rank};
+    /// let board = Bitboard::from_rank(Rank::SEVEN);
     /// assert_eq!(board.to_hex_string(), "0x00FF000000000000");
     ///
     /// let flipped = board.flipped();
@@ -265,16 +265,16 @@ impl BitBoard {
         Self(self.0.swap_bytes())
     }
 
-    /// If `color` is Black, flips this [`BitBoard`].
+    /// If `color` is Black, flips this [`Bitboard`].
     /// If `color` is White, does nothing.
     ///
-    /// See [`BitBoard::flipped`] for more.
+    /// See [`Bitboard::flipped`] for more.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Color, BitBoard};
-    /// assert_eq!(BitBoard::RANK_2.relative_to(Color::White), BitBoard::RANK_2);
-    /// assert_eq!(BitBoard::RANK_2.relative_to(Color::Black), BitBoard::RANK_7);
+    /// # use brogle_core::{Color, Bitboard};
+    /// assert_eq!(Bitboard::RANK_2.relative_to(Color::White), Bitboard::RANK_2);
+    /// assert_eq!(Bitboard::RANK_2.relative_to(Color::Black), Bitboard::RANK_7);
     /// ```
     pub const fn relative_to(self, color: Color) -> Self {
         match color {
@@ -283,48 +283,48 @@ impl BitBoard {
         }
     }
 
-    /// Checks if this [`BitBoard`] is empty, or all zeros.
+    /// Checks if this [`Bitboard`] is empty, or all zeros.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// let board = BitBoard::new(0x0);
+    /// # use brogle_core::Bitboard;
+    /// let board = Bitboard::new(0x0);
     /// assert!(board.is_empty());
     /// ```
     pub const fn is_empty(&self) -> bool {
         self.0 == 0
     }
 
-    /// Checks if this [`BitBoard`] is NOT empty, or contains at least one `1`.
+    /// Checks if this [`Bitboard`] is NOT empty, or contains at least one `1`.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// let board = BitBoard::CORNERS;
+    /// # use brogle_core::Bitboard;
+    /// let board = Bitboard::CORNERS;
     /// assert!(board.is_nonempty());
     /// ```
     pub const fn is_nonempty(&self) -> bool {
         self.0 != 0
     }
 
-    /// Returns `true` if this [`BitBoard`] has at most `n` bits on.
-    pub const fn has_at_most(&self, n: u8) -> bool {
+    /// Returns `true` if this [`Bitboard`] has at most `n` bits set.
+    pub const fn is_at_most(&self, n: u8) -> bool {
         self.population() <= n
     }
 
-    /// Returns `true` if this [`BitBoard`] has exactly 1 bit set.
+    /// Returns `true` if this [`Bitboard`] has exactly `1` bit set.
     pub const fn is_only_one(&self) -> bool {
         self.population() == 1
     }
 
-    /// Checks if this [`BitBoard`] contains any of the bits within `other`.
+    /// Checks if this [`Bitboard`] contains any of the bits within `other`.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// let rank_1 = BitBoard::RANK_1;
-    /// let rank_5 = BitBoard::RANK_5;
-    /// let file_a = BitBoard::FILE_A;
+    /// # use brogle_core::Bitboard;
+    /// let rank_1 = Bitboard::RANK_1;
+    /// let rank_5 = Bitboard::RANK_5;
+    /// let file_a = Bitboard::FILE_A;
     /// assert_eq!(rank_1.contains(&file_a), true);
     /// assert_eq!(rank_1.contains(&rank_5), false);
     /// ```
@@ -348,8 +348,8 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Tile};
-    /// let mut board = BitBoard::default();
+    /// # use brogle_core::{Bitboard, Tile};
+    /// let mut board = Bitboard::default();
     /// board.set(Tile::G2);
     /// assert_eq!(board.to_hex_string(), "0x0000000000004000");
     /// ```
@@ -361,8 +361,8 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Tile};
-    /// let board = BitBoard::FILE_A;
+    /// # use brogle_core::{Bitboard, Tile};
+    /// let board = Bitboard::FILE_A;
     /// assert!(board.get(Tile::A3));
     /// ```
     pub const fn get(&self, tile: Tile) -> bool {
@@ -373,8 +373,8 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Tile};
-    /// let mut board = BitBoard::RANK_1;
+    /// # use brogle_core::{Bitboard, Tile};
+    /// let mut board = Bitboard::RANK_1;
     /// board.clear(Tile::C1);
     /// assert_eq!(board.to_hex_string(), "0x00000000000000FB");
     /// ```
@@ -387,7 +387,7 @@ impl BitBoard {
         self.0 &= !other.0
     }
 
-    /// Returns the index of the lowest non-zero bit of this [`BitBoard`], as a [`Tile`].
+    /// Returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Tile`].
     pub const fn lsb(&self) -> Option<Tile> {
         if self.is_empty() {
             None
@@ -396,7 +396,7 @@ impl BitBoard {
         }
     }
 
-    /// Pops and returns the index of the lowest non-zero bit of this [`BitBoard`], as a [`Tile`].
+    /// Pops and returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Tile`].
     pub fn pop_lsb(&mut self) -> Option<Tile> {
         let lsb = self.lsb();
         self.clear_lsb();
@@ -408,13 +408,9 @@ impl BitBoard {
         self.0 &= self.0.wrapping_sub(1);
     }
 
-    // https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set
-    pub fn carry_rippler(&mut self, mask: Self) {
-        *self = self.to_carry_rippler(mask);
-    }
-
-    // https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set
-    pub const fn to_carry_rippler(self, mask: Self) -> Self {
+    /// Performs a [Carry-Rippler](https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set).
+    /// Useful for iterating over the subsets of this [`Bitboard`].
+    pub const fn carry_rippler(self, mask: Self) -> Self {
         Self(self.0.wrapping_sub(mask.0) & mask.0)
     }
 
@@ -457,26 +453,26 @@ impl BitBoard {
         *self ^= Self::from_index(index);
     }
 
-    /// Returns a [`BitBoardIter`] to iterate over all of the set bits as [`Tile`]s.
-    pub const fn iter(&self) -> BitBoardIter {
-        BitBoardIter { bb: *self }
+    /// Returns a [`BitboardIter`] to iterate over all of the set bits as [`Tile`]s.
+    pub const fn iter(&self) -> BitboardIter {
+        BitboardIter { bb: *self }
     }
 
-    /// Yields the total number of `1`s in this [`BitBoard`].
+    /// Yields the total number of `1`s in this [`Bitboard`].
     ///
     /// In other words, this function determines how many bits are activated.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// let board = BitBoard::RANK_1;
+    /// # use brogle_core::Bitboard;
+    /// let board = Bitboard::RANK_1;
     /// assert_eq!(board.population(), 8);
     /// ```
     pub const fn population(&self) -> u8 {
         self.0.count_ones() as u8
     }
 
-    /// Shifts this [`BitBoard`] forward by `n`, according to `color`.
+    /// Shifts this [`Bitboard`] forward by `n`, according to `color`.
     ///
     /// If `color` is White, this shifts `n` ranks up. If Black, it shifts by `n` rank down.
     ///
@@ -484,12 +480,12 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Color};
-    /// let rank4 = BitBoard::RANK_4;
-    /// assert_eq!(rank4.advance_by(Color::White, 1), BitBoard::RANK_5);
-    /// assert_eq!(rank4.advance_by(Color::Black, 1), BitBoard::RANK_3);
+    /// # use brogle_core::{Bitboard, Color};
+    /// let rank4 = Bitboard::RANK_4;
+    /// assert_eq!(rank4.advance_by(Color::White, 1), Bitboard::RANK_5);
+    /// assert_eq!(rank4.advance_by(Color::Black, 1), Bitboard::RANK_3);
     /// // Wrapping
-    /// assert_eq!(rank4.advance_by(Color::White, 5), BitBoard::RANK_1);
+    /// assert_eq!(rank4.advance_by(Color::White, 5), Bitboard::RANK_1);
     /// ```
     pub const fn advance_by(self, color: Color, n: u32) -> Self {
         // Black magic: If `color` is White, this rotates left by 8, which is the same as "n ranks up"
@@ -497,7 +493,7 @@ impl BitBoard {
         Self(self.0.rotate_left(n * 8 * (1 + color as u32 * 62)))
     }
 
-    /// Shifts this [`BitBoard`] backward by `n`, according to `color`.
+    /// Shifts this [`Bitboard`] backward by `n`, according to `color`.
     ///
     /// If `color` is White, this shifts `n` ranks up. If Black, it shifts by `n` ranks down.
     ///
@@ -505,12 +501,12 @@ impl BitBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{BitBoard, Color};
-    /// let rank4 = BitBoard::RANK_4;
-    /// assert_eq!(rank4.retreat_by(Color::White, 1), BitBoard::RANK_3);
-    /// assert_eq!(rank4.retreat_by(Color::Black, 1), BitBoard::RANK_5);
+    /// # use brogle_core::{Bitboard, Color};
+    /// let rank4 = Bitboard::RANK_4;
+    /// assert_eq!(rank4.retreat_by(Color::White, 1), Bitboard::RANK_3);
+    /// assert_eq!(rank4.retreat_by(Color::Black, 1), Bitboard::RANK_5);
     /// // Wrapping
-    /// assert_eq!(rank4.retreat_by(Color::Black, 5), BitBoard::RANK_1);
+    /// assert_eq!(rank4.retreat_by(Color::Black, 5), Bitboard::RANK_1);
     /// ```
     pub const fn retreat_by(self, color: Color, n: u32) -> Self {
         // Black magic: If `color` is White, this rotates right by 8, which is the same as "n ranks down"
@@ -518,100 +514,100 @@ impl BitBoard {
         Self(self.0.rotate_right(n * 8 * (1 + color as u32 * 62)))
     }
 
-    /// Shifts this [`BitBoard`] by one rank up.
+    /// Shifts this [`Bitboard`] by one rank up.
     ///
     /// If already at the final rank (8), returns an empty board.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// assert_eq!(BitBoard::RANK_4.north(), BitBoard::RANK_5);
-    /// assert_eq!(BitBoard::RANK_8.north(), BitBoard::EMPTY_BOARD);
+    /// # use brogle_core::Bitboard;
+    /// assert_eq!(Bitboard::RANK_4.north(), Bitboard::RANK_5);
+    /// assert_eq!(Bitboard::RANK_8.north(), Bitboard::EMPTY_BOARD);
     /// ```
     pub const fn north(self) -> Self {
         Self(self.0 << 8)
     }
 
     // Rank down
-    /// Shifts this [`BitBoard`] by one rank board.
+    /// Shifts this [`Bitboard`] by one rank board.
     ///
     /// If already at the first rank (1), returns an empty board.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// assert_eq!(BitBoard::RANK_4.south(), BitBoard::RANK_3);
-    /// assert_eq!(BitBoard::RANK_1.south(), BitBoard::EMPTY_BOARD);
+    /// # use brogle_core::Bitboard;
+    /// assert_eq!(Bitboard::RANK_4.south(), Bitboard::RANK_3);
+    /// assert_eq!(Bitboard::RANK_1.south(), Bitboard::EMPTY_BOARD);
     /// ```
     pub const fn south(self) -> Self {
         Self(self.0 >> 8)
     }
 
-    /// Shifts this [`BitBoard`] by one [`File`] up.
+    /// Shifts this [`Bitboard`] by one [`File`] up.
     ///
     /// If already at the first file (a), returns an empty board.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// assert_eq!(BitBoard::FILE_C.east(), BitBoard::FILE_D);
-    /// assert_eq!(BitBoard::FILE_H.east(), BitBoard::EMPTY_BOARD);
+    /// # use brogle_core::Bitboard;
+    /// assert_eq!(Bitboard::FILE_C.east(), Bitboard::FILE_D);
+    /// assert_eq!(Bitboard::FILE_H.east(), Bitboard::EMPTY_BOARD);
     /// ```
     pub const fn east(self) -> Self {
         // Post-shift mask
         Self((self.0 << 1) & Self::NOT_FILE_A.0)
     }
 
-    /// Shifts this [`BitBoard`] by one [`File`] down.
+    /// Shifts this [`Bitboard`] by one [`File`] down.
     ///
     /// If already at the final file (h), returns an empty board.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
-    /// assert_eq!(BitBoard::FILE_C.west(), BitBoard::FILE_B);
-    /// assert_eq!(BitBoard::FILE_A.west(), BitBoard::EMPTY_BOARD);
+    /// # use brogle_core::Bitboard;
+    /// assert_eq!(Bitboard::FILE_C.west(), Bitboard::FILE_B);
+    /// assert_eq!(Bitboard::FILE_A.west(), Bitboard::EMPTY_BOARD);
     /// ```
     pub const fn west(self) -> Self {
         // Post-shift mask
         Self((self.0 >> 1) & Self::NOT_FILE_H.0)
     }
 
-    /// Combination of [`BitBoard::north`] and [`BitBoard::east`].
+    /// Combination of [`Bitboard::north`] and [`Bitboard::east`].
     ///
     /// If already at the edge, returns an empty board.
     ///
-    /// This operation is faster than calling [`BitBoard::north`] and [`BitBoard::east`] separately.
+    /// This operation is faster than calling [`Bitboard::north`] and [`Bitboard::east`] separately.
     pub const fn northeast(self) -> Self {
         // Post-shift mask
         Self((self.0 << 9) & Self::NOT_FILE_A.0)
     }
 
-    /// Combination of [`BitBoard::south`] and [`BitBoard::east`].
+    /// Combination of [`Bitboard::south`] and [`Bitboard::east`].
     ///
     /// If already at the edge, returns an empty board.
     ///
-    /// This operation is faster than calling [`BitBoard::south`] and [`BitBoard::east`] separately.
+    /// This operation is faster than calling [`Bitboard::south`] and [`Bitboard::east`] separately.
     pub const fn southeast(self) -> Self {
         // Post-shift mask
         Self((self.0 >> 7) & Self::NOT_FILE_A.0)
     }
 
-    /// Combination of [`BitBoard::north`] and [`BitBoard::west`].
+    /// Combination of [`Bitboard::north`] and [`Bitboard::west`].
     ///
     /// If already at the edge, returns an empty board.
     ///
-    /// This operation is faster than calling [`BitBoard::north`] and [`BitBoard::west`] separately.
+    /// This operation is faster than calling [`Bitboard::north`] and [`Bitboard::west`] separately.
     pub const fn northwest(self) -> Self {
         // Post-shift mask
         Self((self.0 << 7) & Self::NOT_FILE_H.0)
     }
 
-    /// Combination of [`BitBoard::south`] and [`BitBoard::west`].
+    /// Combination of [`Bitboard::south`] and [`Bitboard::west`].
     ///
     /// If already at the edge, returns an empty board.
     ///
-    /// This operation is faster than calling [`BitBoard::south`] and [`BitBoard::west`] separately.
+    /// This operation is faster than calling [`Bitboard::south`] and [`Bitboard::west`] separately.
     pub const fn southwest(self) -> Self {
         // Post-shift mask
         Self((self.0 >> 9) & Self::NOT_FILE_H.0)
@@ -666,26 +662,26 @@ impl BitBoard {
         Self(!self.0)
     }
 
-    /// Formats this [`BitBoard`] as a hexadecimal string.
+    /// Formats this [`Bitboard`] as a hexadecimal string.
     pub fn to_hex_string(&self) -> String {
         format!("0x{:0>16X}", self.0)
     }
 }
 
-impl FromStr for BitBoard {
+impl FromStr for Bitboard {
     type Err = anyhow::Error;
-    /// Constructs a new [`BitBoard`] from the provided string.
+    /// Constructs a new [`Bitboard`] from the provided string.
     ///
     /// The string may be a binary or hexadecimal number, and may be proceeded with `0b` or `0x`.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::BitBoard;
+    /// # use brogle_core::Bitboard;
     /// use std::str::FromStr;
-    /// let board1 = BitBoard::from_str("0x00FF000000000000").unwrap();
-    /// let board2 = BitBoard::from_str("00FF000000000000").unwrap();
-    /// let board3 = BitBoard::from_str("0000000011111111000000000000000000000000000000000000000000000000").unwrap();
-    /// let board4 = BitBoard::from_str("0b0000000011111111000000000000000000000000000000000000000000000000").unwrap();
+    /// let board1 = Bitboard::from_str("0x00FF000000000000").unwrap();
+    /// let board2 = Bitboard::from_str("00FF000000000000").unwrap();
+    /// let board3 = Bitboard::from_str("0000000011111111000000000000000000000000000000000000000000000000").unwrap();
+    /// let board4 = Bitboard::from_str("0b0000000011111111000000000000000000000000000000000000000000000000").unwrap();
     /// assert_eq!(board1, board2);
     /// assert_eq!(board1, board3);
     /// assert_eq!(board1, board4);
@@ -697,17 +693,17 @@ impl FromStr for BitBoard {
         if bits.len() == 64 || bits.len() == 66 {
             let bits = bits.trim_start_matches("0b");
             let bits = u64::from_str_radix(bits, 2).map_err(|_| {
-                anyhow!("Invalid BitBoard string: Expected binary digits, got {bits}")
+                anyhow!("Invalid Bitboard string: Expected binary digits, got {bits}")
             })?;
             Ok(Self::new(bits))
         } else if bits.len() == 16 || bits.len() == 18 {
             let bits = bits.trim_start_matches("0x");
             let bits = u64::from_str_radix(bits, 16).map_err(|_| {
-                anyhow!("Invalid BitBoard string: Expected hexadecimal digits, got {bits}")
+                anyhow!("Invalid Bitboard string: Expected hexadecimal digits, got {bits}")
             })?;
             Ok(Self::new(bits))
         } else {
-            bail!("Invalid BitBoard string: Invalid length {}. Length must be either 64 (binary) or 16 (hexadecimal)", bits.len())
+            bail!("Invalid Bitboard string: Invalid length {}. Length must be either 64 (binary) or 16 (hexadecimal)", bits.len())
         }
     }
 }
@@ -715,14 +711,14 @@ impl FromStr for BitBoard {
 macro_rules! impl_bitwise_op {
     // Impl op and op_assign for Self
     ($op:tt, $op_assign:tt, $func:ident, $func_assign:ident, $op_tok:tt) => {
-        impl std::ops::$op for BitBoard {
+        impl std::ops::$op for Bitboard {
             type Output = Self;
             fn $func(self, rhs: Self) -> Self::Output {
                 Self(self.0 $op_tok rhs.0)
             }
         }
 
-        impl std::ops::$op_assign for BitBoard {
+        impl std::ops::$op_assign for Bitboard {
             fn $func_assign(&mut self, rhs: Self) {
                 *self = *self $op_tok rhs;
             }
@@ -736,44 +732,44 @@ impl_bitwise_op!(BitXor, BitXorAssign, bitxor, bitxor_assign, ^);
 impl_bitwise_op!(Shl, ShlAssign, shl, shl_assign, <<);
 impl_bitwise_op!(Shr, ShrAssign, shr, shr_assign, >>);
 
-impl Not for BitBoard {
+impl Not for Bitboard {
     type Output = Self;
     fn not(self) -> Self::Output {
         Self(!self.0)
     }
 }
 
-impl Shl<File> for BitBoard {
+impl Shl<File> for Bitboard {
     type Output = Self;
     fn shl(self, rhs: File) -> Self::Output {
         Self::new(self.0 << rhs.0)
     }
 }
 
-impl Shr<File> for BitBoard {
+impl Shr<File> for Bitboard {
     type Output = Self;
     fn shr(self, rhs: File) -> Self::Output {
         Self::new(self.0 >> rhs.0)
     }
 }
 
-impl Shl<Rank> for BitBoard {
+impl Shl<Rank> for Bitboard {
     type Output = Self;
     fn shl(self, rhs: Rank) -> Self::Output {
         Self::new(self.0 << (rhs.0 * 8))
     }
 }
 
-impl Shr<Rank> for BitBoard {
+impl Shr<Rank> for Bitboard {
     type Output = Self;
     fn shr(self, rhs: Rank) -> Self::Output {
         Self::new(self.0 >> (rhs.0 * 8))
     }
 }
 
-impl Index<Tile> for BitBoard {
+impl Index<Tile> for Bitboard {
     type Output = bool;
-    /// A [`BitBoard`] can be indexed by a [`Tile`] to yield `true` or `false`, if the bit at that index is set.
+    /// A [`Bitboard`] can be indexed by a [`Tile`] to yield `true` or `false`, if the bit at that index is set.
     fn index(&self, index: Tile) -> &Self::Output {
         if self.get_index(index.index()) {
             &true
@@ -783,9 +779,9 @@ impl Index<Tile> for BitBoard {
     }
 }
 
-impl Index<usize> for BitBoard {
+impl Index<usize> for Bitboard {
     type Output = bool;
-    /// A [`BitBoard`] can be indexed by a [`usize`] to yield `true` or `false`, if the bit at that index is set.
+    /// A [`Bitboard`] can be indexed by a [`usize`] to yield `true` or `false`, if the bit at that index is set.
     ///
     /// # Panics
     /// If debug assertions are enabled and `index > 63`.
@@ -798,11 +794,11 @@ impl Index<usize> for BitBoard {
     }
 }
 
-impl<T> From<Option<T>> for BitBoard
+impl<T> From<Option<T>> for Bitboard
 where
     Self: From<T>,
 {
-    /// If `value` is `None`, this yields an empty [`BitBoard`].
+    /// If `value` is `None`, this yields an empty [`Bitboard`].
     fn from(value: Option<T>) -> Self {
         if let Some(t) = value {
             Self::from(t)
@@ -812,52 +808,52 @@ where
     }
 }
 
-impl From<Tile> for BitBoard {
+impl From<Tile> for Bitboard {
     fn from(value: Tile) -> Self {
         Self::from_tile(value)
     }
 }
 
-impl From<File> for BitBoard {
+impl From<File> for Bitboard {
     fn from(value: File) -> Self {
         Self::from_file(value)
     }
 }
 
-impl From<Rank> for BitBoard {
+impl From<Rank> for Bitboard {
     fn from(value: Rank) -> Self {
         Self::from_rank(value)
     }
 }
 
-impl From<u64> for BitBoard {
+impl From<u64> for Bitboard {
     fn from(value: u64) -> Self {
         Self::new(value)
     }
 }
 
-impl fmt::UpperHex for BitBoard {
-    /// Formats this [`BitBoard`] as a 16-character uppercase hexadecimal string, not including the `0x` prefix.
+impl fmt::UpperHex for Bitboard {
+    /// Formats this [`Bitboard`] as a 16-character uppercase hexadecimal string, not including the `0x` prefix.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "0X{:0>16X}", self.0)
     }
 }
 
-impl fmt::LowerHex for BitBoard {
-    /// Formats this [`BitBoard`] as a 16-character lowercase hexadecimal string, not including the `0x` prefix.
+impl fmt::LowerHex for Bitboard {
+    /// Formats this [`Bitboard`] as a 16-character lowercase hexadecimal string, not including the `0x` prefix.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "0x{:0>16x}", self.0)
     }
 }
 
-impl fmt::Binary for BitBoard {
-    /// Formats this [`BitBoard`] as a 64-character binary string, not including the `0b` prefix.
+impl fmt::Binary for Bitboard {
+    /// Formats this [`Bitboard`] as a 64-character binary string, not including the `0b` prefix.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "0b{:0>64b}", self.0)
     }
 }
 
-impl fmt::Display for BitBoard {
+impl fmt::Display for Bitboard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Allocate just enough capacity
         let mut board = String::with_capacity(136);
@@ -876,7 +872,7 @@ impl fmt::Display for BitBoard {
     }
 }
 
-impl fmt::Debug for BitBoard {
+impl fmt::Debug for Bitboard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Allocate just enough capacity
         let mut board = String::with_capacity(198);
@@ -905,16 +901,14 @@ impl fmt::Debug for BitBoard {
     }
 }
 
-pub struct BitBoardIter {
-    bb: BitBoard,
+pub struct BitboardIter {
+    bb: Bitboard,
 }
 
-impl Iterator for BitBoardIter {
+impl Iterator for BitboardIter {
     type Item = Tile;
     fn next(&mut self) -> Option<Self::Item> {
-        let next = self.bb.lsb()?;
-        self.bb.clear_lsb();
-        Some(next)
+        self.bb.pop_lsb()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -923,29 +917,33 @@ impl Iterator for BitBoardIter {
     }
 }
 
-impl ExactSizeIterator for BitBoardIter {}
-
-impl IntoIterator for BitBoard {
-    type Item = Tile;
-    type IntoIter = BitBoardIter;
-    fn into_iter(self) -> Self::IntoIter {
-        BitBoardIter { bb: self }
+impl ExactSizeIterator for BitboardIter {
+    fn len(&self) -> usize {
+        self.bb.population() as usize
     }
 }
 
-impl IntoIterator for &BitBoard {
+impl IntoIterator for Bitboard {
     type Item = Tile;
-    type IntoIter = BitBoardIter;
+    type IntoIter = BitboardIter;
     fn into_iter(self) -> Self::IntoIter {
-        BitBoardIter { bb: *self }
+        BitboardIter { bb: self }
     }
 }
 
-impl IntoIterator for &mut BitBoard {
+impl IntoIterator for &Bitboard {
     type Item = Tile;
-    type IntoIter = BitBoardIter;
+    type IntoIter = BitboardIter;
     fn into_iter(self) -> Self::IntoIter {
-        BitBoardIter { bb: *self }
+        BitboardIter { bb: *self }
+    }
+}
+
+impl IntoIterator for &mut Bitboard {
+    type Item = Tile;
+    type IntoIter = BitboardIter;
+    fn into_iter(self) -> Self::IntoIter {
+        BitboardIter { bb: *self }
     }
 }
 
@@ -963,7 +961,7 @@ mod test {
                               . . X . . . . . \n\
                               . X . . . . . . \n\
                               X . . . . . . . \n";
-        assert_eq!(BitBoard::A1_H8_DIAG.to_string(), expected);
+        assert_eq!(Bitboard::A1_H8_DIAG.to_string(), expected);
 
         let expected = ". . . . . . . . \n\
                               . . . . . . . . \n\
@@ -973,9 +971,9 @@ mod test {
                               . . . . . . . . \n\
                               X X X X X X X X \n\
                               . . . . . . . . \n";
-        assert_eq!(BitBoard::RANK_2.to_string(), expected);
+        assert_eq!(Bitboard::RANK_2.to_string(), expected);
 
-        let board = BitBoard::RANK_2 | BitBoard::FILE_C;
+        let board = Bitboard::RANK_2 | Bitboard::FILE_C;
         let expected = ". . X . . . . . \n\
                               . . X . . . . . \n\
                               . . X . . . . . \n\
@@ -989,9 +987,9 @@ mod test {
 
     #[test]
     fn test_bitboard_masking() {
-        let file_a = BitBoard::FILE_A;
-        let full_board = BitBoard::FULL_BOARD;
-        let expected = BitBoard::NOT_FILE_A;
+        let file_a = Bitboard::FILE_A;
+        let full_board = Bitboard::FULL_BOARD;
+        let expected = Bitboard::NOT_FILE_A;
 
         assert_eq!(file_a ^ full_board, expected);
     }
@@ -999,40 +997,40 @@ mod test {
     #[test]
     fn test_bitboard_from_str() {
         let bits = "0x0101010101010101";
-        let board = BitBoard::from_str(&bits).unwrap();
-        assert_eq!(board, BitBoard::FILE_A);
+        let board = Bitboard::from_str(&bits).unwrap();
+        assert_eq!(board, Bitboard::FILE_A);
 
         let bits = "0101010101010101";
-        let board = BitBoard::from_str(&bits).unwrap();
-        assert_eq!(board, BitBoard::FILE_A);
+        let board = Bitboard::from_str(&bits).unwrap();
+        assert_eq!(board, Bitboard::FILE_A);
 
         let bits = "0b0000000100000001000000010000000100000001000000010000000100000001";
-        let board = BitBoard::from_str(&bits).unwrap();
-        assert_eq!(board, BitBoard::FILE_A);
+        let board = Bitboard::from_str(&bits).unwrap();
+        assert_eq!(board, Bitboard::FILE_A);
 
         let bits = "0000000100000001000000010000000100000001000000010000000100000001";
-        let board = BitBoard::from_str(&bits).unwrap();
-        assert_eq!(board, BitBoard::FILE_A);
+        let board = Bitboard::from_str(&bits).unwrap();
+        assert_eq!(board, Bitboard::FILE_A);
 
         let bits = "0b0000000200000002000000020000000200000002000000010000000100000001";
-        let board = BitBoard::from_str(bits);
+        let board = Bitboard::from_str(bits);
         assert!(board.is_err());
 
         let bits = "0000000200000002000000020000000200000002000000010000000100000001";
-        let board = BitBoard::from_str(bits);
+        let board = Bitboard::from_str(bits);
         assert!(board.is_err());
 
         let bits = "x0awdk";
-        let board = BitBoard::from_str(bits);
+        let board = Bitboard::from_str(bits);
         assert!(board.is_err());
 
         let bits = "";
-        let board = BitBoard::from_str(bits);
+        let board = Bitboard::from_str(bits);
         assert!(board.is_err());
     }
 
     #[test]
     fn test_bitboard_constructors() {
-        assert_eq!(BitBoard::RANK_4, BitBoard::from_rank(Rank::FOUR));
+        assert_eq!(Bitboard::RANK_4, Bitboard::from_rank(Rank::FOUR));
     }
 }

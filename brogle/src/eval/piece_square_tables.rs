@@ -1,6 +1,6 @@
 use core::fmt;
 
-use brogle_core::{BitBoard, ChessBoard, Color, File, PieceKind, Rank, Tile};
+use brogle_core::{Bitboard, ChessBoard, Color, File, PieceKind, Rank, Tile};
 
 /*
 pub const PAWN_PUSH: PieceSquareTable = PieceSquareTable([
@@ -57,7 +57,7 @@ impl PieceSquareTable {
         Self(self.0)
     }
 
-    pub fn apply_to(self, board: BitBoard) -> i32 {
+    pub fn apply_to(self, board: Bitboard) -> i32 {
         // println!("Applying:\n{self} to:\n{:?}", board);
         let mut score = 0;
 
