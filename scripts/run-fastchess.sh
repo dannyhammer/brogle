@@ -9,5 +9,5 @@ fastchess \
 		-engine cmd=$engine1 name=$name1 \
 	    -engine cmd=$engine2 name=$name2 \
 	    -openings file=epd/8moves_v3.epd format=epd order=random \
-	    -each tc=8+0.08 -rounds 500 -repeat -concurrency 6
-	    # -each tc=8+0.08 -rounds 500 -repeat -concurrency 1 -log file=1 realtime=true
+	    -each tc=8+0.08 -rounds 500 -repeat -concurrency 1 -log file=fastchess.log
+	    # -each tc=8+0.08 -rounds 500 -repeat -concurrency 6

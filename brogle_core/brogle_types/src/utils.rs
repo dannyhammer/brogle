@@ -8,7 +8,10 @@ pub const FEN_KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPP
 /// <https://www.chessprogramming.org/Chess_Position#cite_note-4>
 pub const MAX_NUM_MOVES: usize = 218;
 
+pub const NUM_TILES: usize = 64;
 pub const NUM_PIECE_TYPES: usize = 6;
+pub const NUM_PIECES: usize = 6;
+pub const NUM_CASTLING_RIGHTS: usize = 16;
 
 pub const NUM_COLORS: usize = 2;
 

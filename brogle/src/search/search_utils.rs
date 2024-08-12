@@ -356,6 +356,7 @@ impl<'a> Search<'a> {
 
         // eprintln!("Negamax: returning {best} at ply {ply}");
         Ok(best)
+        // Ok(alpha)
     }
 
     fn quiescence(&mut self, game: &Game, ply: usize, mut alpha: i32, beta: i32) -> Result<i32> {

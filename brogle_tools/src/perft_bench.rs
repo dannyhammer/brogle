@@ -24,7 +24,6 @@ fn main() {
                 .parse::<usize>()
                 .unwrap();
             let expected = perft_data.get(3..).unwrap().trim().parse::<u64>().unwrap();
-            // println!("perft({depth}, \"{fen}\") := {expected}");
 
             let position = Position::from_fen(fen).unwrap();
 

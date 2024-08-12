@@ -79,6 +79,21 @@ impl Color {
         unsafe { std::mem::transmute(bits) }
     }
 
+    /// Creates a new [`Color`] from a `bool`, where `false = White`.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// let white = Color::from_bool(false);
+    /// assert_eq!(white, Color::White);
+    ///
+    /// let black = Color::from_bool(true);
+    /// assert_eq!(black, Color::Black);
+    /// ```
+    pub const fn from_bool(color: bool) -> Self {
+        Self::from_bits_unchecked(color as u8)
+    }
+
     /// Returns `true` if this [`Color`] is White.
     pub const fn is_white(&self) -> bool {
         *self as u8 & 1 == 0

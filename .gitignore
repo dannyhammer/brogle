@@ -7,3 +7,4 @@ releases/**
 # Fastchess
 config.json
 1
+*.log

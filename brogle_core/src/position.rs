@@ -5,6 +5,9 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Result};
+use brogle_types::NUM_CASTLING_RIGHTS;
+
+use crate::ZOBRIST_TABLE;
 
 use super::{
     Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind, Rank, Tile,
@@ -39,9 +42,9 @@ impl Game {
     }
 
     /// Consumes `self` and returns a [`Game`] after having applied the provided [`Move`].
-    pub fn with_move_made(&self, chessmove: Move) -> Self {
+    pub fn with_move_made(&self, mv: Move) -> Self {
         let mut new = self.clone();
-        new.make_move(chessmove);
+        new.make_move(mv);
         new
     }
 
@@ -65,7 +68,6 @@ impl Game {
     /// ```
     pub fn is_repetition(&self) -> bool {
         for prev_pos in self.history.iter().rev().skip(1).step_by(2) {
-            println!("Checking if {prev_pos} == {}", self.position());
             if prev_pos == self.position() {
                 return true;
             }
@@ -88,28 +90,24 @@ impl Game {
     }
 
     /// Applies the move, if it is legal to make. If it is not legal, returns an `Err` explaining why.
-    pub fn make_move_checked(&mut self, chessmove: Move) -> Result<()> {
-        let (is_legal, reason) = self.is_legal(chessmove);
-        if is_legal {
-            self.make_move(chessmove);
-            Ok(())
-        } else {
-            bail!("{reason}")
-        }
+    pub fn make_move_checked(&mut self, mv: Move) -> Result<()> {
+        self.check_legality_of(mv)?;
+        self.make_move(mv);
+        Ok(())
     }
 
     /// Applies the provided [`Move`]. No enforcement of legality.
-    pub fn make_move(&mut self, chessmove: Move) {
+    pub fn make_move(&mut self, mv: Move) {
         self.history.push(self.position().clone());
-        self.moves.push(chessmove);
-        let new_pos = self.position().clone().with_move_made(chessmove);
+        self.moves.push(mv);
+        let new_pos = self.position().clone().with_move_made(mv);
         self.movegen = MoveGenerator::new_legal(new_pos);
     }
 
     /// Applies the provided [`Move`]s. No enforcement of legality.
     pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
-        for chessmove in moves {
-            self.make_move(chessmove);
+        for mv in moves {
+            self.make_move(mv);
         }
     }
 
@@ -139,51 +137,59 @@ impl Deref for Game {
     }
 }
 
+// TODO: Refactor this to be Option<tile> instead of bool arrays
 /// Represents the castling rights of both players
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct CastlingRights {
-    pub(crate) kingside: [bool; 2],
-    pub(crate) queenside: [bool; 2],
+    /// If a right is `Some(tile)`, then `tile` is the *rook*'s location
+    pub(crate) kingside: [Option<Tile>; NUM_COLORS],
+    pub(crate) queenside: [Option<Tile>; NUM_COLORS],
 }
 
 impl CastlingRights {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            kingside: [false; 2],
-            queenside: [false; 2],
+            kingside: [None; NUM_COLORS],
+            queenside: [None; NUM_COLORS],
         }
     }
 
-    fn from_uci(castling: &str) -> Result<Self> {
-        if castling.is_empty() {
-            bail!("Invalid castling rights: Got empty string.");
+    pub fn from_uci(uci: &str) -> Result<Self> {
+        let mut kingside = [None; NUM_COLORS];
+        let mut queenside = [None; NUM_COLORS];
+
+        if uci.contains(['K', 'k', 'Q', 'q']) {
+            kingside[Color::White] = uci.contains('K').then_some(Tile::H1);
+            queenside[Color::White] = uci.contains('Q').then_some(Tile::A1);
+            kingside[Color::Black] = uci.contains('k').then_some(Tile::H8);
+            queenside[Color::Black] = uci.contains('q').then_some(Tile::A8);
         } else {
-            let mut kingside = [false; 2];
-            let mut queenside = [false; 2];
-            kingside[Color::White] = castling.contains('K');
-            queenside[Color::White] = castling.contains('Q');
-            kingside[Color::Black] = castling.contains('k');
-            queenside[Color::Black] = castling.contains('q');
-            Ok(Self {
-                kingside,
-                queenside,
-            })
+            // TODO: Support Chess960
+            // Don't we need the King's tile here?
+            // for c in uci.chars() {
+            //     let color = Color::from_bool(c.is_ascii_lowercase());
+            // }
         }
+
+        Ok(Self {
+            kingside,
+            queenside,
+        })
     }
 
-    fn to_uci(&self) -> String {
+    pub fn to_uci(&self) -> String {
         let mut castling = String::with_capacity(4);
 
-        if self.kingside[Color::White] {
+        if self.kingside[Color::White].is_some() {
             castling.push('K');
         }
-        if self.queenside[Color::White] {
+        if self.queenside[Color::White].is_some() {
             castling.push('Q');
         }
-        if self.kingside[Color::Black] {
+        if self.kingside[Color::Black].is_some() {
             castling.push('k');
         }
-        if self.queenside[Color::Black] {
+        if self.queenside[Color::Black].is_some() {
             castling.push('q')
         }
 
@@ -192,6 +198,60 @@ impl CastlingRights {
         } else {
             castling
         }
+    }
+
+    /// Creates a `usize` for indexing into lists of 16 elements.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_core::CastlingRights;
+    /// let all = CastlingRights::from_uci("KQkq").unwrap();
+    /// assert_eq!(all.index(), 15);
+    /// let none = CastlingRights::from_uci("").unwrap();
+    /// assert_eq!(none.index(), 0);
+    /// ```
+    pub const fn index(&self) -> usize {
+        (self.kingside[0].is_some() as usize) << 0
+            | (self.kingside[1].is_some() as usize) << 1
+            | (self.queenside[0].is_some() as usize) << 2
+            | (self.queenside[1].is_some() as usize) << 3
+    }
+}
+
+impl FromStr for CastlingRights {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Self::from_uci(s)
+    }
+}
+
+impl<T> Index<CastlingRights> for [T; NUM_CASTLING_RIGHTS] {
+    type Output = T;
+    /// [`CastlingRights`] can be used to index into a list of 16 elements.
+    fn index(&self, index: CastlingRights) -> &Self::Output {
+        &self[index.index()]
+    }
+}
+
+impl<'a, T> Index<&'a CastlingRights> for [T; NUM_CASTLING_RIGHTS] {
+    type Output = T;
+    /// [`CastlingRights`] can be used to index into a list of 16 elements.
+    fn index(&self, index: &'a CastlingRights) -> &Self::Output {
+        &self[index.index()]
+    }
+}
+
+impl<T> IndexMut<CastlingRights> for [T; NUM_CASTLING_RIGHTS] {
+    /// [`CastlingRights`] can be used to index into a list of 16 elements.
+    fn index_mut(&mut self, index: CastlingRights) -> &mut Self::Output {
+        &mut self[index.index()]
+    }
+}
+
+impl<'a, T> IndexMut<&'a CastlingRights> for [T; NUM_CASTLING_RIGHTS] {
+    /// [`CastlingRights`] can be used to index into a list of 16 elements.
+    fn index_mut(&mut self, index: &'a CastlingRights) -> &mut Self::Output {
+        &mut self[index.index()]
     }
 }
 
@@ -289,8 +349,8 @@ impl Position {
     }
 
     /// Consumes `self` and returns a [`Position`] after having applied the provided [`Move`].
-    pub fn with_move_made(mut self, chessmove: Move) -> Self {
-        self.make_move(chessmove);
+    pub fn with_move_made(mut self, mv: Move) -> Self {
+        self.make_move(mv);
         self
     }
 
@@ -343,6 +403,10 @@ impl Position {
         self.fullmove
     }
 
+    pub fn zobrist_key(&self) -> u64 {
+        ZOBRIST_TABLE.hash(&self)
+    }
+
     /// Returns `true` if the half-move counter is 50 or greater.
     pub const fn can_draw_by_fifty(&self) -> bool {
         self.halfmove() >= 50
@@ -365,41 +429,42 @@ impl Position {
 
     /// Returns `true` if `color` can castle (either Kingside or Queenside).
     pub const fn can_castle(&self, color: Color) -> bool {
-        self.castling_rights().kingside[color.index()]
-            || self.castling_rights().queenside[color.index()]
+        self.castling_rights().kingside[color.index()].is_some()
+            || self.castling_rights().queenside[color.index()].is_some()
     }
 
-    /// Checks if the provided move is legal to perform
+    /// Checks if the provided move is legal to perform.
     ///
-    /// TODO: Refactor this to not return a tuple. Maybe a result?
-    fn is_legal(&self, chessmove: Move) -> (bool, &str) {
-        let (from, to, kind) = chessmove.parts();
+    /// If `Ok(())`, the move is legal.
+    /// If `Err(msg)`, then `msg` will be a reason as to why it's not legal.
+    fn check_legality_of(&self, mv: Move) -> Result<()> {
+        let (from, to, kind) = mv.parts();
 
         // If there's no piece here, illegal move
         let Some(piece) = self.board().piece_at(from) else {
-            return (false, "No piece here to move");
+            bail!("No piece here to move");
         };
 
         // If it's not this piece's color's turn, illegal move
         if piece.color() != self.current_player() {
-            return (false, "Tried to move a piece that wasn't yours");
+            bail!("Tried to move a piece that wasn't yours");
         }
 
         // If this move captures a piece, handle those cases
         if let Some(to_capture) = self.board().piece_at(to) {
             // Can't capture own pieces
             if to_capture.color() == piece.color() {
-                return (false, "Tried to capture your own piece");
+                bail!("Tried to capture your own piece");
             }
 
             // Can't capture king
             if to_capture.is_king() {
-                return (false, "Tried to capture enemy king");
+                bail!("Tried to capture enemy king");
             }
 
             // Ensure that the move is a capture or en passant, and that it captures the correct piece
-            if !chessmove.is_capture() {
-                return (false, "Captured on a non-capture move");
+            if !mv.is_capture() {
+                bail!("Captured on a non-capture move");
             }
         }
 
@@ -407,56 +472,52 @@ impl Position {
             // If the move is pawn-specific, ensure it's a pawn moving
             MoveKind::EnPassantCapture | MoveKind::PawnPushTwo | MoveKind::Promote(_) => {
                 if !piece.is_pawn() {
-                    return (false, "Tried to do a pawn move (EP, Push 2, Promote) with a piece that isn't a pawn");
+                    bail!("Tried to do a pawn move (EP, Push 2, Promote) with a piece that isn't a pawn");
                 }
             }
             // If castling, ensure we have the right to
             MoveKind::KingsideCastle => {
-                if !self.castling_rights.kingside[piece.color()] {
-                    return (false, "Tried to castle (kingside) without rights");
+                if self.castling_rights.kingside[piece.color()].is_none() {
+                    bail!("Tried to castle (kingside) without rights");
                 }
             }
             // If castling, ensure we have the right to
             MoveKind::QueensideCastle => {
-                if !self.castling_rights.queenside[piece.color()] {
-                    return (false, "Tried to castle (queenside) without rights");
+                if self.castling_rights.queenside[piece.color()].is_none() {
+                    bail!("Tried to castle (queenside) without rights");
                 }
             }
             // Quiet moves are fine
             _ => {}
         }
 
-        (true, "")
+        Ok(())
     }
 
     /// Applies the move, if it is legal to make. If it is not legal, returns an `Err` explaining why.
-    pub fn make_move_checked(&mut self, chessmove: Move) -> Result<()> {
-        let (is_legal, reason) = self.is_legal(chessmove);
-        if is_legal {
-            self.make_move(chessmove);
-            Ok(())
-        } else {
-            bail!("{reason}")
-        }
+    pub fn make_move_checked(&mut self, mv: Move) -> Result<()> {
+        self.check_legality_of(mv)?;
+        self.make_move(mv);
+        Ok(())
     }
 
     /// Apply the provided `moves` to the board. No enforcement of legality.
     pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
-        for chessmove in moves {
-            self.make_move(chessmove);
+        for mv in moves {
+            self.make_move(mv);
         }
     }
 
     /// Applies the move. No enforcement of legality
-    pub fn make_move(&mut self, chessmove: Move) {
+    pub fn make_move(&mut self, mv: Move) {
         // Remove the piece from it's previous location, exiting early if there is no piece there
-        let Some(mut piece) = self.board_mut().take(chessmove.from()) else {
+        let Some(mut piece) = self.board_mut().take(mv.from()) else {
             return;
         };
 
         let color = piece.color();
-        let to = chessmove.to();
-        let from = chessmove.from();
+        let to = mv.to();
+        let from = mv.from();
 
         // Clear the EP tile from the last move
         self.ep_tile = None;
@@ -466,9 +527,9 @@ impl Position {
         self.fullmove += self.current_player().index();
 
         // First, deal with special cases like captures and castling
-        if chessmove.is_capture() {
+        if mv.is_capture() {
             // If this move was en passant, the piece we captured isn't at `to`, it's one square behind
-            let captured_tile = if chessmove.is_en_passant() {
+            let captured_tile = if mv.is_en_passant() {
                 to.backward_by(color, 1).unwrap()
             } else {
                 to
@@ -479,19 +540,21 @@ impl Position {
 
             // If the capture was on a rook's starting square, disable that side's castling.
             // Either a rook was captured, or there wasn't a rook there, in which case castling on that side is already disabled
-            let can_queenside = to != [Tile::A1, Tile::A8][captured_color];
-            let can_kingside = to != [Tile::H1, Tile::H8][captured_color];
+            if to == Tile::A1.rank_relative_to(captured_color) {
+                self.castling_rights.queenside[captured_color].take();
+            }
 
-            self.castling_rights.queenside[captured_color] &= can_queenside;
-            self.castling_rights.kingside[captured_color] &= can_kingside;
+            if to == Tile::H1.rank_relative_to(captured_color) {
+                self.castling_rights.kingside[captured_color].take();
+            }
 
             // Reset halfmove counter, since a capture occurred
             self.halfmove = 0;
-        } else if chessmove.is_pawn_double_push() {
+        } else if mv.is_pawn_double_push() {
             // Double pawn push, so set the EP square
             self.ep_tile = from.forward_by(color, 1);
-        } else if chessmove.is_castle() {
-            let castle_index = chessmove.is_short_castle() as usize;
+        } else if mv.is_castle() {
+            let castle_index = mv.is_short_castle() as usize;
             let old_rook_tile = [Tile::A1, Tile::H1][castle_index].rank_relative_to(color);
             let new_rook_tile = [Tile::D1, Tile::F1][castle_index].rank_relative_to(color);
 
@@ -500,8 +563,8 @@ impl Position {
             self.board_mut().set(rook, new_rook_tile);
 
             // Disable castling
-            self.castling_rights.kingside[color] = false;
-            self.castling_rights.queenside[color] = false;
+            self.castling_rights.kingside[color] = None;
+            self.castling_rights.queenside[color] = None;
         }
 
         // Next, handle special cases for Pawn (halfmove), Rook, and King (castling)
@@ -509,19 +572,26 @@ impl Position {
             PieceKind::Pawn => self.halfmove = 0,
             PieceKind::Rook => {
                 // Disable castling if a rook moved
-                self.castling_rights.kingside[color] &= from != Tile::H1.rank_relative_to(color);
-                self.castling_rights.queenside[color] &= from != Tile::A1.rank_relative_to(color);
+                // self.castling_rights.kingside[color] &= from != Tile::H1.rank_relative_to(color);
+                // self.castling_rights.queenside[color] &= from != Tile::A1.rank_relative_to(color);
+                if from == Tile::A1.rank_relative_to(color) {
+                    self.castling_rights.queenside[color].take();
+                }
+
+                if from == Tile::H1.rank_relative_to(color) {
+                    self.castling_rights.kingside[color].take();
+                }
             }
             PieceKind::King => {
                 // Disable all castling
-                self.castling_rights.kingside[color] = false;
-                self.castling_rights.queenside[color] = false;
+                self.castling_rights.kingside[color] = None;
+                self.castling_rights.queenside[color] = None;
             }
             _ => {}
         }
 
         // Now we check for promotions, since all special cases for Pawns and Rooks have been dealt with
-        if let Some(promotion) = chessmove.promotion() {
+        if let Some(promotion) = mv.promotion() {
             piece = piece.promoted(promotion);
         }
 
@@ -531,12 +601,6 @@ impl Position {
         // Next player's turn
         self.toggle_current_player();
     }
-
-    /*
-    pub fn unmake_move(&mut self, chessmove: Move) {
-        //
-    }
-    */
 }
 
 impl FromStr for Position {
@@ -1010,6 +1074,13 @@ impl ChessBoard {
     /// ```
     pub const fn piece(&self, piece: Piece) -> Bitboard {
         self.piece_parts(piece.color(), piece.kind())
+    }
+
+    /// Returns an iterator over all of the pieces on this board along with their corresponding locations.
+    pub fn pieces(&self) -> impl ExactSizeIterator<Item = (Tile, Piece)> + '_ {
+        self.occupied()
+            .into_iter()
+            .map(|tile| (tile, self.get(tile).unwrap()))
     }
 
     /// Analogous to [`ChessBoard::piece`] with a [`Piece`]'s individual components

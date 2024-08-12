@@ -364,7 +364,7 @@ impl Engine {
     }
 
     /// Executes the `perft` command, performing `perft(depth)` for benchmarking and testing.
-    fn perft(&self, depth: usize, pretty: bool, split: bool) {
+    pub fn perft(&self, depth: usize, pretty: bool, split: bool) {
         // Man, I wish I could just pass `split` and `pretty` in directly
         if split {
             if pretty {
@@ -425,9 +425,9 @@ impl Engine {
     }
 
     /// Executes the `move` command, applying the provided move(s) to the current position.
-    fn make_move(&mut self, moves: Vec<String>) -> Result<()> {
+    pub fn make_move<T: AsRef<str>>(&mut self, moves: impl IntoIterator<Item = T>) -> Result<()> {
         for mv_string in moves {
-            let mv = Move::from_uci(&self.game, &mv_string)?;
+            let mv = Move::from_uci(&self.game, mv_string.as_ref())?;
             self.game.make_move(mv);
         }
 

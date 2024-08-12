@@ -10,6 +10,6 @@ fi;
 echo "Building $name"
 
 cargo b --release
-cp target/release/brogle_engine releases/$name
+cp target/release/brogle releases/$name
 
 echo "Built releases/$name"

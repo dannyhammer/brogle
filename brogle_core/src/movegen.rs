@@ -418,22 +418,22 @@ impl MoveGenerator {
             // A king can move anywhere that isn't attacked by the enemy
             let enemy_attacks = self.attacks_by_color(color.opponent());
 
-            let castling_availability = |side: [bool; 2], rook_tile, dst_tile| {
+            let castling_availability = |side: [Option<Tile>; NUM_COLORS], dst_tile: Tile| {
                 // Check if we can castle at all on this side
-                let can_castle = Bitboard::from_bool(side[color]);
+                if let Some(rook_tile) = side[color] {
+                    // No squares between the King and his destination may be under attack
+                    let must_be_safe = ray_between_inclusive(from, dst_tile);
+                    let is_safe = (must_be_safe & enemy_attacks).is_empty();
 
-                // No squares between the Rook and King may be under attack by the enemy
-                let castling = can_castle & ray_between_inclusive(from, rook_tile);
+                    // All squares between the King and Rook must be empty
+                    let must_be_clear = ray_between_exclusive(from, rook_tile);
+                    let is_clear = (must_be_clear & blockers).is_empty();
 
-                // All squares within the castling range must be empty
-                let squares_between = ray_between_inclusive(from, dst_tile);
-
-                let not_attacked = (enemy_attacks & castling).is_empty();
-                // There can be at most one piece in this ray (the King)
-                let is_clear = (squares_between & blockers).population() <= 1;
-
-                if not_attacked && is_clear {
-                    castling
+                    if is_safe && is_clear {
+                        Bitboard::from_tile(dst_tile)
+                    } else {
+                        Bitboard::EMPTY_BOARD
+                    }
                 } else {
                     Bitboard::EMPTY_BOARD
                 }
@@ -442,16 +442,14 @@ impl MoveGenerator {
             let kingside = castling_availability(
                 self.position().castling_rights().kingside,
                 Tile::G1.rank_relative_to(color),
-                Tile::G1.rank_relative_to(color),
             );
-            // println!("kingside:\n{kingside}\n");
+            // eprintln!("kingside:\n{kingside}\n");
 
             let queenside = castling_availability(
                 self.position().castling_rights().queenside,
                 Tile::C1.rank_relative_to(color),
-                Tile::B1.rank_relative_to(color),
             );
-            // println!("queenside:\n{queenside}\n");
+            // eprintln!("queenside:\n{queenside}\n");
 
             let attack_or_castle = pseudo_legal | kingside | queenside; // Any attacks or castling
             let safe_squares = !(enemy_attacks | self.discoverable_checks); // Not attacked by the enemy (even after King retreats)
@@ -468,11 +466,11 @@ impl MoveGenerator {
 
                 if from == Tile::KING_START_SQUARES[color] {
                     if to == Tile::KINGSIDE_CASTLE_SQUARES[color]
-                        && self.position().castling_rights().kingside[color]
+                        && self.position().castling_rights().kingside[color].is_some()
                     {
                         kind = MoveKind::KingsideCastle;
                     } else if to == Tile::QUEENSIDE_CASTLE_SQUARES[color]
-                        && self.position().castling_rights().queenside[color]
+                        && self.position().castling_rights().queenside[color].is_some()
                     {
                         kind = MoveKind::QueensideCastle;
                     }
