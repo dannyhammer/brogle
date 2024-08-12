@@ -7,8 +7,8 @@ use std::{
 use anyhow::{anyhow, bail, Result};
 
 use super::{
-    utils::FEN_STARTPOS, Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind,
-    Rank, Tile, NUM_COLORS, NUM_PIECE_TYPES,
+    Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind, Rank, Tile,
+    FEN_STARTPOS, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -594,21 +594,21 @@ impl fmt::Debug for Position {
                 board_str += &format!(" {piece_char}");
             }
 
-            if rank == Rank(6) {
+            if rank == Rank::SEVEN {
                 board_str += &format!("           FEN: {}", self.to_fen());
-            } else if rank == Rank(5) {
+            } else if rank == Rank::SIX {
                 board_str += &format!("          Side: {}", self.current_player());
-            } else if rank == Rank(4) {
+            } else if rank == Rank::FIVE {
                 board_str += &format!("      Castling: {}", self.castling_rights());
-            } else if rank == Rank(3) {
+            } else if rank == Rank::FOUR {
                 let ep = self
                     .ep_tile()
                     .map(|t| t.to_uci())
                     .unwrap_or(String::from("-"));
                 board_str += &format!("            EP: {ep}",);
-            } else if rank == Rank(2) {
+            } else if rank == Rank::THREE {
                 board_str += &format!("     Half-move: {}", self.halfmove());
-            } else if rank == Rank(1) {
+            } else if rank == Rank::TWO {
                 board_str += &format!("     Full-move: {}", self.fullmove());
             }
             board_str += "\n";

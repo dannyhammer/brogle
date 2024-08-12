@@ -129,7 +129,7 @@ impl Move {
     /// assert_eq!(from, Tile::E2);
     /// ```
     pub const fn from(&self) -> Tile {
-        Tile((self.0 & Self::SRC_MASK) as u8)
+        Tile::from_bits_unchecked((self.0 & Self::SRC_MASK) as u8)
     }
 
     /// Fetches the destination (or "to") part of this [`Move`], as a [`Tile`].
@@ -142,7 +142,7 @@ impl Move {
     /// assert_eq!(to, Tile::E4);
     /// ```
     pub const fn to(&self) -> Tile {
-        Tile(((self.0 & Self::DST_MASK) >> Self::DST_BITS) as u8)
+        Tile::from_bits_unchecked(((self.0 & Self::DST_MASK) >> Self::DST_BITS) as u8)
     }
 
     /// Fetches the [`MoveKind`] part of this [`Move`].

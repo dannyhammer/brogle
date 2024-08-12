@@ -84,7 +84,7 @@ fn try_make_table(
     let index_bits = 64 - magic_entry.shift;
     let mut table = vec![Bitboard::EMPTY_BOARD; 1 << index_bits];
 
-    let mut blockers = Bitboard::EMPTY_BOARD;
+    let blockers = Bitboard::EMPTY_BOARD;
     loop {
         let moves = slider.moves(tile, blockers);
         let table_entry = &mut table[magic_index(magic_entry, blockers)];
@@ -125,6 +125,7 @@ fn find_and_print_all_magics(slider: &SlidingPiece, piece_name: &str) {
     println!("];");
     println!("pub const {piece_name}_TABLE_SIZE: usize = {table_size};");
 }
+
 pub fn print_magics() {
     find_and_print_all_magics(&SlidingPiece::ROOK, "ROOK");
     find_and_print_all_magics(&SlidingPiece::BISHOP, "BISHOP");

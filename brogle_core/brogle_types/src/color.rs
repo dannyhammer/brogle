@@ -36,7 +36,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// let white = Color::from_bits(0);
     /// assert!(white.is_ok());
     /// assert_eq!(white.unwrap(), Color::White);
@@ -61,7 +61,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// let white = Color::from_bits(0);
     /// assert!(white.is_ok());
     /// assert_eq!(white.unwrap(), Color::White);
@@ -93,7 +93,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// assert_eq!(Color::White.negation_multiplier(), 1);
     /// assert_eq!(Color::Black.negation_multiplier(), -1);
     /// ```
@@ -117,7 +117,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// assert_eq!(Color::White.opponent(), Color::Black);
     /// assert_eq!(Color::Black.opponent(), Color::White);
     /// ```
@@ -133,7 +133,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// assert_eq!(Color::White.index(), 0);
     /// assert_eq!(Color::Black.index(), 1);
     /// ```
@@ -149,7 +149,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// assert_eq!(Color::White.bits(), 0);
     /// assert_eq!(Color::Black.bits(), 1);
     /// ```
@@ -161,7 +161,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// let white = Color::from_uci('w');
     /// assert!(white.is_ok());
     /// assert_eq!(white.unwrap(), Color::White);
@@ -183,7 +183,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// assert_eq!(Color::from_case('k'), Color::Black);
     /// ```
     pub const fn from_case(c: char) -> Self {
@@ -198,7 +198,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// assert_eq!(Color::White.to_uci(), 'w');
     /// ```
     pub const fn to_uci(&self) -> char {
@@ -212,7 +212,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// assert_eq!(Color::White.as_str(), "w");
     /// ```
     pub const fn as_str(&self) -> &'static str {
@@ -226,7 +226,7 @@ impl Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// let white = Color::White;
     /// assert_eq!(white.name(), "white");
     /// ```
@@ -259,7 +259,7 @@ impl FromStr for Color {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Color;
+    /// # use brogle_types::Color;
     /// use std::str::FromStr;
     /// let white = Color::from_str("w");
     /// assert!(white.is_ok());

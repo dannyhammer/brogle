@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::{Bitboard, Color, Rank, Tile};
 
@@ -50,7 +50,10 @@ pub const KNIGHT_DELTAS: [(i8, i8); 8] = [
     (-2, -1),
 ];
 
-pub fn generate_ray_table_blobs<P: AsRef<Path>>(outdir: P) -> std::io::Result<()> {
+pub fn generate_ray_table_datfiles<P: AsRef<Path>>(outdir: P) -> std::io::Result<()> {
+    // 64 * 64 * 8 = 32,768
+    // 2D Bitboard array being cast to u8 (8 u8 in a u64)
+
     // Generate the blobs
     let ray_between_inclusive: [u8; 32_768] =
         unsafe { std::mem::transmute(generate_ray_between_inclusive_table()) };
@@ -60,19 +63,16 @@ pub fn generate_ray_table_blobs<P: AsRef<Path>>(outdir: P) -> std::io::Result<()
         unsafe { std::mem::transmute(generate_ray_containing_table()) };
 
     // Write the blobs
-    let path = |name| {
-        let outfile = format!("{name}.blob");
-        PathBuf::from(outdir.as_ref()).join(outfile)
-    };
+    let path = |name| Path::new(outdir.as_ref()).join(name);
 
-    std::fs::write(path("ray_between_inclusive"), ray_between_inclusive)?;
-    std::fs::write(path("ray_between_exclusive"), ray_between_exclusive)?;
-    std::fs::write(path("ray_containing"), ray_containing)?;
+    std::fs::write(path("ray_between_inclusive.dat"), ray_between_inclusive)?;
+    std::fs::write(path("ray_between_exclusive.dat"), ray_between_exclusive)?;
+    std::fs::write(path("ray_containing.dat"), ray_containing)?;
 
     Ok(())
 }
 
-pub fn generate_ray_between_inclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
+fn generate_ray_between_inclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
     let mut rays = [[Bitboard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
 
     for from in Tile::iter() {
@@ -90,7 +90,7 @@ pub fn generate_ray_between_inclusive_table() -> [[Bitboard; Tile::COUNT]; Tile:
     rays
 }
 
-pub fn generate_ray_between_exclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
+fn generate_ray_between_exclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
     let mut rays = [[Bitboard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
 
     for from in Tile::iter() {
@@ -108,7 +108,7 @@ pub fn generate_ray_between_exclusive_table() -> [[Bitboard; Tile::COUNT]; Tile:
     rays
 }
 
-pub fn generate_ray_containing_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
+fn generate_ray_containing_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
     let mut rays = [[Bitboard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
 
     for from in Tile::iter() {
@@ -175,7 +175,6 @@ pub fn generate_ray_containing_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT]
 /// Generates the default mobility for each of the pieces of standard chess, and writes the mobility to new files created in `outdir`.
 ///
 /// This will produce the following 9 files located in `outdir`:
-///     * `queen_mobility.blob`
 ///     * `rook_mobility.blob`
 ///     * `bishop_mobility.blob`
 ///     * `knight_mobility.blob`
@@ -184,40 +183,32 @@ pub fn generate_ray_containing_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT]
 ///     * `black_pawn_push_mobility.blob`
 ///     * `white_pawn_attack_mobility.blob`
 ///     * `black_pawn_attack_mobility.blob`
-///     * `dragon_mobility.blob` (queen + knight)
 ///
 /// You can use `include_bytes!()` to read from these blobs like so:
 /// ```compile_fail
 /// const KNIGHT_MOVES: [Bitboard; 64] = unsafe { std::mem::transmute(*include_bytes!("knight_mobility.blob")) };
 /// ```
-pub fn generate_mobility_blobs<P: AsRef<Path>>(outdir: P) -> std::io::Result<()> {
+pub fn generate_piece_attack_datfiles<P: AsRef<Path>>(outdir: P) -> std::io::Result<()> {
     // Generate the blobs
     let bishop: [u8; 512] = unsafe { std::mem::transmute(generate_bishop_mobility()) };
     let rook: [u8; 512] = unsafe { std::mem::transmute(generate_rook_mobility()) };
     let knight: [u8; 512] = unsafe { std::mem::transmute(generate_knight_mobility()) };
     let king: [u8; 512] = unsafe { std::mem::transmute(generate_king_mobility()) };
-    let queen: [u8; 512] = unsafe { std::mem::transmute(generate_queen_mobility()) };
     let wpp: [u8; 512] = unsafe { std::mem::transmute(generate_pawn_pushes(Color::White)) };
     let bpp: [u8; 512] = unsafe { std::mem::transmute(generate_pawn_pushes(Color::Black)) };
     let wpa: [u8; 512] = unsafe { std::mem::transmute(generate_pawn_attacks(Color::White)) };
     let bpa: [u8; 512] = unsafe { std::mem::transmute(generate_pawn_attacks(Color::Black)) };
-    let dragon: [u8; 512] = unsafe { std::mem::transmute(generate_dragon_mobility()) };
 
     // Write the blobs
-    let path = |name| {
-        let outfile = format!("{name}_mobility.blob");
-        PathBuf::from(outdir.as_ref()).join(outfile)
-    };
-    std::fs::write(path("bishop"), bishop)?;
-    std::fs::write(path("rook"), rook)?;
-    std::fs::write(path("knight"), knight)?;
-    std::fs::write(path("king"), king)?;
-    std::fs::write(path("queen"), queen)?;
-    std::fs::write(path("white_pawn_push"), wpp)?;
-    std::fs::write(path("black_pawn_push"), bpp)?;
-    std::fs::write(path("white_pawn_attack"), wpa)?;
-    std::fs::write(path("black_pawn_attack"), bpa)?;
-    std::fs::write(path("dragon"), dragon)?;
+    let path = |name| Path::new(outdir.as_ref()).join(name);
+    std::fs::write(path("bishop_attacks.dat"), bishop)?;
+    std::fs::write(path("rook_attacks.dat"), rook)?;
+    std::fs::write(path("knight_attacks.dat"), knight)?;
+    std::fs::write(path("king_attacks.dat"), king)?;
+    std::fs::write(path("white_pawn_pushes.dat"), wpp)?;
+    std::fs::write(path("black_pawn_pushes.dat"), bpp)?;
+    std::fs::write(path("white_pawn_attacks.dat"), wpa)?;
+    std::fs::write(path("black_pawn_attacks.dat"), bpa)?;
 
     Ok(())
 }
@@ -332,6 +323,7 @@ fn generate_bishop_mobility() -> [Bitboard; Tile::COUNT] {
     generate_rider_mobility(&BISHOP_DELTAS)
 }
 
+/*
 /// Generates the default mobility for the Queen.
 fn generate_queen_mobility() -> [Bitboard; Tile::COUNT] {
     generate_rider_mobility(&QUEEN_DELTAS)
@@ -348,3 +340,4 @@ fn generate_dragon_mobility() -> [Bitboard; Tile::COUNT] {
 
     dragon
 }
+ */

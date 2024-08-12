@@ -551,7 +551,7 @@ impl MoveGenerator {
         let occupied = board.occupied();
 
         // By treating this tile like a rook/bishop that can attack "through" anything, we can find all of the possible attacks *to* this tile by these enemy pieces, including possible pins
-        let orthogonal_attacks = ROOK_MOBILITY[tile];
+        let orthogonal_attacks = ROOK_ATTACKS[tile];
         let enemy_orthogonal_sliders = board.orthogonal_sliders(opponent);
 
         // If an orthogonal slider is reachable from this tile, then it is attacking this tile
@@ -566,7 +566,7 @@ impl MoveGenerator {
         }
 
         // Repeat the process with diagonal sliders
-        let diagonal_attacks = BISHOP_MOBILITY[tile];
+        let diagonal_attacks = BISHOP_ATTACKS[tile];
         let enemy_diagonal_sliders = board.diagonal_sliders(opponent);
 
         for attacker_tile in diagonal_attacks & enemy_diagonal_sliders {
@@ -601,41 +601,85 @@ impl Default for MoveGenerator {
     }
 }
 
-const RAY_BETWEEN_EXCLUSIVE: [[Bitboard; Tile::COUNT]; Tile::COUNT] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/ray_between_exclusive.blob")) };
+const RAY_BETWEEN_EXCLUSIVE: [[Bitboard; Tile::COUNT]; Tile::COUNT] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/ray_between_exclusive.dat"
+    )))
+};
 
-const RAY_BETWEEN_INCLUSIVE: [[Bitboard; Tile::COUNT]; Tile::COUNT] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/ray_between_inclusive.blob")) };
+const RAY_BETWEEN_INCLUSIVE: [[Bitboard; Tile::COUNT]; Tile::COUNT] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/ray_between_inclusive.dat"
+    )))
+};
 
-const RAY_CONTAINING: [[Bitboard; Tile::COUNT]; Tile::COUNT] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/ray_containing.blob")) };
+const RAY_CONTAINING: [[Bitboard; Tile::COUNT]; Tile::COUNT] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/ray_containing.dat"
+    )))
+};
 
-const KNIGHT_ATTACKS: [Bitboard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/knight_mobility.blob")) };
+const KNIGHT_ATTACKS: [Bitboard; 64] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/knight_attacks.dat"
+    )))
+};
 
 // const QUEEN_ATTACKS: [Bitboard; 64] =
 //     unsafe { std::mem::transmute(*include_bytes!("blobs/queen_mobility.blob")) };
 
-const ROOK_MOBILITY: [Bitboard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/rook_mobility.blob")) };
+const ROOK_ATTACKS: [Bitboard; 64] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/rook_attacks.dat"
+    )))
+};
 
-const BISHOP_MOBILITY: [Bitboard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/bishop_mobility.blob")) };
+const BISHOP_ATTACKS: [Bitboard; 64] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/bishop_attacks.dat"
+    )))
+};
 
-const KING_ATTACKS: [Bitboard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/king_mobility.blob")) };
+const KING_ATTACKS: [Bitboard; 64] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/king_attacks.dat"
+    )))
+};
 
-const WHITE_PAWN_PUSHES: [Bitboard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/white_pawn_push_mobility.blob")) };
+const WHITE_PAWN_PUSHES: [Bitboard; 64] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/white_pawn_pushes.dat"
+    )))
+};
 
-const BLACK_PAWN_PUSHES: [Bitboard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/black_pawn_push_mobility.blob")) };
+const BLACK_PAWN_PUSHES: [Bitboard; 64] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/black_pawn_pushes.dat"
+    )))
+};
 
-const WHITE_PAWN_ATTACKS: [Bitboard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/white_pawn_attack_mobility.blob")) };
+const WHITE_PAWN_ATTACKS: [Bitboard; 64] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/white_pawn_attacks.dat"
+    )))
+};
 
-const BLACK_PAWN_ATTACKS: [Bitboard; 64] =
-    unsafe { std::mem::transmute(*include_bytes!("blobs/black_pawn_attack_mobility.blob")) };
+const BLACK_PAWN_ATTACKS: [Bitboard; 64] = unsafe {
+    std::mem::transmute(*include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/black_pawn_attacks.dat"
+    )))
+};
 
 struct MagicEntry {
     mask: u64,
@@ -683,7 +727,7 @@ const fn king_move_helper(tile: Tile, _: Bitboard, _: Color) -> Bitboard {
 }
 
 const fn magic_index(entry: &MagicEntry, blockers: Bitboard) -> usize {
-    let blockers = blockers.0 & entry.mask;
+    let blockers = blockers.inner() & entry.mask;
     let hash = blockers.wrapping_mul(entry.magic);
     let index = (hash >> entry.shift) as usize;
     entry.offset as usize + index
@@ -709,7 +753,7 @@ pub const fn ray_containing(from: Tile, to: Tile) -> Bitboard {
 /// This will yield a [`Bitboard`] that allows the Rook to capture the first blocker.
 pub const fn rook_attacks(tile: Tile, blockers: Bitboard) -> Bitboard {
     let magic = &ROOK_MAGICS[tile.index()];
-    Bitboard(ROOK_MOVES[magic_index(magic, blockers)])
+    Bitboard::new(ROOK_MOVES[magic_index(magic, blockers)])
 }
 
 /// Computes the possible moves for a Bishop at a given [`Tile`] with the provided blockers.
@@ -717,7 +761,7 @@ pub const fn rook_attacks(tile: Tile, blockers: Bitboard) -> Bitboard {
 /// This will yield a [`Bitboard`] that allows the Bishop to capture the first blocker.
 pub const fn bishop_attacks(tile: Tile, blockers: Bitboard) -> Bitboard {
     let magic = &BISHOP_MAGICS[tile.index()];
-    Bitboard(BISHOP_MOVES[magic_index(magic, blockers)])
+    Bitboard::new(BISHOP_MOVES[magic_index(magic, blockers)])
 }
 
 /// Computes the possible moves for a Queen at a given [`Tile`] with the provided blockers.
@@ -727,10 +771,12 @@ pub const fn queen_attacks(tile: Tile, blockers: Bitboard) -> Bitboard {
     rook_attacks(tile, blockers).or(bishop_attacks(tile, blockers))
 }
 
+/// Fetch the raw, unblocked attacks for a knight on the provided tile.
 pub const fn knight_attacks(tile: Tile) -> Bitboard {
     KNIGHT_ATTACKS[tile.index()]
 }
 
+/// Fetch the raw, unblocked attacks for a king on the provided tile.
 pub const fn king_attacks(tile: Tile) -> Bitboard {
     KING_ATTACKS[tile.index()]
 }
@@ -751,6 +797,7 @@ pub const fn pawn_moves(tile: Tile, color: Color, blockers: Bitboard) -> Bitboar
     pushes.or(attacks)
 }
 
+/// Fetch the raw, unblocked pushes for a pawn of the provided color on the provided tile.
 pub const fn pawn_pushes(tile: Tile, color: Color) -> Bitboard {
     [
         WHITE_PAWN_PUSHES[tile.index()],
@@ -758,6 +805,7 @@ pub const fn pawn_pushes(tile: Tile, color: Color) -> Bitboard {
     ][color.index()]
 }
 
+/// Fetch the raw, unblocked attacks for a pawn of the provided color on the provided tile.
 pub const fn pawn_attacks(tile: Tile, color: Color) -> Bitboard {
     [
         WHITE_PAWN_ATTACKS[tile.index()],
