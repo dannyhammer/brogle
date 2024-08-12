@@ -1,6 +1,6 @@
-use brogle_core::{BitBoard, ChessBoard, Color, Game, PieceKind, Tile};
+use brogle_core::{BitBoard, ChessBoard, Color, Game, PieceKind};
 
-use super::piece_square_tables::{CONTROL_CENTER, KING_SAFETY, PAWN_PUSH};
+// use super::piece_square_tables::{CONTROL_CENTER, KING_SAFETY, PAWN_PUSH};
 
 /// A struct to encapsulate the logic of evaluating a chess position.
 pub struct Evaluator<'a> {
@@ -21,12 +21,15 @@ impl<'a> Evaluator<'a> {
         material_difference(self.game.board(), color)
     }
 
+    /*
     /// Run a complex evaluation, checking some basic Piece-Square Tables.
     pub fn complex_eval(self) -> i32 {
         let color = self.game.current_player();
         self.eval_for(color)
     }
+     */
 
+    /*
     /// Evaluates the board from `color`'s perspective. A positive number is good here.
     fn eval_for(self, color: Color) -> i32 {
         let board = self.game.board();
@@ -57,6 +60,7 @@ impl<'a> Evaluator<'a> {
 
         mat + pawn_pushes + king_safety + center_control + restrict_king
     }
+     */
 }
 
 /// Computes the difference in material on the board.
@@ -106,6 +110,7 @@ const fn count_material_of(board: &ChessBoard, color: BitBoard, kind: PieceKind)
     (pieces.population() as i32) * value
 }
 
+/*
 /// Grants a bonus to positions where the king of `enemy_color` is restricted in his movement,
 /// such as being forced into a corner.
 fn restrict_enemy_king_movement(board: &ChessBoard, color: Color, endgame_weight: f32) -> i32 {
@@ -133,7 +138,7 @@ fn material_remaining_percentage(board: &ChessBoard, color: Color) -> f32 {
         + value_of(PieceKind::Knight) * 2
         + value_of(PieceKind::Bishop) * 2
         + value_of(PieceKind::Rook) * 2
-        + value_of(PieceKind::Queen) * 1;
+        + value_of(PieceKind::Queen);
 
     let current = count_material(board, color);
 
@@ -143,3 +148,4 @@ fn material_remaining_percentage(board: &ChessBoard, color: Color) -> f32 {
         1.0 - current as f32 / original as f32
     }
 }
+ */

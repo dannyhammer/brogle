@@ -20,7 +20,7 @@ fn parse_args() -> BitBoard {
             2
         };
         let bit_string = bit_string.trim_start_matches("0x");
-        let bits = u64::from_str_radix(&bit_string, radix)
+        let bits = u64::from_str_radix(bit_string, radix)
             .expect("Expected argument of hexadecimal or binary number");
 
         BitBoard::new(bits)
@@ -53,12 +53,17 @@ async fn main() {
             let text_color = if tile.is_light() { BLACK } else { WHITE };
 
             // Select tile color based on whether the tile is selected
-            let color;
-            if tile.is_light() {
-                color = if board[tile] { GREEN } else { BEIGE };
+            let color = if tile.is_light() {
+                if board[tile] {
+                    GREEN
+                } else {
+                    BEIGE
+                }
+            } else if board[tile] {
+                DARKGREEN
             } else {
-                color = if board[tile] { DARKGREEN } else { DARKBROWN };
-            }
+                DARKBROWN
+            };
 
             // Draw the tile, then it's label
             draw_rectangle(x, y, tile_size, tile_size, color);

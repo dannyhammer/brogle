@@ -7,8 +7,8 @@ pub mod search {
 }
 
 pub mod eval {
-    pub mod eval;
-    pub use eval::*;
+    pub mod evaluator;
+    pub use evaluator::*;
 
     pub mod piece_square_tables;
 }

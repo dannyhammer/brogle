@@ -11,7 +11,7 @@ fn magic_index(entry: &MagicEntry, blockers: BitBoard) -> usize {
     let blockers = blockers.inner() & entry.mask;
     let hash = blockers.wrapping_mul(entry.magic);
     let index = (hash >> entry.shift) as usize;
-    entry.offset as usize + index
+    entry.offset + index
 }
 
 fn slider_moves(slider_deltas: &[(i8, i8)], tile: Tile, blockers: BitBoard) -> BitBoard {

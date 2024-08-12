@@ -1,12 +1,10 @@
-use core::fmt;
 use std::{
+    fmt,
     ops::{Add, AddAssign},
     time::Instant,
 };
 
-use crate::MoveGenerator;
-
-use super::Position;
+use super::{MoveGenerator, Position};
 
 /// A result from a perft function.
 #[derive(Default, Debug, Clone, Copy)]
@@ -136,55 +134,37 @@ impl fmt::Display for PerftResult {
     }
 }
 
-/// Prints a splitperft at the specified depth.
-///
-/// If the generic parameter `PRETTY` is `true`, additional info will be printed.
-pub fn print_split_perft<const PRETTY: bool>(position: &Position, depth: usize) {
-    if PRETTY {
-        println!("SplitPerft({depth}) for {}", position.to_fen());
-    }
-
-    let now = Instant::now();
-    let mut total_nodes = 0;
-    let movegen = MoveGenerator::new_legal(position.clone());
-    let moves = movegen.legal_moves();
-    for i in 0..moves.len() {
-        let mv = moves[i];
-        let new_pos = position.clone().with_move_made(mv);
-
-        let nodes = perft(&new_pos, depth - 1);
-
-        println!("{mv:>8} {nodes:>width$}", width = depth * 2 + 1);
-        total_nodes += nodes;
-    }
-    let elapsed = now.elapsed();
-
-    if PRETTY {
-        // Math
-        let nps = total_nodes as f32 / elapsed.as_secs_f32();
-        let m_nps = nps / 1_000_000.0;
-
-        println!("Moves at root:         {}", moves.len());
-        println!("Elapsed Time:          {elapsed:.1?}");
-        println!("Total Nodes:           {total_nodes}");
-        println!("Nodes / Sec:           {nps:.0}");
-        println!("M Nodes / Sec:         {m_nps:.1}");
-    } else {
-        println!("{total_nodes}");
-    }
-}
-
 /// Prints a perft at the specified depth.
 ///
+/// If the generic parameter `SPLIT` is `true`, this will perform a `splitperft`,
+/// printing all moves at the first level (`depth`) followed by how many nodes
+/// were reached after each of those moves.
+///
 /// If the generic parameter `PRETTY` is `true`, additional info will be printed.
-pub fn print_perft<const PRETTY: bool>(position: &Position, depth: usize) {
+pub fn print_perft<const PRETTY: bool, const SPLIT: bool>(position: &Position, depth: usize) {
     if PRETTY {
         println!("Computing PERFT({depth}) of the following position:\n{position:?}\n");
     }
 
-    // Time the perft
     let now = Instant::now();
-    let total_nodes = perft(position, depth);
+    let mut total_nodes = 0;
+    if SPLIT {
+        let movegen = MoveGenerator::new_legal(position.clone());
+        let moves = movegen.legal_moves();
+        for i in 0..moves.len() {
+            let mv = moves[i];
+            let new_pos = position.clone().with_move_made(mv);
+
+            let nodes = perft(&new_pos, depth - 1);
+
+            println!("{mv:>8} {nodes:>width$}", width = depth * 2 + 1);
+            total_nodes += nodes;
+        }
+        println!(""); // Empty line between last splitperft and total_nodes
+    } else {
+        // Time the perft
+        total_nodes = perft(position, depth);
+    }
     let elapsed = now.elapsed();
 
     if PRETTY {

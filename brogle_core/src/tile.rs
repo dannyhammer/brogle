@@ -120,7 +120,7 @@ impl Tile {
     /// assert_eq!(iter.last().unwrap(), Tile::H8);
     /// ```
     pub fn iter() -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator<Item = Self> {
-        (Self::MIN..=Self::MAX).map(|i| Self(i))
+        (Self::MIN..=Self::MAX).map(Self)
     }
 
     /// Creates a new [`Tile`] from the provided [`File`] and [`Rank`].
@@ -805,7 +805,7 @@ impl Rank {
     }
 
     pub const fn char(&self) -> char {
-        (self.0 + '1' as u8) as char
+        (self.0 + b'1') as char
     }
 
     pub const fn as_str(&self) -> &'static str {
@@ -1126,7 +1126,7 @@ impl File {
     }
 
     pub const fn char(&self) -> char {
-        (self.0 + 'a' as u8) as char
+        (self.0 + b'a') as char
     }
 
     pub const fn as_str(&self) -> &'static str {

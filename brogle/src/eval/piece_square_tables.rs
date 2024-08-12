@@ -2,6 +2,7 @@ use core::fmt;
 
 use brogle_core::{BitBoard, ChessBoard, Color, File, PieceKind, Rank, Tile};
 
+/*
 pub const PAWN_PUSH: PieceSquareTable = PieceSquareTable([
     60, 60, 60, 60, 60, 60, 60, 60, //
     50, 50, 50, 50, 50, 50, 50, 50, //
@@ -34,6 +35,7 @@ pub const KING_SAFETY: PieceSquareTable = PieceSquareTable([
     85, 80, 75, 70, 70, 75, 80, 85, //
     90, 85, 80, 75, 75, 80, 85, 90, //
 ]);
+ */
 
 /// A [Piece-Square Table] for weighting locations on the board.
 ///

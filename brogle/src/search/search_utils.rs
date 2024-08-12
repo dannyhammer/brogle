@@ -149,7 +149,9 @@ impl<'a> Search<'a> {
 
         if let Err(err) = self
             .sender
-            .send(EngineCommand::UciResponse(UciResponse::Info(info)))
+            .send(EngineCommand::UciResponse(Box::new(UciResponse::Info(
+                info,
+            ))))
         {
             //
             error!("Failed to send 'info' to engine during search: {err:?}");
@@ -186,13 +188,13 @@ impl<'a> Search<'a> {
         // Reached the end of the depth; return board's evaluation.
         if depth == 0 {
             // Root nodes in negamax must be evaluated from the current player's perspective
-            result.score = Evaluator::new(&self.game).eval();
+            result.score = Evaluator::new(self.game).eval();
             self.data.nodes_searched += 1;
             return Ok(result);
             // return self.quiescence(game, ply + 1, alpha, beta);
         }
 
-        moves.sort_by_cached_key(|mv| score_move(&self.game, mv));
+        moves.sort_by_cached_key(|mv| score_move(self.game, mv));
 
         // println!("MOVES: {moves:?}");
 
@@ -292,7 +294,7 @@ impl<'a> Search<'a> {
         }
 
         let mut moves = game.legal_moves();
-        if moves.len() == 0 {
+        if moves.is_empty() {
             if game.is_in_check() {
                 return Ok(-INF + ply as i32); // Prefer earlier checks
             } else {
@@ -300,7 +302,7 @@ impl<'a> Search<'a> {
             }
         }
 
-        moves.sort_by_cached_key(|mv| score_move(&game, mv));
+        moves.sort_by_cached_key(|mv| score_move(game, mv));
 
         // println!("MOVES: {moves:?}");
 
@@ -362,7 +364,7 @@ impl<'a> Search<'a> {
 
         // eprintln!("QSearch on {}", game.fen());
         // Root nodes in negamax must be evaluated from the current player's perspective
-        let stand_pat = Evaluator::new(&game).eval();
+        let stand_pat = Evaluator::new(game).eval();
         if stand_pat >= beta {
             return Ok(beta);
         } else if stand_pat > alpha {
@@ -372,7 +374,7 @@ impl<'a> Search<'a> {
         let mut moves = game.legal_moves();
 
         // Handle cases for checkmate and stalemate
-        if moves.len() == 0 {
+        if moves.is_empty() {
             if game.is_in_check() {
                 return Ok(-INF + ply as i32);
             } else {
@@ -380,7 +382,7 @@ impl<'a> Search<'a> {
             }
         }
 
-        moves.sort_by_cached_key(|mv| score_move(&game, mv));
+        moves.sort_by_cached_key(|mv| score_move(game, mv));
 
         // println!("MOVES: {moves:?}");
 

@@ -30,7 +30,7 @@ fn print_to_code(fen: &str) {
         .collect::<Vec<_>>()
         .join(", ");
 
-    let pos_str = fen.replace("/", "_").replace(" ", "_").replace("-", "X");
+    let pos_str = fen.replace(['/', ' '], "_").replace('-', "X");
 
     let template = format!(
         "

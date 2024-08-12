@@ -17,13 +17,18 @@ fn main() {
         let fen = parts.next().unwrap().trim();
 
         for perft_data in parts {
-            let depth = usize::from_str_radix(perft_data.get(1..2).unwrap().trim(), 10).unwrap();
-            let expected = u64::from_str_radix(perft_data.get(3..).unwrap().trim(), 10).unwrap();
+            let depth = perft_data
+                .get(1..2)
+                .unwrap()
+                .trim()
+                .parse::<usize>()
+                .unwrap();
+            let expected = perft_data.get(3..).unwrap().trim().parse::<u64>().unwrap();
             // println!("perft({depth}, \"{fen}\") := {expected}");
 
-            let mut position = Position::from_fen(fen).unwrap();
+            let position = Position::from_fen(fen).unwrap();
 
-            let nodes = perft(&mut position, depth);
+            let nodes = perft(&position, depth);
             total_nodes += nodes;
 
             assert_eq!(

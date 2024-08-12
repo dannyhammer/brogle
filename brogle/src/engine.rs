@@ -1,5 +1,4 @@
 use std::{
-    fmt,
     io::{self, Read, Write},
     str::FromStr,
     sync::{
@@ -11,9 +10,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use brogle_core::{
-    print_perft, print_split_perft, BitBoard, Game, Move, Position, Tile, FEN_STARTPOS,
-};
+use brogle_core::{print_perft, BitBoard, Game, Move, Position, Tile, FEN_STARTPOS};
 use log::{error, warn};
 use threadpool::ThreadPool;
 
@@ -29,7 +26,7 @@ use super::{
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
 enum EngineProtocol {
     #[default]
-    UCI,
+    Uci,
 }
 
 /// A chess engine responds to inputs (such as from a GUI or terminal) and
@@ -47,7 +44,8 @@ enum EngineProtocol {
 /// is the best move to make.
 #[derive(Debug)]
 pub struct Engine {
-    /// State of the game, including castling rights, piece placement, move history, etc.
+    /// State of the game, including castling rights, piece placement, move history,
+    /// etc.
     game: Game,
 
     // /// Transposition table for game states.
@@ -95,7 +93,7 @@ impl Engine {
         // Print some metadata about the engine
         let name = env!("CARGO_PKG_NAME");
         let version = env!("CARGO_PKG_VERSION");
-        let authors = env!("CARGO_PKG_AUTHORS").replace(":", ", "); // Split multiple authors by comma-space
+        let authors = env!("CARGO_PKG_AUTHORS").replace(':', ", "); // Split multiple authors by comma-space
         println!("{name} {version} by {authors}");
 
         // Create (and store) the channel(s) for communication
@@ -111,13 +109,25 @@ impl Engine {
 
         // Main event loop: Handle inputs from various sources
         for cmd in receiver {
-            // If the command is 'quit', we need to exit after executing it
-            let should_quit = matches!(cmd, EngineCommand::UciCommand(UciCommand::Quit));
-
-            self.execute_command(cmd)?;
-
-            if should_quit {
-                break;
+            match cmd {
+                EngineCommand::Help => self.help(),
+                EngineCommand::Show => self.show(),
+                EngineCommand::History => self.history(),
+                EngineCommand::Perft {
+                    depth,
+                    pretty,
+                    split,
+                } => self.perft(depth, pretty, split),
+                EngineCommand::Fen(fen) => self.fen(fen)?,
+                EngineCommand::Eval(game) => self.eval(*game),
+                EngineCommand::Moves(from, debug) => self.moves(from, debug),
+                EngineCommand::Bench => todo!("Implement `bench` command"),
+                EngineCommand::MakeMove(moves) => self.make_move(moves)?,
+                EngineCommand::Undo => self.undo(),
+                EngineCommand::Option(name) => self.option(name),
+                EngineCommand::UciCommand(uci_cmd) => self.execute_uci_command(uci_cmd)?,
+                EngineCommand::UciResponse(uci_resp) => self.send_uci_response(*uci_resp)?,
+                EngineCommand::Exit => break,
             }
         }
 
@@ -142,9 +152,9 @@ impl Engine {
             if 0 == bytes {
                 warn!("Engine received input of 0 bytes and is quitting");
                 sender
-                    .send(EngineCommand::UciCommand(UciCommand::Quit))
+                    .send(EngineCommand::Exit)
                     .context("Received empty input from stdin")?;
-                break;
+                return Ok(());
             }
 
             // Ignore empty lines
@@ -162,41 +172,55 @@ impl Engine {
                 }
             };
 
-            let should_quit = matches!(cmd, EngineCommand::UciCommand(UciCommand::Quit));
-
             sender
                 .send(cmd)
                 .context("Failed to send command {buf:?} to engine")?;
-
-            if should_quit {
-                break;
-            }
         }
-
-        Ok(())
     }
 
     /// Sets the flag that the search should stop.
     fn stop_search(&mut self) {
         self.is_searching.store(false, Ordering::Relaxed);
-        // *self.search_status.write().unwrap() = SearchStatus::Done;
     }
 
-    /// Sets the flag that the search should be started.
+    /// Sets the flag to signal that the engine is searching
     fn start_search(&mut self) {
         self.is_searching.store(true, Ordering::Relaxed);
-        // *self.search_status.write().unwrap() = SearchStatus::InProgress;
     }
 
     /// Yields `true` if the engine is currently searching.
     fn is_searching(&self) -> bool {
         self.is_searching.load(Ordering::Relaxed)
-        // *self.search_status.read().unwrap() == SearchStatus::InProgress
     }
 
     /// Called when `ucinewgame` command is received. Resets all game-specific options.
     fn new_game(&mut self) {
         self.game = Game::default();
+    }
+
+    /// Parses an input string a yields an [`EngineCommand`], if possible.
+    fn parse_command(input: &str) -> Result<EngineCommand> {
+        let (cmd, rest) = if input.contains(' ') {
+            input.split_once(' ').unwrap()
+        } else {
+            (input, "")
+        };
+
+        match cmd {
+            "help" => Ok(EngineCommand::Help),
+            "show" => Ok(EngineCommand::Show),
+            "history" => Ok(EngineCommand::History),
+            "perft" => Self::parse_perft_command(rest),
+            "eval" => Self::parse_eval_command(rest),
+            "move" => Self::parse_move_command(rest),
+            "moves" => Self::parse_moves_command(rest),
+            "fen" => Self::parse_fen_command(rest),
+            "option" => Self::parse_option_command(rest),
+            "undo" => Ok(EngineCommand::Undo),
+            "bench" => Ok(EngineCommand::Bench),
+            "quit" | "exit" => Ok(EngineCommand::Exit),
+            _ => Self::parse_uci_input(input).map(EngineCommand::UciCommand),
+        }
     }
 
     /// Parses the custom `perft` command
@@ -242,7 +266,7 @@ impl Engine {
             }
         }
 
-        Ok(EngineCommand::Eval(game))
+        Ok(EngineCommand::Eval(Box::new(game)))
     }
 
     /// Parses the custom `fen` command
@@ -279,11 +303,10 @@ impl Engine {
             }
         }
 
-        Ok(EngineCommand::Move(moves))
+        Ok(EngineCommand::MakeMove(moves))
     }
 
     /// Parses the custom `moves` command
-
     fn parse_moves_command(rest: &str) -> Result<EngineCommand> {
         let debug = rest
             .split_ascii_whitespace()
@@ -302,6 +325,7 @@ impl Engine {
         Ok(EngineCommand::Moves(from, debug))
     }
 
+    /// Parses the `option` command
     fn parse_option_command(rest: &str) -> Result<EngineCommand> {
         let mut args = rest.split_ascii_whitespace();
 
@@ -314,136 +338,122 @@ impl Engine {
         Ok(EngineCommand::Option(name))
     }
 
-    fn parse_command<'a>(input: &'a str) -> Result<EngineCommand> {
-        let (cmd, rest) = if input.contains(' ') {
-            input.split_once(' ').unwrap()
-        } else {
-            (input, "")
-        };
+    /// Executes the `help` command, displaying a list of available commands this engine has.
+    fn help(&self) {
+        println!("available commands: help, perft, show, history, fen, move, moves, eval, uci, bench, undo");
+    }
 
-        match cmd {
-            "help" => Ok(EngineCommand::Help),
-            "show" => Ok(EngineCommand::Show),
-            "history" => Ok(EngineCommand::History),
-            "perft" => Self::parse_perft_command(rest),
-            "eval" => Self::parse_eval_command(rest),
-            "move" => Self::parse_move_command(rest),
-            "moves" => Self::parse_moves_command(rest),
-            "fen" => Self::parse_fen_command(rest),
-            "option" => Self::parse_option_command(rest),
-            "undo" => Ok(EngineCommand::Undo),
-            "bench" => Ok(EngineCommand::Bench),
-            _ => Self::parse_uci_input(input).map(|uci_cmd| EngineCommand::UciCommand(uci_cmd)),
+    /// Executes the `show` command, printing the current state of the board.
+    fn show(&self) {
+        println!("{:?}", self.game.position());
+    }
+
+    /// Executes the `history` command, printing all moves made on this current game.
+    fn history(&self) {
+        // TODO: Replace with to_pgn function
+        println!(
+            "{}",
+            self.game
+                .history()
+                .iter()
+                .enumerate()
+                .map(|(i, m)| format!("{}) {m}", i + 1))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+    }
+
+    /// Executes the `perft` command, performing `perft(depth)` for benchmarking and testing.
+    fn perft(&self, depth: usize, pretty: bool, split: bool) {
+        // Man, I wish I could just pass `split` and `pretty` in directly
+        if split {
+            if pretty {
+                print_perft::<true, true>(self.game.position(), depth);
+            } else {
+                print_perft::<false, true>(self.game.position(), depth);
+            }
+        } else if pretty {
+            print_perft::<true, false>(self.game.position(), depth);
+        } else {
+            print_perft::<false, false>(self.game.position(), depth);
         }
     }
 
-    fn execute_command(&mut self, cmd: EngineCommand) -> Result<()> {
-        match cmd {
-            EngineCommand::Help => {
-                println!(
-                    "available commands: help, perft, show, history, fen, move, moves, eval, uci, bench, undo"
-                )
+    /// Executes the `fen` command, setting the position of the board and displaying the current state as a FEN string.
+    fn fen(&mut self, fen: Option<String>) -> Result<()> {
+        if let Some(fen) = fen {
+            self.game = Game::from_fen(&fen)?;
+        }
+        println!("{}", self.game.position().to_fen());
+        Ok(())
+    }
+
+    /// Executes the `eval` command, calling the engine's internal evaluator on the current game state, printing the result.
+    fn eval(&self, game: Game) {
+        println!("{}", Evaluator::new(&game).eval());
+    }
+
+    /// Executes the `moves` command, displaying all legal moves available.
+    fn moves(&self, from: Option<Tile>, debug: bool) {
+        if let Some(from) = from {
+            let moves = self
+                .game
+                .legal_moves()
+                .into_iter()
+                .filter(|mv| mv.from() == from);
+            let mut mobility = BitBoard::default();
+            for mv in moves {
+                mobility |= BitBoard::from_tile(mv.to());
             }
-
-            EngineCommand::Show => println!("{:?}", self.game.position()),
-
-            // TODO: Replace with to_pgn function
-            EngineCommand::History => println!(
-                "{}",
-                self.game
-                    .history()
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, m)| format!("{}) {m}", i + 1))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
-
-            EngineCommand::Perft {
-                depth,
-                pretty,
-                split,
-            } => {
-                if split {
-                    if pretty {
-                        print_split_perft::<true>(self.game.position(), depth);
+            println!("{mobility}");
+        } else {
+            let mut moves = self
+                .game
+                .legal_moves()
+                .into_iter()
+                .map(|m| {
+                    if debug {
+                        format!("{m:?}")
                     } else {
-                        print_split_perft::<false>(self.game.position(), depth);
+                        format!("{m}")
                     }
-                } else {
-                    if pretty {
-                        print_perft::<true>(self.game.position(), depth);
-                    } else {
-                        print_perft::<false>(self.game.position(), depth);
-                    }
-                }
-            }
+                })
+                .collect::<Vec<_>>();
+            moves.sort();
+            println!("{}", moves.join(" "));
+        }
+    }
 
-            EngineCommand::Fen(fen) => {
-                if let Some(fen) = fen {
-                    self.game = Game::from_fen(&fen)?;
-                }
-                println!("{}", self.game.position().to_fen())
-            }
-
-            EngineCommand::Eval(game) => println!("{}", Evaluator::new(&game).eval()),
-
-            EngineCommand::Moves(from, debug) => {
-                if let Some(from) = from {
-                    let moves = self
-                        .game
-                        .legal_moves()
-                        .into_iter()
-                        .filter(|mv| mv.from() == from);
-                    let mut mobility = BitBoard::default();
-                    for mv in moves {
-                        mobility |= BitBoard::from_tile(mv.to());
-                    }
-                    println!("{mobility}");
-                } else {
-                    let mut moves = self
-                        .game
-                        .legal_moves()
-                        .into_iter()
-                        .map(|m| {
-                            if debug {
-                                format!("{m:?}")
-                            } else {
-                                format!("{m}")
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    moves.sort();
-                    println!("{}", moves.join(" "));
-                }
-            }
-            EngineCommand::Bench => todo!("Implement `bench` command"),
-            EngineCommand::Move(moves) => {
-                for mv_string in moves {
-                    let mv = Move::from_uci(&self.game, &mv_string)?;
-                    self.game.make_move(mv);
-                }
-            }
-            EngineCommand::Undo => self.game.unmake_move(),
-            EngineCommand::Option(name) => {
-                println!("{name}={value}", value = "UNSET")
-            }
-
-            EngineCommand::UciCommand(uci_cmd) => self.execute_uci_command(uci_cmd)?,
-            EngineCommand::UciResponse(uci_resp) => self.send_uci_response(uci_resp)?,
+    /// Executes the `move` command, applying the provided move(s) to the current position.
+    fn make_move(&mut self, moves: Vec<String>) -> Result<()> {
+        for mv_string in moves {
+            let mv = Move::from_uci(&self.game, &mv_string)?;
+            self.game.make_move(mv);
         }
 
         Ok(())
     }
+
+    /// Executes the `undo` command, un-making the previously-made move.
+    fn undo(&mut self) {
+        self.game.unmake_move();
+    }
+
+    /// Executes the `option` command, displaying the current value of a provided engine option.
+    fn option(&self, name: String) {
+        println!("{name}=UNSET");
+    }
 }
 
 impl Read for Engine {
+    /// [`Engine`] can `read` from `stdin`.
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         io::stdin().read(buf)
     }
 }
 
 impl Write for Engine {
+    /// [`Engine`] can `write` to `stdout`.
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         io::stdout().write(buf)
     }
@@ -476,13 +486,13 @@ pub enum EngineCommand {
     Fen(Option<String>),
 
     /// Make the list of moves applied to the board.
-    Move(Vec<String>),
+    MakeMove(Vec<String>),
 
     /// Show all legal moves from the current position.
     Moves(Option<Tile>, bool),
 
     /// Evaluates the current position.
-    Eval(Game),
+    Eval(Box<Game>),
 
     /// Benchmark this engine.
     Bench,
@@ -493,9 +503,14 @@ pub enum EngineCommand {
     /// View the current value of an option
     Option(String),
 
+    /// Wraps a [`UciCommand`], sent by a UCI-compatible GUI to the engine.
     UciCommand(UciCommand),
 
-    UciResponse(UciResponse),
+    /// Wraps a [`UciResponse`], to be sent by the engine to a GUI.
+    UciResponse(Box<UciResponse>),
+
+    /// Exit the engine as quickly as possible.
+    Exit,
 }
 
 impl UciEngine for Engine {
@@ -507,7 +522,8 @@ impl UciEngine for Engine {
     }
 
     fn setoption(&mut self, name: String, value: Option<String>) -> Result<()> {
-        match name {
+        match name.as_str() {
+            "placeholder" => todo!(),
             _ => {
                 if let Some(value) = value {
                     eprintln!("Unrecognized option {name:?} with value {value:?}")
@@ -591,7 +607,6 @@ impl UciEngine for Engine {
                 // .with_options(options.clone());
 
                 // If we received an error, that means the search was stopped externally
-
                 match search.start(depth) {
                     Ok(_data) => {}
                     Err(_) => break,
@@ -602,7 +617,6 @@ impl UciEngine for Engine {
 
             // If this line of code is reached, it means the search has stopped on its own
             // We can do the same actions as if we have received the "stop" command
-
             if let Err(err) = sender.send(EngineCommand::UciCommand(UciCommand::Stop)) {
                 error!("Failed to send 'stop' to engine after search concluded: {err:?}");
             }
@@ -622,6 +636,7 @@ impl UciEngine for Engine {
 
             self.bestmove(res.bestmove, res.ponder)?;
         }
+
         Ok(())
     }
 
@@ -629,22 +644,7 @@ impl UciEngine for Engine {
         todo!("Handle ponderhit")
     }
 
-    fn quit(&mut self) -> Result<()> {
-        std::process::exit(0);
-    }
-
     /* Engine to GUI communication */
-
-    fn bestmove<T: fmt::Display>(&self, bestmove: T, ponder: Option<T>) -> Result<()> {
-        // https://backscattering.de/chess/uci/#engine-bestmove-info
-        // let info = self
-        //     .info
-        //     .read()
-        //     .expect("Failed to acquire read access to engine.info");
-        // self.info(info.clone())?;
-
-        self.send_uci_response(UciResponse::BestMove { bestmove, ponder })
-    }
 
     fn option(&self) -> Result<()> {
         let options: [UciOption<&str>; 0] = [
@@ -683,7 +683,6 @@ impl Default for Engine {
             // ttable: TranspositionTable::default(),
             debug: Arc::default(),
             is_searching: Arc::default(),
-            // search_status: Arc::default(),
             search_result: Arc::new(RwLock::new(SearchResult::new(bestmove))),
             pool: ThreadPool::new(num_cpus::get()),
             sender: None,

@@ -203,7 +203,7 @@ pub trait UciEngine {
     /// The only reason you'd every really want to overwrite this method is if you
     /// want to write to something other than `stdout`.
     fn send_uci_response<T: fmt::Display>(&self, cmd: UciResponse<T>) -> Result<()> {
-        write!(io::stdout(), "{cmd}\n").context("Failed to write '{cmd}' and flush buffer")
+        writeln!(io::stdout(), "{cmd}").context("Failed to write '{cmd}' and flush buffer")
     }
 
     /******************************************************************/
@@ -612,7 +612,7 @@ pub trait UciEngine {
     fn id(&self) -> Result<()> {
         info!("using default implementation of UciEngine::id");
         let name = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-        let author = env!("CARGO_PKG_AUTHORS").replace(":", ", ");
+        let author = env!("CARGO_PKG_AUTHORS").replace(':', ", ");
 
         self.send_uci_response(UciResponse::Id { name, author })
     }
