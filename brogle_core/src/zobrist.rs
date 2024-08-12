@@ -1,7 +1,7 @@
-use crate::XoShiRo;
+use crate::{CastlingRights, ChessBoard, XoShiRo};
 
 use super::Position;
-use brogle_types::{Tile, NUM_CASTLING_RIGHTS, NUM_PIECES, NUM_TILES};
+use brogle_types::{Color, Tile, NUM_CASTLING_RIGHTS, NUM_PIECES, NUM_TILES};
 
 /// Stores Zobrist hash keys, for hashing [`Position`]s.
 ///
@@ -72,27 +72,42 @@ impl ZobristTable {
         }
     }
 
-    pub fn hash(&self, position: &Position) -> u64 {
+    pub fn hash_parts(
+        &self,
+        board: &ChessBoard,
+        ep_tile: Option<Tile>,
+        castling_rights: &CastlingRights,
+        color: Color,
+    ) -> u64 {
         let mut hash = 0;
 
         // Hash all pieces on the board
-        for (tile, piece) in position.pieces() {
+        for (tile, piece) in board.pieces() {
             hash ^= self.piece_keys[tile][piece];
         }
 
         // Hash the en passant square, if it exists
-        if let Some(ep_tile) = position.ep_tile() {
+        if let Some(ep_tile) = ep_tile {
             hash ^= self.ep_keys[ep_tile];
         }
 
         // Hash the castling rights
-        hash ^= self.castling_keys[position.castling_rights()];
+        hash ^= self.castling_keys[castling_rights];
 
         // Hash the side-to-move
-        if position.current_player().is_black() {
+        if color.is_black() {
             hash ^= self.color_key
         }
 
         hash
+    }
+
+    pub fn hash(&self, position: &Position) -> u64 {
+        self.hash_parts(
+            position.board(),
+            position.ep_tile(),
+            position.castling_rights(),
+            position.current_player(),
+        )
     }
 }

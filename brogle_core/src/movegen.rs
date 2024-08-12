@@ -11,7 +11,7 @@ include!("blobs/magics.rs"); // TODO: Make these into blobs
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MoveGenerator {
-    position: Position,
+    pub(crate) position: Position,
     attacks_by_color: [Bitboard; NUM_COLORS],
     attacks_by_tile: [Bitboard; Tile::COUNT],
     pinmasks: (Bitboard, Bitboard),

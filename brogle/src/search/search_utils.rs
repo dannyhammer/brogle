@@ -201,7 +201,7 @@ impl<'a> Search<'a> {
         for i in 0..moves.len() {
             let mv = moves[i];
             // Make the current move on the position, getting a new position in return
-            let new_pos = self.game.with_move_made(mv);
+            let new_pos = self.game.clone().with_move_made(mv);
 
             if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
                 // eprintln!("Repetition in Search after {mv} on {}", new_pos.fen());
@@ -310,7 +310,7 @@ impl<'a> Search<'a> {
             let mv = moves[i];
 
             // Make the current move on the position, getting a new position in return
-            let new_pos = game.with_move_made(mv);
+            let new_pos = game.clone().with_move_made(mv);
             if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
                 // eprintln!("Repetition in Negamax after {mv} on {}", new_pos.fen());
                 continue;
@@ -396,7 +396,7 @@ impl<'a> Search<'a> {
             }
 
             // Make the current move on the position, getting a new position in return
-            let new_pos = game.with_move_made(mv);
+            let new_pos = game.clone().with_move_made(mv);
             if new_pos.is_repetition() {
                 eprintln!("Repetition in QSearch after {mv} on {}", new_pos.fen());
                 continue;

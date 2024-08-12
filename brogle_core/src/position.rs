@@ -16,9 +16,9 @@ use super::{
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Game {
-    movegen: MoveGenerator,
-    history: Vec<Position>,
-    moves: Vec<Move>,
+    pub(crate) movegen: MoveGenerator,
+    prev_positions: Vec<Position>,
+    history: Vec<Move>,
 }
 
 impl Game {
@@ -26,26 +26,24 @@ impl Game {
     pub fn new() -> Self {
         Self {
             movegen: MoveGenerator::new_legal(Position::new()),
+            prev_positions: Vec::with_capacity(128),
             history: Vec::with_capacity(128),
-            moves: Vec::with_capacity(128),
         }
     }
 
     /// Creates a new [`Game`] from the provided FEN string.
     pub fn from_fen(fen: &str) -> Result<Self> {
-        let position = Position::from_fen(fen)?;
         Ok(Self {
-            movegen: MoveGenerator::new_legal(position),
+            movegen: MoveGenerator::new_legal(Position::from_fen(fen)?),
+            prev_positions: Vec::with_capacity(128),
             history: Vec::with_capacity(128),
-            moves: Vec::with_capacity(128),
         })
     }
 
     /// Consumes `self` and returns a [`Game`] after having applied the provided [`Move`].
-    pub fn with_move_made(&self, mv: Move) -> Self {
-        let mut new = self.clone();
-        new.make_move(mv);
-        new
+    pub fn with_move_made(mut self, mv: Move) -> Self {
+        self.make_move(mv);
+        self
     }
 
     /// Returns `true` if the game is in a position that is identical to the position it was in before.
@@ -67,13 +65,10 @@ impl Game {
     /// assert_eq!(game.is_repetition(), true);
     /// ```
     pub fn is_repetition(&self) -> bool {
-        for prev_pos in self.history.iter().rev().skip(1).step_by(2) {
-            if prev_pos == self.position() {
+        for prev_pos in self.prev_positions.iter().rev().skip(1).step_by(2) {
+            if prev_pos.key() == self.position().key() {
                 return true;
             }
-            // if prev_pos.halfmove == 0 {
-            //     return false;
-            // }
         }
 
         false
@@ -98,8 +93,8 @@ impl Game {
 
     /// Applies the provided [`Move`]. No enforcement of legality.
     pub fn make_move(&mut self, mv: Move) {
-        self.history.push(self.position().clone());
-        self.moves.push(mv);
+        self.prev_positions.push(self.position().clone());
+        self.history.push(mv);
         let new_pos = self.position().clone().with_move_made(mv);
         self.movegen = MoveGenerator::new_legal(new_pos);
     }
@@ -113,16 +108,16 @@ impl Game {
 
     /// Returns a list of all [`Move`]s made during this game.
     pub fn history(&self) -> &[Move] {
-        &self.moves
+        &self.history
     }
 
     /// Undo the previously-made move, if there was one, and restore the position.
     pub fn unmake_move(&mut self) {
-        let Some(prev_pos) = self.history.pop() else {
+        let Some(prev_pos) = self.prev_positions.pop() else {
             return;
         };
 
-        let Some(_mv) = self.moves.pop() else {
+        let Some(_mv) = self.history.pop() else {
             return;
         };
 
@@ -264,7 +259,7 @@ impl fmt::Display for CastlingRights {
 /// Represents the current state of the game, including move counters
 ///
 /// Analogous to a FEN string.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Position {
     /// Bitboard representation of the game board.
     board: ChessBoard,
@@ -286,6 +281,9 @@ pub struct Position {
     /// Number of moves since the beginning of the game.
     /// A fullmove is a complete turn by white and then by black.
     fullmove: usize,
+
+    /// Zobrist hash key of this position
+    key: u64,
 }
 
 impl Position {
@@ -304,14 +302,17 @@ impl Position {
     /// assert_eq!(state.to_fen(), "8/8/8/8/8/8/8/8 w - - 0 1");
     /// ```
     pub fn new() -> Self {
-        Self {
+        let mut pos = Self {
             board: ChessBoard::new(),
             current_player: Color::White,
             castling_rights: CastlingRights::new(),
             ep_tile: None,
             halfmove: 0,
             fullmove: 1,
-        }
+            key: 0,
+        };
+        pos.update_zobrist_key();
+        pos
     }
 
     /// Creates a new [`Position`] from the provided FEN string.
@@ -344,6 +345,8 @@ impl Position {
         pos.fullmove = fullmove.parse().or(Err(anyhow!(
             "Invalid FEN string: FEN string must have valid fullmove counter. Got {fullmove}"
         )))?;
+
+        pos.update_zobrist_key();
 
         Ok(pos)
     }
@@ -403,8 +406,9 @@ impl Position {
         self.fullmove
     }
 
-    pub fn zobrist_key(&self) -> u64 {
-        ZOBRIST_TABLE.hash(&self)
+    /// Fetch the Zobrist hash key of this position.
+    pub fn key(&self) -> u64 {
+        self.key
     }
 
     /// Returns `true` if the half-move counter is 50 or greater.
@@ -433,9 +437,24 @@ impl Position {
             || self.castling_rights().queenside[color.index()].is_some()
     }
 
+    /// Two positions are considered repetitions if they share the same piece layout, castling rights, and en passant square.
+    ///
+    /// Fullmove and Halfmove clocks are ignored.
+    pub fn is_repetition_of(&self, other: &Self) -> bool {
+        self.board() == other.board()
+            && self.current_player() == other.current_player()
+            && self.castling_rights() == other.castling_rights()
+            && self.ep_tile() == other.ep_tile()
+    }
+
+    /// Recompute the Zobrist hash key of this position.
+    fn update_zobrist_key(&mut self) {
+        self.key = ZOBRIST_TABLE.hash(self);
+    }
+
     /// Checks if the provided move is legal to perform.
     ///
-    /// If `Ok(())`, the move is legal.
+    /// If `Ok()`, the move is legal.
     /// If `Err(msg)`, then `msg` will be a reason as to why it's not legal.
     fn check_legality_of(&self, mv: Move) -> Result<()> {
         let (from, to, kind) = mv.parts();
@@ -600,6 +619,8 @@ impl Position {
 
         // Next player's turn
         self.toggle_current_player();
+
+        self.update_zobrist_key();
     }
 }
 
@@ -623,20 +644,6 @@ impl Default for Position {
         Self::from_fen(FEN_STARTPOS).unwrap()
     }
 }
-
-impl PartialEq for Position {
-    /// Two positions are considered equal if they share the same piece layout, castling rights, and en passant square.
-    ///
-    /// Fullmove and Halfmove clocks are ignored.
-    fn eq(&self, other: &Self) -> bool {
-        self.board() == other.board()
-            && self.current_player() == other.current_player()
-            && self.castling_rights() == other.castling_rights()
-            && self.ep_tile() == other.ep_tile()
-    }
-}
-
-impl Eq for Position {}
 
 impl fmt::Display for Position {
     /// Display this position's FEN string
