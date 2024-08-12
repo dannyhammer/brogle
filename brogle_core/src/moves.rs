@@ -2,9 +2,7 @@ use std::{fmt, str::FromStr};
 
 use anyhow::{anyhow, Result};
 
-use crate::Rank;
-
-use super::{PieceKind, Position, Tile};
+use super::{PieceKind, Position, Rank, Tile};
 
 /// Represents the different kinds of moves that can be made during a chess game.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]

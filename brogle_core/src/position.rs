@@ -6,30 +6,10 @@ use std::{
 
 use anyhow::{anyhow, bail, Result};
 
-use crate::MoveGenerator;
-
 use super::{
-    utils::FEN_STARTPOS, BitBoard, Color, File, Move, MoveKind, Piece, PieceKind, Rank, Tile,
-    NUM_COLORS, NUM_PIECE_TYPES,
+    utils::FEN_STARTPOS, BitBoard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind,
+    Rank, Tile, NUM_COLORS, NUM_PIECE_TYPES,
 };
-
-/*
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub enum GameState {
-    Playing,
-    Stalemate,
-    Checkmate,
-    Check,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub enum GameResult {
-    Resign(Color),
-    Checkmate(Color),
-    Stalemate,
-    Draw,
-}
- */
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Game {

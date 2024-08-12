@@ -2,11 +2,9 @@ use std::ops::Deref;
 
 use arrayvec::ArrayVec;
 
-use crate::MAX_NUM_MOVES;
-
 use super::{
     BitBoard, ChessBoard, Color, Move, MoveKind, Piece, PieceKind, Position, Rank, Tile,
-    NUM_COLORS, NUM_PIECE_TYPES,
+    MAX_NUM_MOVES, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
 include!("blobs/magics.rs"); // TODO: Make these into blobs
@@ -169,10 +167,9 @@ impl MoveGenerator {
         // eprintln!("ENEMY_OR_EMPTY:\n{enemy_or_empty:?}");
 
         // For sliding pieces, we need a blocker mask to compute pseudo-legal moves
-        let blockers = self.occupied();
 
         self.compute_normal_piece_moves(color, king_tile, checkmask, &mut moves);
-        self.compute_king_moves(color, blockers, &mut moves); // TODO: legal_mask for King?
+        self.compute_king_moves(color, self.occupied(), &mut moves); // TODO: legal_mask for King?
 
         // Pawns are... weird
         self.compute_pawn_moves(color, checkmask, &mut moves);
@@ -181,6 +178,7 @@ impl MoveGenerator {
     }
 
     /*
+    // TODO: https://github.com/dannyhammer/brogle/issues/9
     fn compute_pawn_moves(
         &self,
         color: Color,

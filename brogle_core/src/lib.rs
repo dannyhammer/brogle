@@ -26,11 +26,12 @@ pub use utils::*;
 /// Re-exports all the things you'll need.
 pub mod prelude {
     pub use crate::bitboard::*;
+    pub use crate::color::*;
     pub use crate::movegen::*;
     pub use crate::moves::*;
     pub use crate::perft::*;
     pub use crate::piece::*;
     pub use crate::position::*;
     pub use crate::tile::*;
-    pub use crate::Color::*;
+    pub use crate::utils::*;
 }

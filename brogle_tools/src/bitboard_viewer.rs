@@ -73,7 +73,7 @@ async fn main() {
                 y + text_size + text_size / 4.0,
                 text_size,
                 text_color,
-            )
+            );
         }
 
         // If the mouse is clicked, select/deselect the tile clicked
