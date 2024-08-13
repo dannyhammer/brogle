@@ -830,19 +830,15 @@ pub trait UciEngine {
     /// score [cp <x> | mate <y> | lowerbound | upperbound]
     /// ```
     ///
-    ///   - `cp <x>`
-    /// The score from the engine's point of view in centipawns.
+    ///   - `cp <x>` - The score from the engine's point of view in centipawns.
     ///
-    ///   - `mate <y>`
-    /// Mate in `y` moves, not plies.
+    ///   - `mate <y>` - Mate in `y` moves, not plies.
     ///
     /// If the engine is getting mated, use negative values for `y`.
     ///
-    ///   - `lowerbound`
-    /// The score is just a lower bound.
+    ///   - `lowerbound` - The score is just a lower bound.
     ///
-    ///   - `upperbound`
-    /// The score is just an upper bound.
+    ///   - `upperbound` - The score is just an upper bound.
     ///
     /// ```text
     /// currmove <move>
@@ -1597,19 +1593,13 @@ pub struct UciInfo {
     /// score [cp <x> | mate <y> | lowerbound | upperbound]
     /// ```
     ///
-    ///   - `cp <x>`
-    /// The score from the engine's point of view in centipawns.
-    ///
-    ///   - `mate <y>`
-    /// Mate in `y` moves, not plies.
+    ///   - `cp <x>` - The score from the engine's point of view in centipawns.
+    ///   - `mate <y>` - Mate in `y` moves, not plies.
     ///
     /// If the engine is getting mated, use negative values for `y`.
     ///
-    ///   - `lowerbound`
-    /// The score is just a lower bound.
-    ///
-    ///   - `upperbound`
-    /// The score is just an upper bound.
+    ///   - `lowerbound` - The score is just a lower bound.
+    ///   - `upperbound` - The score is just an upper bound.
     pub score: Option<String>,
 
     /// ```text

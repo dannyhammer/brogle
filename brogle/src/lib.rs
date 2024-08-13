@@ -2,8 +2,8 @@ pub mod engine;
 pub use engine::*;
 
 pub mod search {
-    pub mod search_utils;
-    pub use search_utils::*;
+    pub mod searcher;
+    pub use searcher::*;
 }
 
 pub mod eval {

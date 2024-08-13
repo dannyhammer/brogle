@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use std::usize;
 use std::{ops::Neg, time::Instant};
 
 use anyhow::{bail, Result};
@@ -84,7 +83,7 @@ impl Default for SearchData {
 }
 
 /// A struct to encapsulate the logic of searching through moves for a given a chess position.
-pub struct Search<'a> {
+pub struct Searcher<'a> {
     game: &'a Game,
     timeout: Duration,
     stopper: Arc<AtomicBool>,
@@ -101,7 +100,7 @@ pub struct Search<'a> {
      */
 }
 
-impl<'a> Search<'a> {
+impl<'a> Searcher<'a> {
     /// Create a new search that will search the provided position at a depth of 1.
     pub fn new(
         game: &'a Game,

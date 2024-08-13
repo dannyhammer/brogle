@@ -21,7 +21,7 @@ use super::{Bitboard, Color};
 ///
 /// This bit pattern is also known as [Least Significant File Mapping](https://www.chessprogramming.org/Square_Mapping_Considerations#Deduction_on_Files_and_Ranks),
 /// so `tile = file + rank * 8`.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 #[repr(transparent)]
 pub struct Tile(pub(crate) u8);
 
@@ -695,7 +695,7 @@ impl fmt::Debug for Tile {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash, Default)]
 #[repr(transparent)]
 pub struct Rank(pub(crate) u8);
 
@@ -834,6 +834,11 @@ impl Rank {
             7 => "8",
             _ => unreachable!(),
         }
+    }
+
+    /// `const` analog of `==`.
+    pub const fn is(&self, other: &Self) -> bool {
+        self.0 == other.0
     }
 
     // Index in Little Endian (default)
@@ -1053,7 +1058,7 @@ impl fmt::Debug for Rank {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct File(pub(crate) u8);
 
 impl File {
@@ -1129,6 +1134,11 @@ impl File {
         }
 
         Self::new(file_int)
+    }
+
+    /// `const` analog of `==`.
+    pub const fn is(&self, other: &Self) -> bool {
+        self.0 == other.0
     }
 
     pub const fn inner(&self) -> u8 {

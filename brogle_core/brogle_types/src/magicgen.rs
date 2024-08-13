@@ -13,9 +13,10 @@ struct MagicEntry {
 fn magic_index(entry: &MagicEntry, blockers: Bitboard) -> usize {
     let blockers = blockers.0 & entry.mask;
     let hash = blockers.wrapping_mul(entry.magic);
-    let index = (hash >> entry.shift) as usize;
+    // let index = (hash >> entry.shift) as usize;
     // entry.offset + index
-    index
+    // index
+    (hash >> entry.shift) as usize
 }
 
 // #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -111,7 +112,7 @@ fn find_and_print_all_magics(slider: &SlidingPiece, piece_name: &str) {
     let mut table_size = 0;
 
     for tile in Tile::iter() {
-        let index_bits = slider.blockers(tile).population() as u8;
+        let index_bits = slider.blockers(tile).population();
         let (entry, table) = find_magic(slider, tile, index_bits);
 
         println!(

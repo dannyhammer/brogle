@@ -23,12 +23,12 @@ impl XoShiRo {
     }
 
     /// Generates the next pseudo-random number in the sequence.
-    pub fn next(&mut self) -> u64 {
+    pub fn get_next(&mut self) -> u64 {
         Self::xoshiro(self.0).0
     }
 
-    /// `const` analog of [`XoShiRo::next`], returning `(next, Self)`.
-    pub const fn const_next(self) -> (u64, Self) {
+    /// `const` analog of [`XoShiRo::get_next`], returning `(next, Self)`.
+    pub const fn get_next_const(self) -> (u64, Self) {
         let (result, s) = Self::xoshiro(self.0);
         (result, Self(s))
     }
@@ -48,5 +48,11 @@ impl XoShiRo {
 
         s[3] = s[3].rotate_left(45);
         (result, s)
+    }
+}
+
+impl Default for XoShiRo {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -16,7 +16,7 @@ use threadpool::ThreadPool;
 
 use super::{
     protocols::{UciCommand, UciEngine, UciOption, UciResponse, UciSearchOptions},
-    search::{Search, SearchResult},
+    search::{SearchResult, Searcher},
     Evaluator,
 };
 
@@ -28,6 +28,26 @@ enum EngineProtocol {
     #[default]
     Uci,
 }
+
+/*
+pub enum ScoreBound {
+    // The score is exact
+    Exact,
+    /// The score is less than alpha
+    Upper,
+    /// The score is greater than or equal to beta
+    Lower,
+}
+
+pub struct TranspositionTableEntry {
+    key: u64,
+    bestmove: Move,
+    depth: usize,
+    score: i32,
+    score_bound: ScoreBound,
+    age: usize,
+}
+ */
 
 /// A chess engine responds to inputs (such as from a GUI or terminal) and
 /// responds with computed outputs. The most common modern protocol is UCI.
@@ -597,7 +617,7 @@ impl UciEngine for Engine {
                 let cloned_result = Arc::clone(&result);
 
                 // Start the search
-                let search = Search::new(
+                let search = Searcher::new(
                     &game,
                     timeout,
                     cloned_stopper,

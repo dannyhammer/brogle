@@ -5,13 +5,10 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Result};
-use brogle_types::NUM_CASTLING_RIGHTS;
-
-use crate::ZOBRIST_TABLE;
 
 use super::{
-    Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind, Rank, Tile,
-    FEN_STARTPOS, NUM_COLORS, NUM_PIECE_TYPES,
+    Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind, Rank, Tile, ZobristKey,
+    FEN_STARTPOS, NUM_CASTLING_RIGHTS, NUM_COLORS, NUM_PIECE_TYPES,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -206,7 +203,7 @@ impl CastlingRights {
     /// assert_eq!(none.index(), 0);
     /// ```
     pub const fn index(&self) -> usize {
-        (self.kingside[0].is_some() as usize) << 0
+        (self.kingside[0].is_some() as usize)
             | (self.kingside[1].is_some() as usize) << 1
             | (self.queenside[0].is_some() as usize) << 2
             | (self.queenside[1].is_some() as usize) << 3
@@ -283,7 +280,7 @@ pub struct Position {
     fullmove: usize,
 
     /// Zobrist hash key of this position
-    key: u64,
+    key: ZobristKey,
 }
 
 impl Position {
@@ -302,17 +299,22 @@ impl Position {
     /// assert_eq!(state.to_fen(), "8/8/8/8/8/8/8/8 w - - 0 1");
     /// ```
     pub fn new() -> Self {
-        let mut pos = Self {
-            board: ChessBoard::new(),
-            current_player: Color::White,
-            castling_rights: CastlingRights::new(),
-            ep_tile: None,
+        let board = ChessBoard::new();
+        let castling_rights = CastlingRights::new();
+        let current_player = Color::White;
+        let ep_tile = None;
+
+        let key = ZobristKey::from_parts(&board, ep_tile, &castling_rights, current_player);
+
+        Self {
+            board,
+            current_player,
+            castling_rights,
+            ep_tile,
             halfmove: 0,
             fullmove: 1,
-            key: 0,
-        };
-        pos.update_zobrist_key();
-        pos
+            key,
+        }
     }
 
     /// Creates a new [`Position`] from the provided FEN string.
@@ -346,7 +348,7 @@ impl Position {
             "Invalid FEN string: FEN string must have valid fullmove counter. Got {fullmove}"
         )))?;
 
-        pos.update_zobrist_key();
+        pos.key = ZobristKey::new(&pos);
 
         Ok(pos)
     }
@@ -407,8 +409,8 @@ impl Position {
     }
 
     /// Fetch the Zobrist hash key of this position.
-    pub fn key(&self) -> u64 {
-        self.key
+    pub fn key(&self) -> &ZobristKey {
+        &self.key
     }
 
     /// Returns `true` if the half-move counter is 50 or greater.
@@ -445,11 +447,6 @@ impl Position {
             && self.current_player() == other.current_player()
             && self.castling_rights() == other.castling_rights()
             && self.ep_tile() == other.ep_tile()
-    }
-
-    /// Recompute the Zobrist hash key of this position.
-    fn update_zobrist_key(&mut self) {
-        self.key = ZOBRIST_TABLE.hash(self);
     }
 
     /// Checks if the provided move is legal to perform.
@@ -538,8 +535,14 @@ impl Position {
         let to = mv.to();
         let from = mv.from();
 
-        // Clear the EP tile from the last move
-        self.ep_tile = None;
+        // Un-hash the piece at `from`.
+        self.key.hash_piece(from, piece);
+
+        // Clear the EP tile from the last move (and un-hash it)
+        self.key.hash_optional_ep_tile(self.ep_tile.take());
+
+        // Un-hash the castling rights
+        self.key.hash_castling_rights(&self.castling_rights);
 
         // Increment move counters
         self.halfmove += 1; // This is reset if a capture occurs or a pawn moves
@@ -559,12 +562,17 @@ impl Position {
 
             // If the capture was on a rook's starting square, disable that side's castling.
             // Either a rook was captured, or there wasn't a rook there, in which case castling on that side is already disabled
+            // TODO: Chess960
             if to == Tile::A1.rank_relative_to(captured_color) {
+                self.key.hash_castling_rights(&self.castling_rights);
                 self.castling_rights.queenside[captured_color].take();
+                self.key.hash_castling_rights(&self.castling_rights);
             }
 
             if to == Tile::H1.rank_relative_to(captured_color) {
+                self.key.hash_castling_rights(&self.castling_rights);
                 self.castling_rights.kingside[captured_color].take();
+                self.key.hash_castling_rights(&self.castling_rights);
             }
 
             // Reset halfmove counter, since a capture occurred
@@ -572,8 +580,10 @@ impl Position {
         } else if mv.is_pawn_double_push() {
             // Double pawn push, so set the EP square
             self.ep_tile = from.forward_by(color, 1);
+            self.key.hash_optional_ep_tile(self.ep_tile());
         } else if mv.is_castle() {
             let castle_index = mv.is_short_castle() as usize;
+            // TODO: Chess960
             let old_rook_tile = [Tile::A1, Tile::H1][castle_index].rank_relative_to(color);
             let new_rook_tile = [Tile::D1, Tile::F1][castle_index].rank_relative_to(color);
 
@@ -582,8 +592,11 @@ impl Position {
             self.board_mut().set(rook, new_rook_tile);
 
             // Disable castling
+            // Hashing must be done before and after castling rights are changed so that the proper hash key is used
+            self.key.hash_castling_rights(&self.castling_rights);
             self.castling_rights.kingside[color] = None;
             self.castling_rights.queenside[color] = None;
+            self.key.hash_castling_rights(&self.castling_rights);
         }
 
         // Next, handle special cases for Pawn (halfmove), Rook, and King (castling)
@@ -591,20 +604,24 @@ impl Position {
             PieceKind::Pawn => self.halfmove = 0,
             PieceKind::Rook => {
                 // Disable castling if a rook moved
-                // self.castling_rights.kingside[color] &= from != Tile::H1.rank_relative_to(color);
-                // self.castling_rights.queenside[color] &= from != Tile::A1.rank_relative_to(color);
                 if from == Tile::A1.rank_relative_to(color) {
+                    self.key.hash_castling_rights(&self.castling_rights);
                     self.castling_rights.queenside[color].take();
+                    self.key.hash_castling_rights(&self.castling_rights);
                 }
 
                 if from == Tile::H1.rank_relative_to(color) {
+                    self.key.hash_castling_rights(&self.castling_rights);
                     self.castling_rights.kingside[color].take();
+                    self.key.hash_castling_rights(&self.castling_rights);
                 }
             }
             PieceKind::King => {
                 // Disable all castling
+                self.key.hash_castling_rights(&self.castling_rights);
                 self.castling_rights.kingside[color] = None;
                 self.castling_rights.queenside[color] = None;
+                self.key.hash_castling_rights(&self.castling_rights);
             }
             _ => {}
         }
@@ -617,10 +634,14 @@ impl Position {
         // Place the piece in it's new position
         self.board_mut().set(piece, to);
 
+        // Hash the piece at `to`.
+        self.key.hash_piece(to, piece);
+
         // Next player's turn
         self.toggle_current_player();
 
-        self.update_zobrist_key();
+        // Toggle the hash of the current player
+        self.key.hash_side_to_move(self.current_player());
     }
 }
 
