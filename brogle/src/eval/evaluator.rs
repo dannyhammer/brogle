@@ -1,5 +1,7 @@
 use brogle_core::{Bitboard, ChessBoard, Color, Game, PieceKind};
 
+use super::piece_square_tables::positional_eval;
+
 // use super::piece_square_tables::{CONTROL_CENTER, KING_SAFETY, PAWN_PUSH};
 
 /// A struct to encapsulate the logic of evaluating a chess position.
@@ -18,7 +20,19 @@ impl<'a> Evaluator<'a> {
     /// Presently, this just computes the material difference.
     pub fn eval(self) -> i32 {
         let color = self.game.current_player();
-        material_difference(self.game.board(), color)
+        let material = material_difference(self.game.board(), color);
+        let endgame_weight = material_remaining_percentage(self.game.board(), color.opponent());
+        let mut white_psq = 0;
+        let mut black_psq = 0;
+
+        for (tile, piece) in self.game.pieces() {
+            match piece.color() {
+                Color::White => white_psq += positional_eval(piece, tile, endgame_weight),
+                Color::Black => black_psq += positional_eval(piece, tile, endgame_weight),
+            }
+        }
+
+        material + white_psq - black_psq
     }
 
     /*
@@ -127,6 +141,7 @@ fn restrict_enemy_king_movement(board: &ChessBoard, color: Color, endgame_weight
 
     (score as f32 * endgame_weight * 10.0) as i32
 }
+ */
 
 /// Divides the original material value of the board by the current material value, yielding a percentage.
 ///
@@ -148,4 +163,3 @@ fn material_remaining_percentage(board: &ChessBoard, color: Color) -> f32 {
         1.0 - current as f32 / original as f32
     }
 }
- */
