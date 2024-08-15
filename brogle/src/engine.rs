@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use brogle_core::{print_perft, Bitboard, Game, Move, Position, Tile, FEN_STARTPOS};
+use brogle_core::{print_perft, Bitboard, Color, Game, Move, Position, Tile, FEN_STARTPOS};
 use log::{error, warn};
 use threadpool::ThreadPool;
 
@@ -274,17 +274,17 @@ impl Engine {
     fn parse_eval_command(rest: &str) -> Result<EngineCommand> {
         let mut args = rest.split_ascii_whitespace();
 
-        let mut game = Game::default();
-
-        if let Some(arg) = args.next() {
+        let game = if let Some(arg) = args.next() {
             if arg.to_ascii_lowercase() == "startpos" {
-                game = Game::default();
+                Some(Game::default())
             } else if let Ok(parsed) = Game::from_fen(arg) {
-                game = parsed;
+                Some(parsed)
             } else {
                 bail!("usage: eval [FEN]");
             }
-        }
+        } else {
+            None
+        };
 
         Ok(EngineCommand::Eval(Box::new(game)))
     }
@@ -409,8 +409,12 @@ impl Engine {
     }
 
     /// Executes the `eval` command, calling the engine's internal evaluator on the current game state, printing the result.
-    fn eval(&self, game: Game) {
-        println!("{}", Evaluator::new(&game).eval());
+    fn eval(&self, game: Option<Game>) {
+        if let Some(game) = game {
+            println!("{}", Evaluator::new(&game).eval(Color::White));
+        } else {
+            println!("{}", Evaluator::new(&self.game).eval(Color::White));
+        }
     }
 
     /// Executes the `moves` command, displaying all legal moves available.
@@ -512,7 +516,7 @@ pub enum EngineCommand {
     Moves(Option<Tile>, bool),
 
     /// Evaluates the current position.
-    Eval(Box<Game>),
+    Eval(Box<Option<Game>>),
 
     /// Benchmark this engine.
     Bench,

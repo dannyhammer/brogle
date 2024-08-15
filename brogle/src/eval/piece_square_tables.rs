@@ -86,7 +86,7 @@ const KING_EG: Psq = Psq([
     -50,-30,-30,-30,-30,-30,-30,-50
 ]);
 
-/// A [Piece-Square Table] for weighting locations on the board.
+/// A [Piece-Square Table](https://www.chessprogramming.org/Piece-Square_Tables) for weighting locations on the board.
 ///
 /// When defining a PSQ, the table as-written in code will apply for White.
 /// That is, the lowest 8 indices correspond to the first rank, and so on.
@@ -94,34 +94,46 @@ const KING_EG: Psq = Psq([
 struct Psq([i32; NUM_TILES]);
 
 impl Psq {
-    fn lerp(&self, other: &Self, weight: f32) -> Self {
-        let mut new = Self([0; NUM_TILES]);
-
-        let other_weight = 1.0 - weight;
-
-        for tile in Tile::iter() {
-            new.0[tile] =
-                ((self.0[tile] as f32 * weight) + (other.0[tile] as f32 * other_weight)) as i32;
-        }
-
-        new
-    }
-
+    /// Get the value of this PSQ at the provided tile.
     const fn get(&self, tile: Tile) -> i32 {
         self.0[tile.index()]
     }
 
+    /// Get the value of this PSQ at the provided tile, relative to `color`.
     const fn get_relative(&self, tile: Tile, color: Color) -> i32 {
         match color {
             Color::White => self.get(tile.flipped()),
             Color::Black => self.get(tile),
         }
     }
+
+    /// Interpolate a value between this PSQ and another.
+    ///
+    /// `weight` should be `[0, 100]`.
+    const fn get_weighted(&self, tile: Tile, other: &Self, weight: i32) -> i32 {
+        lerp_i32(self.get(tile), other.get(tile), weight)
+    }
+
+    /// Interpolate a value between this PSQ and another, relative to `color`.
+    ///
+    /// `weight` should be `[0, 100]`.
+    const fn get_relative_weighted(
+        &self,
+        tile: Tile,
+        color: Color,
+        other: &Self,
+        weight: i32,
+    ) -> i32 {
+        match color {
+            Color::White => self.get_weighted(tile.flipped(), other, weight),
+            Color::Black => self.get_weighted(tile, other, weight),
+        }
+    }
 }
 
 impl fmt::Display for Psq {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut pst = String::with_capacity(278);
+        let mut pst = String::with_capacity(278); // Pre-allocate *just* enough space
 
         for rank in Rank::iter().rev() {
             pst += rank.as_ref();
@@ -147,18 +159,19 @@ impl fmt::Display for Psq {
     }
 }
 
-pub fn positional_eval(piece: Piece, tile: Tile, endgame_weight: f32) -> i32 {
-    let color = piece.color();
-    let val = match piece.kind() {
-        PieceKind::Pawn => PAWNS.get_relative(tile, color),
-        PieceKind::Knight => KNIGHTS.get_relative(tile, color),
-        PieceKind::Bishop => BISHOPS.get_relative(tile, color),
-        PieceKind::Rook => ROOKS.get_relative(tile, color),
-        PieceKind::Queen => QUEEN.get_relative(tile, color),
-        PieceKind::King => KING_MG
-            .lerp(&KING_EG, endgame_weight)
-            .get_relative(tile, color),
-    };
+pub const fn psq_eval(piece: Piece, tile: Tile, endgame_weight: i32) -> i32 {
+    match piece.kind() {
+        PieceKind::Pawn => PAWNS.get_relative(tile, piece.color()),
+        PieceKind::Knight => KNIGHTS.get_relative(tile, piece.color()),
+        PieceKind::Bishop => BISHOPS.get_relative(tile, piece.color()),
+        PieceKind::Rook => ROOKS.get_relative(tile, piece.color()),
+        PieceKind::Queen => QUEEN.get_relative(tile, piece.color()),
+        PieceKind::King => {
+            KING_MG.get_relative_weighted(tile, piece.color(), &KING_EG, endgame_weight)
+        }
+    }
+}
 
-    val
+const fn lerp_i32(x: i32, y: i32, t: i32) -> i32 {
+    x + (y - x) * t / 100
 }

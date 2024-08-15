@@ -589,7 +589,7 @@ impl Position {
 
             // Move the rook. The King is already handled before and after this match statement.
             let rook = self.board_mut().take(old_rook_tile).unwrap();
-            self.board_mut().set(rook, new_rook_tile);
+            self.board_mut().place(rook, new_rook_tile);
 
             // Disable castling
             // Hashing must be done before and after castling rights are changed so that the proper hash key is used
@@ -632,7 +632,7 @@ impl Position {
         }
 
         // Place the piece in it's new position
-        self.board_mut().set(piece, to);
+        self.board_mut().place(piece, to);
 
         // Hash the piece at `to`.
         self.key.hash_piece(to, piece);
@@ -725,9 +725,6 @@ impl fmt::Debug for Position {
 /// Internally uses a collection of [`Bitboard`]s to keep track of piece/color locations.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ChessBoard {
-    /// All tiles occupied by a piece of any kind or color.
-    occupied: Bitboard,
-
     /// All tiles occupied by a specific color
     colors: [Bitboard; NUM_COLORS],
 
@@ -746,7 +743,6 @@ impl ChessBoard {
     /// ```
     pub const fn new() -> Self {
         Self {
-            occupied: Bitboard::EMPTY_BOARD,
             colors: [Bitboard::EMPTY_BOARD; NUM_COLORS],
             pieces: [Bitboard::EMPTY_BOARD; NUM_PIECE_TYPES],
         }
@@ -762,7 +758,7 @@ impl ChessBoard {
     /// assert_eq!(board.fen(), "8/8/8/8/2N5/8/8/8");
     /// ```
     pub fn with_piece(mut self, piece: Piece, tile: Tile) -> Self {
-        self.set(piece, tile);
+        self.place(piece, tile);
         self
     }
 
@@ -843,7 +839,6 @@ impl ChessBoard {
     /// Returns an instance of this [`ChessBoard`] that has all bits specified by `mask` cleared.
     pub const fn without(&self, mask: Bitboard) -> Self {
         let not_mask = mask.not();
-        let occupied = self.occupied().and(not_mask);
         let mut colors = self.colors;
         colors[0] = colors[0].and(not_mask);
         colors[1] = colors[1].and(not_mask);
@@ -856,18 +851,13 @@ impl ChessBoard {
         pieces[4] = pieces[4].and(not_mask);
         pieces[5] = pieces[5].and(not_mask);
 
-        Self {
-            occupied,
-            colors,
-            pieces,
-        }
+        Self { colors, pieces }
     }
 
     /// Returns an instance of this [`ChessBoard`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
     ///
     /// If `mask` contains only 1 tile, use [`ChessBoard::with_piece`] instead, as it is likely to be faster.
     pub const fn with(&self, mask: Bitboard, piece: Piece) -> Self {
-        let occupied = self.occupied().or(mask);
         let (color, kind) = piece.parts();
 
         let mut colors = self.colors;
@@ -876,11 +866,7 @@ impl ChessBoard {
         let mut pieces = self.pieces;
         pieces[kind.index()] = pieces[kind.index()].or(mask);
 
-        Self {
-            occupied,
-            colors,
-            pieces,
-        }
+        Self { colors, pieces }
     }
 
     /// Returns `true` if there is a piece at the given [`Tile`], else `false`.
@@ -895,21 +881,6 @@ impl ChessBoard {
         self.occupied().get(tile)
     }
 
-    /// Gets the [`Piece`] at a given [`Tile`], if there is one present.
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::{ChessBoard, Piece, PieceKind, Color, Tile};
-    /// let board = ChessBoard::default();
-    /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
-    /// assert_eq!(board.get(Tile::B1), Some(white_knight));
-    /// ```
-    pub fn get(&self, tile: Tile) -> Option<Piece> {
-        let color = self.color_at(tile)?;
-        let kind = self.kind_at(tile)?;
-        Some(Piece::new(color, kind))
-    }
-
     /// Places the provided [`Piece`] and the supplied [`Tile`].
     ///
     /// # Example
@@ -917,13 +888,12 @@ impl ChessBoard {
     /// # use brogle_core::{ChessBoard, Piece, PieceKind, Color, Tile};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// let mut board = ChessBoard::new();
-    /// board.set(white_knight, Tile::C4);
+    /// board.place(white_knight, Tile::C4);
     /// assert_eq!(board.fen(), "8/8/8/8/2N5/8/8/8");
     /// ```
-    pub fn set(&mut self, piece: Piece, tile: Tile) {
+    pub fn place(&mut self, piece: Piece, tile: Tile) {
         self[piece.color()].set(tile);
         self[piece.kind()].set(tile);
-        self.occupied.set(tile);
     }
 
     /// Clears the supplied [`Tile`] of any pieces.
@@ -936,11 +906,10 @@ impl ChessBoard {
     /// assert_eq!(board.fen(), "k7/8/8/8/8/8/8/7K");
     /// ```
     pub fn clear(&mut self, tile: Tile) {
-        if let Some(piece) = self.get(tile) {
+        if let Some(piece) = self.piece_at(tile) {
             self[piece.color()].clear(tile);
             self[piece.kind()].clear(tile);
         }
-        self.occupied.clear(tile);
     }
 
     /// Takes the [`Piece`] from a given [`Tile`], if there is one present.
@@ -955,7 +924,7 @@ impl ChessBoard {
     /// assert_eq!(taken, Some(white_knight));
     /// ```
     pub fn take(&mut self, tile: Tile) -> Option<Piece> {
-        let piece = self.get(tile)?;
+        let piece = self.piece_at(tile)?;
         self.clear(tile);
 
         Some(piece)
@@ -979,23 +948,22 @@ impl ChessBoard {
     /// # Example
     /// ```
     /// # use brogle_core::{ChessBoard, Color, Tile};
-    /// let mut board = ChessBoard::default();
+    /// let board = ChessBoard::default();
     /// assert_eq!(board.color_at(Tile::A2), Some(Color::White));
+    /// assert_eq!(board.color_at(Tile::E8), Some(Color::Black));
     /// assert!(board.color_at(Tile::E4).is_none());
     /// ```
     pub const fn color_at(&self, tile: Tile) -> Option<Color> {
-        if !self.occupied().get(tile) {
-            return None;
+        let mut i = 0;
+        while i < NUM_COLORS {
+            if self.colors[i].get(tile) {
+                // If it was found, we have the correct PieceKind, so break
+                return Some(Color::from_bits_unchecked(i as u8));
+            }
+            i += 1;
         }
 
-        use Color::*;
-        let color = if self.colors[White.index()].get(tile) {
-            White
-        } else {
-            Black
-        };
-
-        Some(color)
+        None
     }
 
     /// Fetches the [`PieceKind`] of the piece at the provided [`Tile`], if there is one.
@@ -1008,26 +976,16 @@ impl ChessBoard {
     /// assert!(board.kind_at(Tile::E4).is_none());
     /// ```
     pub const fn kind_at(&self, tile: Tile) -> Option<PieceKind> {
-        if !self.occupied().get(tile) {
-            return None;
+        let mut i = 0;
+        while i < NUM_PIECE_TYPES {
+            if self.pieces[i].get(tile) {
+                // If it was found, we have the correct PieceKind, so break
+                return Some(PieceKind::from_bits_unchecked(i as u8));
+            }
+            i += 1;
         }
 
-        use PieceKind::*;
-        let kind = if self.pieces[Pawn.index()].get(tile) {
-            Pawn
-        } else if self.pieces[Knight.index()].get(tile) {
-            Knight
-        } else if self.pieces[Bishop.index()].get(tile) {
-            Bishop
-        } else if self.pieces[Rook.index()].get(tile) {
-            Rook
-        } else if self.pieces[Queen.index()].get(tile) {
-            Queen
-        } else {
-            King
-        };
-
-        Some(kind)
+        None
     }
 
     /// Fetches the [`Piece`] of the piece at the provided [`Tile`], if there is one.
@@ -1040,12 +998,10 @@ impl ChessBoard {
     /// assert_eq!(board.piece_at(Tile::A2).unwrap().color(), Color::White);
     /// assert!(board.piece_at(Tile::E4).is_none());
     /// ```
-    pub const fn piece_at(&self, tile: Tile) -> Option<Piece> {
-        if let (Some(color), Some(kind)) = (self.color_at(tile), self.kind_at(tile)) {
-            Some(Piece::new(color, kind))
-        } else {
-            None
-        }
+    pub fn piece_at(&self, tile: Tile) -> Option<Piece> {
+        let kind = self.kind_at(tile)?;
+        let color = self.color_at(tile)?;
+        Some(Piece::new(color, kind))
     }
 
     /// Fetches the [`Bitboard`] corresponding to the supplied [`PieceKind`].
@@ -1080,7 +1036,7 @@ impl ChessBoard {
 
     /// Fetches a [`Bitboard`] of all occupied squares on the board.
     pub const fn occupied(&self) -> Bitboard {
-        self.occupied
+        self.color(Color::White).or(self.color(Color::Black))
     }
 
     /// Fetches a [`Bitboard`] of all non-occupied squares on the board.
@@ -1105,17 +1061,32 @@ impl ChessBoard {
     }
 
     /// Returns an iterator over all of the pieces on this board along with their corresponding locations.
-    pub fn pieces(&self) -> impl ExactSizeIterator<Item = (Tile, Piece)> + '_ {
+    pub fn all(&self) -> impl ExactSizeIterator<Item = (Tile, Piece)> + '_ {
         self.occupied()
             .into_iter()
-            .map(|tile| (tile, self.get(tile).unwrap()))
+            .map(|tile| (tile, self.piece_at(tile).unwrap()))
     }
 
-    /// Analogous to [`ChessBoard::piece`] with a [`Piece`]'s individual components
+    /// Returns an iterator over all of the pieces of `kind` on this board along with their corresponding locations.
+    pub fn all_of(&self, kind: PieceKind) -> impl ExactSizeIterator<Item = (Tile, Piece)> + '_ {
+        self.kind(kind)
+            .into_iter()
+            .map(|tile| (tile, self.piece_at(tile).unwrap()))
+    }
+
+    /// Returns an iterator over all of the pieces of `color` on this board along with their corresponding locations.
+    pub fn all_for(&self, color: Color) -> impl ExactSizeIterator<Item = (Tile, Piece)> + '_ {
+        self.color(color)
+            .into_iter()
+            .map(|tile| (tile, self.piece_at(tile).unwrap()))
+    }
+
+    /// Analogous to [`ChessBoard::piece`] with a [`Piece`]'s individual components.
+    ///
+    /// If you have a [`PieceKind`] and a [`Color`] already, this is likely to be *slightly*
+    /// faster that constructing a [`Piece`] and calling [`ChessBoard::piece`].
     pub const fn piece_parts(&self, color: Color, kind: PieceKind) -> Bitboard {
-        let color = self.color(color);
-        let kind = self.kind(kind);
-        color.and(kind)
+        self.color(color).and(self.kind(kind))
     }
 
     /// Fetches a [`Bitboard`] containing the locations of all orthogonal sliding pieces (Rook, Queen).
@@ -1176,7 +1147,7 @@ impl ChessBoard {
         for rank in Rank::iter() {
             let mut empty_spaces = 0;
             for file in File::iter() {
-                if let Some(piece) = self.get(file * rank) {
+                if let Some(piece) = self.piece_at(file * rank) {
                     if empty_spaces != 0 {
                         placements[rank.index()] += &empty_spaces.to_string();
                         empty_spaces = 0;
@@ -1245,7 +1216,7 @@ impl From<[Option<Piece>; 64]> for ChessBoard {
 
         for (i, piece) in value.into_iter().enumerate() {
             if let Some(piece) = piece {
-                board.set(piece, Tile::from_index(i).unwrap())
+                board.place(piece, Tile::from_index(i).unwrap())
             }
         }
 
@@ -1342,7 +1313,7 @@ impl<'a> Iterator for BoardIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let lsb = self.occupancy.pop_lsb()?;
-        let piece = self.board.get(lsb)?;
+        let piece = self.board.piece_at(lsb)?;
         Some((lsb, piece))
     }
 
