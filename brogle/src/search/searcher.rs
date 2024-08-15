@@ -187,7 +187,7 @@ impl<'a> Searcher<'a> {
         // Reached the end of the depth; return board's evaluation.
         if depth == 0 {
             // Root nodes in negamax must be evaluated from the current player's perspective
-            result.score = Evaluator::new(self.game).eval();
+            result.score = Evaluator::new(self.game).eval_current_player();
             self.data.nodes_searched += 1;
             return Ok(result);
             // return self.quiescence(game, ply + 1, alpha, beta);
@@ -364,7 +364,7 @@ impl<'a> Searcher<'a> {
 
         // eprintln!("QSearch on {}", game.fen());
         // Root nodes in negamax must be evaluated from the current player's perspective
-        let stand_pat = Evaluator::new(game).eval();
+        let stand_pat = Evaluator::new(game).eval_current_player();
         if stand_pat >= beta {
             return Ok(beta);
         } else if stand_pat > alpha {

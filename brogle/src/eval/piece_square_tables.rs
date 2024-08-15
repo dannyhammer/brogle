@@ -1,86 +1,139 @@
-use core::fmt;
+use std::fmt;
 
-use brogle_core::{Bitboard, ChessBoard, Color, File, PieceKind, Rank, Tile};
+use brogle_core::{Color, File, Piece, PieceKind, Rank, Tile, NUM_TILES};
 
-/*
-pub const PAWN_PUSH: PieceSquareTable = PieceSquareTable([
-    60, 60, 60, 60, 60, 60, 60, 60, //
-    50, 50, 50, 50, 50, 50, 50, 50, //
-    40, 40, 40, 40, 40, 40, 40, 40, //
-    30, 30, 30, 30, 30, 30, 30, 30, //
-    20, 20, 20, 20, 20, 20, 20, 20, //
-    10, 10, 10, 10, 10, 10, 10, 10, //
-    01, 01, 01, 01, 01, 01, 01, 01, //
-    00, 00, 00, 00, 00, 00, 00, 00, //
+#[rustfmt::skip]
+const PAWNS: Psq = Psq([
+    0,  0,  0,  0,  0,  0,  0,  0,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    10, 10, 20, 30, 30, 20, 10, 10,
+    5,  5, 10, 25, 25, 10,  5,  5,
+    0,  0,  0, 20, 20,  0,  0,  0,
+    5, -5,-10,  0,  0,-10, -5,  5,
+    5, 10, 10,-20,-20, 10, 10,  5,
+    0,  0,  0,  0,  0,  0,  0,  0
 ]);
 
-pub const CONTROL_CENTER: PieceSquareTable = PieceSquareTable([
-    10, 11, 12, 13, 13, 12, 11, 10, //
-    21, 22, 23, 24, 24, 23, 22, 21, //
-    32, 33, 34, 35, 35, 34, 33, 32, //
-    43, 44, 45, 46, 46, 45, 44, 43, //
-    43, 44, 45, 46, 46, 45, 44, 43, //
-    32, 33, 34, 35, 35, 34, 33, 32, //
-    21, 22, 23, 24, 24, 23, 22, 21, //
-    10, 11, 12, 13, 13, 12, 11, 10, //
+#[rustfmt::skip]
+const KNIGHTS: Psq = Psq([
+    -50,-40,-30,-30,-30,-30,-40,-50,
+    -40,-20,  0,  0,  0,  0,-20,-40,
+    -30,  0, 10, 15, 15, 10,  0,-30,
+    -30,  5, 15, 20, 20, 15,  5,-30,
+    -30,  0, 15, 20, 20, 15,  0,-30,
+    -30,  5, 10, 15, 15, 10,  5,-30,
+    -40,-20,  0,  5,  5,  0,-20,-40,
+    -50,-40,-30,-30,-30,-30,-40,-50,
 ]);
 
-pub const KING_SAFETY: PieceSquareTable = PieceSquareTable([
-    01, 01, 01, 01, 01, 01, 01, 01, //
-    01, 01, 01, 01, 01, 01, 01, 01, //
-    01, 01, 01, 01, 01, 01, 01, 01, //
-    01, 01, 01, 01, 01, 01, 01, 01, //
-    01, 01, 01, 01, 01, 01, 01, 01, //
-    75, 70, 65, 60, 60, 65, 70, 75, //
-    85, 80, 75, 70, 70, 75, 80, 85, //
-    90, 85, 80, 75, 75, 80, 85, 90, //
+#[rustfmt::skip]
+const BISHOPS: Psq = Psq([
+    -20,-10,-10,-10,-10,-10,-10,-20,
+    -10,  0,  0,  0,  0,  0,  0,-10,
+    -10,  0,  5, 10, 10,  5,  0,-10,
+    -10,  5,  5, 10, 10,  5,  5,-10,
+    -10,  0, 10, 10, 10, 10,  0,-10,
+    -10, 10, 10, 10, 10, 10, 10,-10,
+    -10,  5,  0,  0,  0,  0,  5,-10,
+    -20,-10,-10,-10,-10,-10,-10,-20,
 ]);
- */
 
-/// A [Piece-Square Table] for weighting locations on the board.
+#[rustfmt::skip]
+const ROOKS: Psq = Psq([
+    0,  0,  0,  0,  0,  0,  0,  0,
+    5, 10, 10, 10, 10, 10, 10,  5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    0,  0,  0,  5,  5,  0,  0,  0
+]);
+
+#[rustfmt::skip]
+const QUEEN: Psq = Psq([
+    -20,-10,-10, -5, -5,-10,-10,-20,
+    -10,  0,  0,  0,  0,  0,  0,-10,
+    -10,  0,  5,  5,  5,  5,  0,-10,
+    -5,  0,  5,  5,  5,  5,  0, -5,
+    0,  0,  5,  5,  5,  5,  0, -5,
+    -10,  5,  5,  5,  5,  5,  0,-10,
+    -10,  0,  5,  0,  0,  0,  0,-10,
+    -20,-10,-10, -5, -5,-10,-10,-20
+]);
+
+#[rustfmt::skip]
+const KING_MG: Psq = Psq([
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -20,-30,-30,-40,-40,-30,-30,-20,
+    -10,-20,-20,-20,-20,-20,-20,-10,
+    20, 20,  0,  0,  0,  0, 20, 20,
+    20, 30, 10,  0,  0, 10, 30, 20
+]);
+
+#[rustfmt::skip]
+const KING_EG: Psq = Psq([
+    -50,-40,-30,-20,-20,-30,-40,-50,
+    -30,-20,-10,  0,  0,-10,-20,-30,
+    -30,-10, 20, 30, 30, 20,-10,-30,
+    -30,-10, 30, 40, 40, 30,-10,-30,
+    -30,-10, 30, 40, 40, 30,-10,-30,
+    -30,-10, 20, 30, 30, 20,-10,-30,
+    -30,-30,  0,  0,  0,  0,-30,-30,
+    -50,-30,-30,-30,-30,-30,-30,-50
+]);
+
+/// A [Piece-Square Table](https://www.chessprogramming.org/Piece-Square_Tables) for weighting locations on the board.
 ///
 /// When defining a PSQ, the table as-written in code will apply for White.
 /// That is, the lowest 8 indices correspond to the first rank, and so on.
 #[derive(PartialEq, Eq, Debug)]
-pub struct PieceSquareTable([i32; Tile::COUNT]);
+struct Psq([i32; NUM_TILES]);
 
-impl PieceSquareTable {
-    pub fn relative_to(self, color: Color) -> Self {
+impl Psq {
+    /// Get the value of this PSQ at the provided tile.
+    const fn get(&self, tile: Tile) -> i32 {
+        self.0[tile.index()]
+    }
+
+    /// Get the value of this PSQ at the provided tile, relative to `color`.
+    const fn get_relative(&self, tile: Tile, color: Color) -> i32 {
         match color {
-            Color::White => self.flipped(),
-            Color::Black => self,
+            Color::White => self.get(tile.flipped()),
+            Color::Black => self.get(tile),
         }
     }
 
-    pub fn flipped(mut self) -> Self {
-        self.0.reverse();
-        Self(self.0)
+    /// Interpolate a value between this PSQ and another.
+    ///
+    /// `weight` should be `[0, 100]`.
+    const fn get_weighted(&self, tile: Tile, other: &Self, weight: i32) -> i32 {
+        lerp_i32(self.get(tile), other.get(tile), weight)
     }
 
-    pub fn apply_to(self, board: Bitboard) -> i32 {
-        // println!("Applying:\n{self} to:\n{:?}", board);
-        let mut score = 0;
-
-        for square in board {
-            score += self.0[square] * board.get(square) as i32;
-        }
-
-        score
-    }
-
-    pub fn apply_for(self, board: &ChessBoard, color: Color, kind: Option<PieceKind>) -> i32 {
-        let psq = self.relative_to(color);
-        if let Some(kind) = kind {
-            psq.apply_to(board.piece_parts(color, kind))
-        } else {
-            psq.relative_to(color).apply_to(board.color(color))
+    /// Interpolate a value between this PSQ and another, relative to `color`.
+    ///
+    /// `weight` should be `[0, 100]`.
+    const fn get_relative_weighted(
+        &self,
+        tile: Tile,
+        color: Color,
+        other: &Self,
+        weight: i32,
+    ) -> i32 {
+        match color {
+            Color::White => self.get_weighted(tile.flipped(), other, weight),
+            Color::Black => self.get_weighted(tile, other, weight),
         }
     }
 }
 
-impl fmt::Display for PieceSquareTable {
+impl fmt::Display for Psq {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut pst = String::with_capacity(278);
+        let mut pst = String::with_capacity(278); // Pre-allocate *just* enough space
 
         for rank in Rank::iter().rev() {
             pst += rank.as_ref();
@@ -104,4 +157,21 @@ impl fmt::Display for PieceSquareTable {
 
         write!(f, "{pst}")
     }
+}
+
+pub const fn psq_eval(piece: Piece, tile: Tile, endgame_weight: i32) -> i32 {
+    match piece.kind() {
+        PieceKind::Pawn => PAWNS.get_relative(tile, piece.color()),
+        PieceKind::Knight => KNIGHTS.get_relative(tile, piece.color()),
+        PieceKind::Bishop => BISHOPS.get_relative(tile, piece.color()),
+        PieceKind::Rook => ROOKS.get_relative(tile, piece.color()),
+        PieceKind::Queen => QUEEN.get_relative(tile, piece.color()),
+        PieceKind::King => {
+            KING_MG.get_relative_weighted(tile, piece.color(), &KING_EG, endgame_weight)
+        }
+    }
+}
+
+const fn lerp_i32(x: i32, y: i32, t: i32) -> i32 {
+    x + (y - x) * t / 100
 }

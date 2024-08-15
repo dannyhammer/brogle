@@ -35,7 +35,7 @@ impl ZobristKey {
         let mut key = Self::default();
 
         // Hash all pieces on the board
-        for (tile, piece) in board.pieces() {
+        for (tile, piece) in board.all() {
             key.hash_piece(tile, piece);
         }
 
