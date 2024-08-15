@@ -116,16 +116,16 @@ impl Color {
         // TODO: Which of these 3 is faster?
 
         // A: Match
-        // match self {
-        //     Self::White => 1,
-        //     Self::Black => -1,
-        // }
+        match self {
+            Self::White => 1,
+            Self::Black => -1,
+        }
 
-        // B: Multiply
-        // 1 - 2 * *self as i8
+        // B: Shift
+        // 1 - ((*self as i8) << 1)
 
-        // C: Shift
-        1 - ((*self as i8) << 1)
+        // C: Bitwise
+        // (*self as i8 ^ 1) - (*self as i8 & 1)
     }
 
     /// Returns this [`Color`]'s opposite / inverse / enemy.

@@ -601,8 +601,6 @@ impl UciEngine for Engine {
             Duration::MAX
         };
 
-        eprintln!("Received duration of {time_remaining:?}");
-
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);
         // let timeout = Duration::from_secs_f32(time_remaining.as_secs_f32() / 20.0); // 5% time remaining
