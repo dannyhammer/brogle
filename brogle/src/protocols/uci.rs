@@ -684,7 +684,7 @@ pub trait UciEngine {
     ///
     /// The default implementation of this method simply immediately sends a response
     /// of `bestmove <bestmove> [ponder <ponder>]`.
-    fn bestmove<T: fmt::Display>(&self, bestmove: T, ponder: Option<T>) -> Result<()> {
+    fn bestmove<T: fmt::Display>(&self, bestmove: Option<T>, ponder: Option<T>) -> Result<()> {
         self.send_uci_response(UciResponse::<T>::BestMove { bestmove, ponder })
     }
 
@@ -1435,7 +1435,13 @@ pub enum UciResponse<T: fmt::Display = String> {
     /// ```text
     /// bestmove <move_1> [ponder <move_2>]
     /// ```
-    BestMove { bestmove: T, ponder: Option<T> },
+    ///
+    /// If the `bestmove` field is `None`, this will be printed as
+    /// `bestmove (none) [ponder <ponder>]`.
+    BestMove {
+        bestmove: Option<T>,
+        ponder: Option<T>,
+    },
 
     /// ```text
     /// copyprotection [checking | ok | error]
@@ -1465,13 +1471,12 @@ impl<T: fmt::Display> fmt::Display for UciResponse<T> {
             Self::Id { name, author } => write!(f, "id name {name}\nid author {author}"),
             Self::UciOk => write!(f, "uciok"),
             Self::ReadyOk => write!(f, "readyok"),
-            Self::BestMove { bestmove, ponder } => {
-                if let Some(ponder) = ponder {
-                    write!(f, "bestmove {bestmove} ponder {ponder}")
-                } else {
-                    write!(f, "bestmove {bestmove}")
-                }
-            }
+            Self::BestMove { bestmove, ponder } => match (bestmove, ponder) {
+                (Some(b), Some(p)) => write!(f, "bestmove {b} ponder {p}"),
+                (Some(b), None) => write!(f, "bestmove {b}"),
+                (None, Some(p)) => write!(f, "bestmove (none) ponder {p}"),
+                (None, None) => write!(f, "bestmove (none)"),
+            },
             Self::CopyProtection(status) => write!(f, "copyprotection {status}"),
             Self::Registration(status) => write!(f, "registration {status}"),
             Self::Info(info) => write!(f, "info {info}"),
@@ -1480,7 +1485,6 @@ impl<T: fmt::Display> fmt::Display for UciResponse<T> {
     }
 }
 
-/*
 /// Bounds for the `score` argument of the `info` response.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UciBound {
@@ -1492,6 +1496,7 @@ pub enum UciBound {
 }
 
 impl fmt::Display for UciBound {
+    /// Formats as either `upperbound` or `lowerbound`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lowerbound => write!(f, "lowerbound"),
@@ -1504,23 +1509,29 @@ impl fmt::Display for UciBound {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UciScoreType {
     /// The score from the engine's point of view in centipawns.
-    Centipawns(i32),
+    Centipawns,
 
     /// Mate in `<y>` moves (not plies).
-    Mate(u32),
+    Mate,
 }
 
 impl fmt::Display for UciScoreType {
+    /// Formats as either `cp` or `mate`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Centipawns(x) => write!(f, "cp {x}"),
-            Self::Mate(y) => write!(f, "mate {y}"),
+            Self::Centipawns => write!(f, "cp"),
+            Self::Mate => write!(f, "mate"),
         }
     }
 }
 
+/// Represents
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UciScore {
+    /// The score value, which is either a centipawn value or moves-to-mate,
+    /// depending on the value of `score_type`.
+    score: i32,
+
     /// Either `cp` or `mate`.
     score_type: UciScoreType,
 
@@ -1528,16 +1539,58 @@ pub struct UciScore {
     bound: Option<UciBound>,
 }
 
+impl UciScore {
+    /// Construct a new [`UciScore`] with the provided `score`, `score_type`, and
+    /// `bound`.
+    pub fn new(score: i32, score_type: UciScoreType, bound: Option<UciBound>) -> Self {
+        Self {
+            score,
+            score_type,
+            bound,
+        }
+    }
+
+    /// Construct a new [`UciScore`] with the provided `score` and `score_type`
+    pub fn new_unbounded(score: i32, score_type: UciScoreType) -> Self {
+        Self::new(score, score_type, None)
+    }
+
+    /// Construct a new [`UciScore`] with `score_type` [`UciScoreType::Centipawns`].
+    pub fn cp(score: i32) -> Self {
+        Self::new_unbounded(score, UciScoreType::Centipawns)
+    }
+
+    /// Construct a new [`UciScore`] with `score_type` [`UciScoreType::Mate`].
+    pub fn mate(moves_to_mate: i32) -> Self {
+        Self::new_unbounded(moves_to_mate, UciScoreType::Mate)
+    }
+
+    /// Consumes `self` and appends the provided [`UciBound`] onto `self`.
+    pub fn with_bound(mut self, bound: UciBound) -> Self {
+        self.bound = Some(bound);
+        self
+    }
+}
+
+impl std::ops::Neg for UciScore {
+    type Output = Self;
+    /// Negating a [`UciScore`] just negates its `score` field.
+    fn neg(mut self) -> Self::Output {
+        self.score = self.score.neg();
+        self
+    }
+}
+
 impl fmt::Display for UciScore {
+    /// Formats as `<cp <x> | mate <y>> [lowerbound | upperbound]`
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(bound) = self.bound {
-            write!(f, "{} {bound}", self.score_type)
+        if let Some(bound) = &self.bound {
+            write!(f, "{} {} {bound}", self.score_type, self.score)
         } else {
-            write!(f, "{}", self.score_type)
+            write!(f, "{} {}", self.score_type, self.score)
         }
     }
 }
- */
 
 /// Represents all information that can be sent with the `info` command.
 ///
@@ -1600,7 +1653,7 @@ pub struct UciInfo {
     ///
     ///   - `lowerbound` - The score is just a lower bound.
     ///   - `upperbound` - The score is just an upper bound.
-    pub score: Option<String>,
+    pub score: Option<UciScore>,
 
     /// ```text
     /// currmove <move>
@@ -1728,8 +1781,8 @@ impl UciInfo {
     }
 
     /// Consumes `self` and adds the provided `score` value.
-    pub fn score(mut self, score: impl fmt::Display) -> Self {
-        self.score = Some(score.to_string());
+    pub fn score(mut self, score: impl Into<UciScore>) -> Self {
+        self.score = Some(score.into());
         self
     }
 
@@ -1821,7 +1874,7 @@ impl fmt::Display for UciInfo {
             write!(f, "multipv {x} ")?;
         }
         if let Some(x) = &self.score {
-            write!(f, "score cp {x} ")?;
+            write!(f, "score {x} ")?;
         }
         if let Some(x) = &self.currmove {
             write!(f, "currmove {x} ")?;

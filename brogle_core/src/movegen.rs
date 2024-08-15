@@ -121,9 +121,12 @@ impl MoveGenerator {
     //     &mut self.legal_moves[..self.num_legal_moves]
     // }
 
-    // pub fn legal_captures(&self) -> impl Iterator<Item = Move> {
-    //     self.legal_moves.into_iter().filter(|mv| mv.is_capture())
-    // }
+    pub fn legal_captures(&self) -> ArrayVec<Move, MAX_NUM_MOVES> {
+        self.legal_moves()
+            .into_iter()
+            .filter(|mv| mv.is_capture())
+            .collect()
+    }
 
     pub fn legal_moves(&self) -> ArrayVec<Move, MAX_NUM_MOVES> {
         let mut moves = ArrayVec::new();
@@ -587,15 +590,7 @@ impl Deref for MoveGenerator {
 
 impl Default for MoveGenerator {
     fn default() -> Self {
-        Self {
-            position: Position::default(),
-            attacks_by_color: Default::default(),
-            attacks_by_tile: [Bitboard::default(); Tile::COUNT],
-            pinmasks: Default::default(),
-            checkers: Default::default(),
-            discoverable_checks: Default::default(),
-            legal_mobility: [Bitboard::default(); Tile::COUNT],
-        }
+        Self::new(Position::default())
     }
 }
 
