@@ -121,9 +121,12 @@ impl MoveGenerator {
     //     &mut self.legal_moves[..self.num_legal_moves]
     // }
 
-    // pub fn legal_captures(&self) -> impl Iterator<Item = Move> {
-    //     self.legal_moves.into_iter().filter(|mv| mv.is_capture())
-    // }
+    pub fn legal_captures(&self) -> ArrayVec<Move, MAX_NUM_MOVES> {
+        self.legal_moves()
+            .into_iter()
+            .filter(|mv| mv.is_capture())
+            .collect()
+    }
 
     pub fn legal_moves(&self) -> ArrayVec<Move, MAX_NUM_MOVES> {
         let mut moves = ArrayVec::new();

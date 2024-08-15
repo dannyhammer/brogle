@@ -8,18 +8,31 @@ use anyhow::{bail, Result};
 use brogle_core::{Game, Move, PieceKind};
 use log::error;
 
-use crate::protocols::{UciInfo, UciResponse};
+use crate::protocols::{UciInfo, UciResponse, UciScore};
 use crate::{value_of, EngineCommand, Evaluator};
 
-const INF: i32 = 32_000;
+/// Wrapper over `i32` for scoring positions
+type Score = i32;
+
+/// Largest possible score ever achievable
+const INF: Score = i16::MAX as Score;
+
+/// Score of mate in 1 move
+const MATE: Score = INF - 1;
+
+/// Maximum depth that can be searched
+const MAX_DEPTH: Score = 255;
+
+/// Maximum possible score for mate
+const MAX_MATE: Score = MATE - MAX_DEPTH;
 
 /// The result of a search, containing the best move, score, and other metadata.
 #[derive(Debug, Clone)]
 pub struct SearchResult {
     /// The best move found during this search. If `None`, then no valid move was found (i.e. when mated).
-    pub bestmove: Move,
-    /// The score of the best move. A higher score is better for the current player.
-    pub score: i32,
+    pub bestmove: Option<Move>,
+    /// The score of the best move. A higher score is better for the score player.
+    pub score: Score,
     /// If supplied, this move is checked *first*, before all others.
     pub ponder: Option<Move>,
 }
@@ -27,7 +40,7 @@ pub struct SearchResult {
 impl SearchResult {
     pub fn new(bestmove: Move) -> Self {
         Self {
-            bestmove,
+            bestmove: Some(bestmove),
             ..Default::default()
         }
     }
@@ -37,7 +50,7 @@ impl Default for SearchResult {
     /// A default search result has no best move and a Very Bad score.
     fn default() -> Self {
         Self {
-            bestmove: Move::default(),
+            bestmove: None,
             ponder: None,
             score: -INF, // Initially, our score is Very Bad
         }
@@ -63,7 +76,7 @@ impl Neg for SearchResult {
     type Output = Self;
     /// Negating a search result just negates its score.
     fn neg(mut self) -> Self::Output {
-        self.score = -self.score;
+        self.score = self.score.neg();
         self
     }
 }
@@ -126,20 +139,30 @@ impl<'a> Searcher<'a> {
         // eprintln!("\nStarting search of depth {depth} on {}", self.game.fen());
 
         self.data.starttime = Instant::now();
-        // Populate the PV list
-        // self.pv = Vec::with_capacity(depth);
-        // self.pv = vec![Vec::with_capacity(depth); depth];
         let result = self.search(depth)?;
 
         // If the search timed out, this result is garbage, so don't return it.
         *self.result.write().unwrap() = result.clone();
         let elapsed = self.data.starttime.elapsed();
 
-        // let pv = self.pv[0].clone();
+        // Determine whether the score is an evaluation or a "mate in y"
+        // Assistance provided by @Ciekce on Discord
+        // https://github.com/Ciekce/Stormphrax/blob/main/src/search.cpp#L1163
+        // eprintln!("SCORE({depth})={}", result.score);
+        let score = if result.score.abs() >= MAX_MATE {
+            let moves_to_mate = if result.score > 0 {
+                MATE - result.score + 1
+            } else {
+                -MATE - result.score
+            } / 2;
+            UciScore::mate(moves_to_mate)
+        } else {
+            UciScore::cp(result.score)
+        };
 
         let info = UciInfo::default()
             .depth(depth)
-            .score(result.score)
+            .score(score)
             .nodes(self.data.nodes_searched)
             .nps((self.data.nodes_searched as f64 / elapsed.as_secs_f64()) as usize)
             .time(elapsed.as_millis())
@@ -172,34 +195,25 @@ impl<'a> Searcher<'a> {
     // }
 
     fn search(&mut self, depth: usize) -> Result<SearchResult> {
+        // No need to check depth 0 here because this cannot be called with `depth < 1`
         let mut moves = self.game.legal_moves();
+        let mut result = SearchResult::default();
 
-        // Start with a default (very bad) result.
-        let mut result = SearchResult::new(moves.first().copied().unwrap_or_default());
-        let mut alpha = -INF;
-        let beta = INF;
-        let ply = 0;
-
-        // Clear the PV for current node
-        // self.pv.push(Vec::with_capacity(depth));
-        // self.pv[ply] = Vec::with_capacity(depth);
-
-        // Reached the end of the depth; return board's evaluation.
-        if depth == 0 {
-            // Root nodes in negamax must be evaluated from the current player's perspective
-            result.score = Evaluator::new(self.game).eval();
-            self.data.nodes_searched += 1;
+        if moves.is_empty() {
+            result.score = if self.game.is_in_check() { -MATE } else { 0 };
             return Ok(result);
-            // return self.quiescence(game, ply + 1, alpha, beta);
         }
 
         moves.sort_by_cached_key(|mv| score_move(self.game, mv));
 
-        // println!("MOVES: {moves:?}");
+        // Start with a default (very bad) result.
+        let mut alpha = -INF;
+        let beta = INF;
+        let ply = 0;
 
         for i in 0..moves.len() {
             let mv = moves[i];
-            // Make the current move on the position, getting a new position in return
+            // Make the score move on the position, getting a new position in return
             let new_pos = self.game.clone().with_move_made(mv);
 
             if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
@@ -208,7 +222,7 @@ impl<'a> Searcher<'a> {
             }
 
             // Recursively search our opponent's responses
-            let current = -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?;
+            let score = -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?;
             self.data.nodes_searched += 1;
 
             // Check if we've run out of time or if we've been told to stop searching
@@ -222,29 +236,19 @@ impl<'a> Searcher<'a> {
                 );
             }
 
-            // Fail soft beta-cutoff;
-            if current >= beta {
-                // eprintln!("Search: current >= beta for {mv} at ply {ply}");
-                result.score = beta;
-                result.bestmove = mv;
-                return Ok(result);
-            }
+            if score > result.score {
+                result.score = score;
 
-            // If we've found a better move than our current best, update our result
-            if current > result.score {
-                // eprintln!("Search: current > best for {mv} at ply {ply}");
-                result.score = current;
-                result.bestmove = mv;
-            }
+                // Fail soft beta-cutoff.
+                // Could also `return Ok(best)` here, but we need to save bestmove to TT
+                if result.score >= beta {
+                    break;
+                }
 
-            // Keep increasing alpha
-            // alpha = alpha.max(current);
-            if current > alpha {
-                alpha = current;
-                // self.pv[ply] = Vec::with_capacity(depth + 1);
-                // self.pv[ply].push(mv);
-                // let children_pvs = self.pv[ply + 1].clone();
-                // self.pv[ply].extend(children_pvs);
+                if result.score > alpha {
+                    alpha = score;
+                    result.bestmove = Some(mv);
+                }
             }
 
             // Opponent would never choose this branch, so we can prune
@@ -253,36 +257,19 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        // Handle cases for checkmate and stalemate
-        if moves.is_empty() {
-            // eprintln!("No legal moves available at: {position}\nRes: {best:?}");
-            if self.game.is_in_check() {
-                result.score = -INF + depth as i32; // Prefer earlier checkmates
-            } else {
-                result.score = 0; // Stalemate is better than losing
-            }
-        }
-
-        // eprintln!(
-        //     "search: returning {} at ply {ply}",
-        //     result.bestmove.unwrap(),
-        // );
-        // self.pv[ply] = result.bestmove.unwrap();
         Ok(result)
     }
 
+    /// Uses [Fail soft](https://www.chessprogramming.org/Alpha-Beta#Fail_soft)
     fn negamax(
         &mut self,
         game: &Game,
         depth: usize,
-        ply: usize,
-        mut alpha: i32,
-        beta: i32,
-    ) -> Result<i32> {
-        // Start with a default (very bad) result.
-        let mut best = -INF;
-
-        // Clear the PV for current node
+        ply: i32,
+        mut alpha: Score,
+        beta: Score,
+    ) -> Result<Score> {
+        // Clear the PV for score node
         // self.pv.push(Vec::with_capacity(depth));
         // self.pv[ply] = Vec::with_capacity(depth);
 
@@ -294,21 +281,23 @@ impl<'a> Searcher<'a> {
 
         let mut moves = game.legal_moves();
         if moves.is_empty() {
-            if game.is_in_check() {
-                return Ok(-INF + ply as i32); // Prefer earlier checks
+            return Ok(if game.is_in_check() {
+                -MATE + ply // Prefer earlier mates
             } else {
-                return Ok(0); // A draw is better than losing
-            }
+                0 // A draw is better than losing
+            });
         }
 
         moves.sort_by_cached_key(|mv| score_move(game, mv));
 
-        // println!("MOVES: {moves:?}");
+        // Start with a default (very bad) result.
+        let mut best = -INF;
+        // let mut bestmove = *moves.first().unwrap();
 
         for i in 0..moves.len() {
             let mv = moves[i];
 
-            // Make the current move on the position, getting a new position in return
+            // Make the score move on the position, getting a new position in return
             let new_pos = game.clone().with_move_made(mv);
             if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
                 // eprintln!("Repetition in Negamax after {mv} on {}", new_pos.fen());
@@ -316,7 +305,7 @@ impl<'a> Searcher<'a> {
             }
 
             // Recursively search our opponent's responses
-            let current = -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?;
+            let score = -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?;
             self.data.nodes_searched += 1;
 
             // Check if we've run out of time or if we've been told to stop searching
@@ -327,43 +316,41 @@ impl<'a> Searcher<'a> {
                 bail!("Negamax was stopped while evaluating {mv}. Current best score: {best}");
             }
 
-            // Fail soft beta-cutoff;
-            if current >= beta {
-                return Ok(beta);
-            }
-
             // If we've found a better move than our current best, update our result
-            if current > best {
-                best = current;
+            if score > best {
+                best = score;
+
+                // Fail soft beta-cutoff.
+                // Could also `return Ok(best)` here, but we need to save bestmove to TT
+                if score >= beta {
+                    break;
+                }
+
+                if score > alpha {
+                    alpha = score;
+                    // PV found
+                    // bestmove = mv;
+                }
             }
 
-            // Update alpha.
-            if current > alpha {
-                alpha = current;
-                // self.pv[ply] = Vec::with_capacity(depth + 1);
-                // self.pv[ply].push(mv);
-                // let children_pvs = self.pv[ply + 1].clone();
-                // self.pv[ply].extend(children_pvs);
-            }
-
-            // Opponent would never choose this branch, so we can prune
+            // Beta cutoff (fail high)
             if alpha >= beta {
-                // eprintln!("{alpha} >= {beta}: Pruning branch {mv}");
+                // This was a "killer move"
                 break;
             }
         }
 
-        // eprintln!("Negamax: returning {best} at ply {ply}");
         Ok(best)
         // Ok(alpha)
     }
 
-    fn quiescence(&mut self, game: &Game, ply: usize, mut alpha: i32, beta: i32) -> Result<i32> {
-        // Clear the PV for current node
-        // self.pv.push(Vec::with_capacity(8));
-
-        // eprintln!("QSearch on {}", game.fen());
-        // Root nodes in negamax must be evaluated from the current player's perspective
+    fn quiescence(
+        &mut self,
+        game: &Game,
+        ply: i32,
+        mut alpha: Score,
+        beta: Score,
+    ) -> Result<Score> {
         let stand_pat = Evaluator::new(game).eval();
         if stand_pat >= beta {
             return Ok(beta);
@@ -371,39 +358,34 @@ impl<'a> Searcher<'a> {
             alpha = stand_pat;
         }
 
-        let mut moves = game.legal_moves();
+        let mut captures = game.legal_captures();
 
-        // Handle cases for checkmate and stalemate
-        if moves.is_empty() {
-            if game.is_in_check() {
-                return Ok(-INF + ply as i32);
-            } else {
-                return Ok(0);
-            }
+        // Can't check for mates in qsearch, since we're not looking at *all* moves.
+        if captures.is_empty() {
+            return Ok(stand_pat);
         }
 
-        moves.sort_by_cached_key(|mv| score_move(game, mv));
+        captures.sort_by_cached_key(|mv| score_move(game, mv));
 
-        // println!("MOVES: {moves:?}");
+        // let original_alpha = alpha;
+        let mut best = stand_pat;
+        // let mut bestmove = *captures.first().unwrap(); // Safe unwrap because we already checked that moves isn't empty
 
         // Only search captures
-        for i in 0..moves.len() {
+        for i in 0..captures.len() {
             // for mv in moves.iter().filter(|mv| mv.is_capture()) {
-            let mv = moves[i];
-            if !mv.is_capture() {
-                continue;
-            }
+            let mv = captures[i];
 
-            // Make the current move on the position, getting a new position in return
+            // Make the score move on the position, getting a new position in return
             let new_pos = game.clone().with_move_made(mv);
             if new_pos.is_repetition() {
-                eprintln!("Repetition in QSearch after {mv} on {}", new_pos.fen());
+                // eprintln!("Repetition in QSearch after {mv} on {}", new_pos.fen());
                 continue;
             }
             // self.result.nodes_searched += 1;
 
             // Recursively search our opponent's responses
-            let current = -self.quiescence(&new_pos, ply + 1, -beta, -alpha)?;
+            let score = -self.quiescence(&new_pos, ply + 1, -beta, -alpha)?;
             self.data.nodes_searched += 1;
 
             // Check if we've run out of time or if we've been told to stop searching
@@ -413,23 +395,24 @@ impl<'a> Searcher<'a> {
                 // If we must cancel this search, we need to return the result from the previous iteration
                 bail!("QSearch was stopped while evaluating {mv}");
             }
+            if score > best {
+                best = score;
+
+                // Update alpha.
+                if score > alpha {
+                    alpha = score;
+                    // PV found
+                    // bestmove = mv;
+                }
+
+                // Opponent would never choose this branch, so we can prune (fail-high)
+                if alpha >= beta {
+                    break;
+                }
+            }
 
             // Fail soft beta-cutoff;
-            if current >= beta {
-                return Ok(beta);
-            }
-
-            // Update alpha.
-            if current > alpha {
-                alpha = current;
-                // self.pv[ply] = Vec::with_capacity(8); // seems like a good number
-                // self.pv[ply].push(mv);
-                // let children_pvs = self.pv[ply + 1].clone();
-                // self.pv[ply].extend(children_pvs);
-            }
-
-            // Opponent would never choose this branch, so we can prune
-            if alpha >= beta {
+            if score >= beta {
                 break;
             }
         }
