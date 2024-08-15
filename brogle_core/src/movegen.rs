@@ -590,15 +590,7 @@ impl Deref for MoveGenerator {
 
 impl Default for MoveGenerator {
     fn default() -> Self {
-        Self {
-            position: Position::default(),
-            attacks_by_color: Default::default(),
-            attacks_by_tile: [Bitboard::default(); Tile::COUNT],
-            pinmasks: Default::default(),
-            checkers: Default::default(),
-            discoverable_checks: Default::default(),
-            legal_mobility: [Bitboard::default(); Tile::COUNT],
-        }
+        Self::new(Position::default())
     }
 }
 

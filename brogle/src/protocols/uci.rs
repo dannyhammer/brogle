@@ -1874,7 +1874,7 @@ impl fmt::Display for UciInfo {
             write!(f, "multipv {x} ")?;
         }
         if let Some(x) = &self.score {
-            write!(f, "score cp {x} ")?;
+            write!(f, "score {x} ")?;
         }
         if let Some(x) = &self.currmove {
             write!(f, "currmove {x} ")?;

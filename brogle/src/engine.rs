@@ -4,9 +4,9 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Sender},
-        Arc, RwLock,
+        Arc, LazyLock,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{bail, Context, Result};
@@ -14,11 +14,16 @@ use brogle_core::{print_perft, Bitboard, Game, Move, Position, Tile, FEN_STARTPO
 use log::{error, warn};
 use threadpool::ThreadPool;
 
+use crate::protocols::UciInfo;
+
 use super::{
-    protocols::{UciCommand, UciEngine, UciOption, UciResponse, UciSearchOptions},
-    search::{SearchResult, Searcher},
-    Evaluator,
+    protocols::{UciCommand, UciEngine, UciOption, UciResponse, UciScore, UciSearchOptions},
+    search::Searcher,
+    Evaluator, MATE, MAX_DEPTH, MAX_MATE,
 };
+
+/// Threadpool from which to spawn threads for searches, user input, etc.
+pub static POOL: LazyLock<ThreadPool> = LazyLock::new(|| ThreadPool::new(num_cpus::get()));
 
 /// Represents the possible communication protocols supported by this engine.
 ///
@@ -79,12 +84,6 @@ pub struct Engine {
     /// Atomic boolean to determine whether the engine is currently running a search.
     is_searching: Arc<AtomicBool>,
 
-    /// Result of the last-executed search.
-    search_result: Arc<RwLock<SearchResult>>,
-
-    /// Pool for spawning search and input threads.
-    pool: ThreadPool,
-
     /// Handles sending events to the internal event pump.
     sender: Option<Sender<EngineCommand>>,
     //
@@ -121,7 +120,7 @@ impl Engine {
         self.sender = Some(sender.clone());
 
         // Spin up a thread for handling user/GUI input
-        self.pool.execute(move || {
+        POOL.execute(move || {
             if let Err(err) = Self::user_input_handler(sender) {
                 error!("{err}");
             }
@@ -582,59 +581,101 @@ impl UciEngine for Engine {
             warn!("Engine was told to search while it is already searching. Stopping current search...");
             self.stop_search();
         }
+        let starttime = Instant::now();
 
         // Flip the flag to signal a search has begun.
         self.start_search();
 
-        // Compute remaining time
-        let time_remaining = if let Some(movetime) = options.move_time {
+        // If `movetime` was supplied, search that long.
+        let timeout = if let Some(movetime) = options.move_time {
             movetime
-        } else if self.game.current_player().is_white() {
-            options.w_time.unwrap_or(Duration::MAX)
-        } else if self.game.current_player().is_black() {
-            options.b_time.unwrap_or(Duration::MAX)
         } else {
-            Duration::MAX
+            // Otherwise, search based on time remaining
+            let time_remaining = if self.game.current_player().is_white() {
+                options.w_time.unwrap_or(Duration::MAX)
+            } else if self.game.current_player().is_black() {
+                options.b_time.unwrap_or(Duration::MAX)
+            } else {
+                Duration::MAX
+            };
+
+            // time_remaining / 20 // 5% of time remaining
+            time_remaining / 100 // 1% of time remaining
         };
 
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);
-        // let timeout = Duration::from_secs_f32(time_remaining.as_secs_f32() / 20.0); // 5% time remaining
-        let timeout = Duration::from_secs_f32(time_remaining.as_secs_f32() / 100.0); // 1% time remaining
-        let result = Arc::clone(&self.search_result);
         let sender = self.sender.clone().unwrap();
 
         let game = self.game.clone();
-        let max_depth = options.depth.unwrap_or(10) as usize; // TODO: Increase to 127 or 255 once you have TT set up
+        let max_depth = options.depth.unwrap_or(MAX_DEPTH);
 
-        self.pool.execute(move || {
-            let mut depth = 1;
+        // Initialize bestmove to the first move available, if there are any
+        let mut bestmove = game.legal_moves().first().cloned();
 
-            while depth <= max_depth && is_searching.load(Ordering::Relaxed) {
-                let cloned_stopper = Arc::clone(&is_searching);
-                let cloned_result = Arc::clone(&result);
+        POOL.execute(move || {
+            // Iterative Deepening
+            for depth in 1..=max_depth {
+                // If we've been told to stop, exit the loop
+                if !is_searching.load(Ordering::Relaxed) {
+                    break;
+                }
 
-                // Start the search
-                let search = Searcher::new(
-                    &game,
-                    timeout,
-                    cloned_stopper,
-                    cloned_result,
-                    sender.clone(),
-                );
-                // .with_options(options.clone());
+                // Create a search instance with the appropriate thread data
+                let search = Searcher::new(&game, starttime, timeout, Arc::clone(&is_searching));
 
                 // If we received an error, that means the search was stopped externally
                 match search.start(depth) {
-                    Ok(_data) => {}
-                    Err(_) => break,
-                }
+                    // Send info via UCI
+                    Ok(data) => {
+                        let elapsed = starttime.elapsed();
 
-                depth += 1;
+                        bestmove = data.bestmove;
+
+                        // Determine whether the score is an evaluation or a "mate in y"
+                        // Assistance provided by @Ciekce on Discord
+                        // https://github.com/Ciekce/Stormphrax/blob/main/src/search.cpp#L1163
+                        let score = if data.score.abs() >= MAX_MATE {
+                            let dist = MATE - data.score; // distance to mate (in plies)
+                            let moves_to_mate = if data.score > 0 { dist + 1 } else { -dist } / 2;
+                            UciScore::mate(moves_to_mate)
+                        } else {
+                            UciScore::cp(data.score)
+                        };
+
+                        // Construct and send an `info` command
+                        let info = UciInfo::default()
+                            .depth(depth)
+                            .score(score)
+                            .nodes(data.nodes_searched)
+                            .nps((data.nodes_searched as f32 / elapsed.as_secs_f32()).trunc())
+                            .time(elapsed.as_millis())
+                            .pv(data.bestmove);
+
+                        let info_resp = Box::new(UciResponse::Info(Box::new(info)));
+                        if let Err(err) = sender.send(EngineCommand::UciResponse(info_resp)) {
+                            error!("Failed to send 'info' to engine during search: {err:?}");
+                        }
+                    }
+
+                    // Search was stopped abruptly; exit iterative deepening loop
+                    Err(_err) => {
+                        // eprintln!("{_err}");
+                        break;
+                    }
+                }
+            }
+            // If this line of code is reached, it means the search has stopped.
+            // So we need to send a bestmove and ensure the search flag is set to false
+
+            let bestmove = bestmove.map(|mv| mv.to_string());
+            let ponder = None;
+            let bestmove_resp = Box::new(UciResponse::BestMove { bestmove, ponder });
+
+            if let Err(err) = sender.send(EngineCommand::UciResponse(bestmove_resp)) {
+                error!("Failed to send 'bestmove' to engine after search concluded: {err:?}");
             }
 
-            // If this line of code is reached, it means the search has stopped on its own
-            // We can do the same actions as if we have received the "stop" command
             if let Err(err) = sender.send(EngineCommand::UciCommand(UciCommand::Stop)) {
                 error!("Failed to send 'stop' to engine after search concluded: {err:?}");
             }
@@ -644,15 +685,9 @@ impl UciEngine for Engine {
     }
 
     fn stop(&mut self) -> Result<()> {
-        // Only need to stop if we're already searching. Otherwise, don't need to send anything new
+        // Only need to stop if we're already searching
         if self.is_searching() {
             self.stop_search();
-
-            let Ok(res) = self.search_result.read() else {
-                bail!("Failed to acquire read access to engine.search_result")
-            };
-
-            self.bestmove(res.bestmove, res.ponder)?;
         }
 
         Ok(())
@@ -691,18 +726,11 @@ impl UciEngine for Engine {
 impl Default for Engine {
     /// Default engine starts with standard piece set up.
     fn default() -> Self {
-        let game = Game::from_fen(FEN_STARTPOS).unwrap();
-
-        // Initialize the engine to have the first legal move selected as it's best by default
-        let bestmove = game.legal_moves().first().copied().unwrap_or_default();
-
         Self {
-            game,
+            game: Game::default(),
             // ttable: TranspositionTable::default(),
             debug: Arc::default(),
             is_searching: Arc::default(),
-            search_result: Arc::new(RwLock::new(SearchResult::new(bestmove))),
-            pool: ThreadPool::new(num_cpus::get()),
             sender: None,
         }
     }
