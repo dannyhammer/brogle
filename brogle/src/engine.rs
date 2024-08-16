@@ -487,7 +487,6 @@ impl Write for Engine {
 }
 
 /// Represents a custom command that can be sent to this engine.
-#[derive(Clone, Debug)]
 pub enum EngineCommand {
     /// For displaying the list of available commands.
     Help,
@@ -594,17 +593,20 @@ impl UciEngine for Engine {
         let timeout = if let Some(movetime) = options.move_time {
             movetime
         } else {
-            // Otherwise, search based on time remaining
-            let time_remaining = if self.game.current_player().is_white() {
-                options.w_time.unwrap_or(Duration::MAX)
-            } else if self.game.current_player().is_black() {
-                options.b_time.unwrap_or(Duration::MAX)
+            // Otherwise, search based on time remaining and increment
+            let (time, inc) = if self.game.current_player().is_white() {
+                (options.w_time, options.w_inc)
             } else {
-                Duration::MAX
+                (options.b_time, options.b_inc)
             };
 
-            time_remaining / 20 // 5% of time remaining
+            let (time, inc) = (time.unwrap_or(Duration::MAX), inc.unwrap_or(Duration::ZERO));
+
+            // 5% of time remaining + time increment
+            time / 20 + inc
         };
+
+        // eprintln!("Starting search for {timeout:?}");
 
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);

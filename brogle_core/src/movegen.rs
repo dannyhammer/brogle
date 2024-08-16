@@ -9,6 +9,72 @@ use super::{
 
 include!("blobs/magics.rs"); // TODO: Make these into blobs
 
+/*
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct MoveGen {
+    pub(crate) position: Position,
+    moves: ArrayVec<Move, MAX_NUM_MOVES>,
+    to_mask: Bitboard,
+    from_mask: Bitboard,
+    current: Tile,
+    checkers: Bitboard,
+    checkmask: Bitboard,
+    pinmask_ortho: Bitboard,
+    pinmask_diag: Bitboard,
+}
+
+impl MoveGen {
+    pub fn new(position: Position) -> Self {
+        let color = position.current_player();
+        let king_tile = position.king(color).to_tile_unchecked();
+
+        let mut discoverable_checks = Bitboard::EMPTY_BOARD;
+        let checkers = self.compute_attacks_to(&position, king_tile, color.opponent());
+        let pinmasks = self.compute_pinmasks_for(&position, king_tile, color);
+
+        // These are the rays containing the King and his Checkers
+        // They are used to prevent the King from retreating along a line he is checked on!
+        // Note: A pawn can't generate a discoverable check, as it can only capture 1 square away.
+        for checker in checkers & !position.kind(PieceKind::Pawn) {
+            discoverable_checks |= ray_containing(king_tile, checker) ^ checker.bitboard();
+        }
+
+        Self {
+            position,
+            moves: ArrayVec::default(),
+            to_mask: Bitboard::FULL_BOARD,
+            from_mask: Bitboard::FULL_BOARD,
+            current: Tile::A1,
+            checkers: Bitboard::EMPTY_BOARD,
+            checkmask: Bitboard::FULL_BOARD,
+            pinmask_ortho: Bitboard::EMPTY_BOARD,
+            pinmask_diag: Bitboard::EMPTY_BOARD,
+        }
+    }
+
+    pub fn generate_moves_from(&mut self, tile: Tile) -> Option<Move> {
+        let _piece = self.position.piece_at(tile)?;
+
+        None
+    }
+}
+
+impl Iterator for MoveGen {
+    type Item = Move;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.current = self.current.next()?;
+        self.generate_moves_from(self.current)
+    }
+}
+
+impl Deref for MoveGen {
+    type Target = Position;
+    fn deref(&self) -> &Self::Target {
+        &self.position
+    }
+}
+ */
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MoveGenerator {
     pub(crate) position: Position,
@@ -101,26 +167,6 @@ impl MoveGenerator {
         self.checkers().population() > 1
     }
 
-    // pub fn is_in_checkmate(&self) -> bool {
-    //     self.is_in_check() && self.num_legal_moves == 0
-    // }
-
-    // pub fn order_moves<K: Ord>(&mut self, f: impl FnMut(&Move) -> K) {
-    //     self.legal_moves[..self.num_legal_moves].sort_by_cached_key(f);
-    // }
-
-    // pub fn num_legal_moves(&self) -> usize {
-    //     self.num_legal_moves
-    // }
-
-    // pub fn legal_moves(&self) -> &[Move] {
-    //     &self.legal_moves[..self.num_legal_moves]
-    // }
-
-    // pub fn legal_moves_mut(&mut self) -> &mut [Move] {
-    //     &mut self.legal_moves[..self.num_legal_moves]
-    // }
-
     pub fn legal_captures(&self) -> ArrayVec<Move, MAX_NUM_MOVES> {
         self.legal_moves()
             .into_iter()
@@ -169,13 +215,12 @@ impl MoveGenerator {
         // eprintln!("CHECKMASK:\n{checkmask:?}");
         // eprintln!("ENEMY_OR_EMPTY:\n{enemy_or_empty:?}");
 
-        // For sliding pieces, we need a blocker mask to compute pseudo-legal moves
-
-        self.compute_normal_piece_moves(color, king_tile, checkmask, &mut moves);
-        self.compute_king_moves(color, self.occupied(), &mut moves); // TODO: legal_mask for King?
-
         // Pawns are... weird
         self.compute_pawn_moves(color, checkmask, &mut moves);
+
+        // For sliding pieces, we need a blocker mask to compute pseudo-legal moves
+        self.compute_normal_piece_moves(color, king_tile, checkmask, &mut moves);
+        self.compute_king_moves(color, self.occupied(), &mut moves); // TODO: legal_mask for King?
 
         moves
     }
@@ -388,6 +433,7 @@ impl MoveGenerator {
     ) {
         // Loop over every tile containing this piece
         let normal_pieces = self.color(color) ^ self.king(color) ^ self.pawns(color);
+
         // for from in self.piece_parts(color, PieceKind::Knight) {
         for from in normal_pieces {
             let pseudo_legal = self.attacks_by_tile(from);

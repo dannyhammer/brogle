@@ -1,63 +1,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{ops::Neg, time::Instant};
+use std::time::Instant;
 
 use anyhow::{bail, Result};
 use brogle_core::{Game, Move, PieceKind};
 
 use crate::{value_of, Evaluator, Score, INF, MATE};
-
-/// The result of a search, containing the best move, score, and other metadata.
-#[derive(Debug, Eq, Clone)]
-pub struct SearchResult {
-    /// The best move found during this search. If `None`, then no valid move was found (i.e. when mated).
-    pub bestmove: Option<Move>,
-    /// The score of the best move. A higher score is better for the score player.
-    pub score: Score,
-}
-
-impl SearchResult {
-    pub fn new(bestmove: Move) -> Self {
-        Self {
-            bestmove: Some(bestmove),
-            ..Default::default()
-        }
-    }
-}
-
-impl Default for SearchResult {
-    /// A default search result has no best move and a Very Bad score.
-    fn default() -> Self {
-        Self {
-            bestmove: None,
-            score: -INF, // Initially, our score is Very Bad
-        }
-    }
-}
-
-impl PartialEq for SearchResult {
-    /// Search results are compared by their `score` fields.
-    fn eq(&self, other: &Self) -> bool {
-        self.score.eq(&other.score)
-    }
-}
-
-impl PartialOrd for SearchResult {
-    /// Search results are compared by their `score` fields.
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.score.partial_cmp(&other.score)
-    }
-}
-
-impl Neg for SearchResult {
-    type Output = Self;
-    /// Negating a search result just negates its score.
-    fn neg(mut self) -> Self::Output {
-        self.score = self.score.neg();
-        self
-    }
-}
 
 pub struct SearchData {
     pub nodes_searched: usize,
@@ -135,7 +84,6 @@ impl<'a> Searcher<'a> {
             let new_pos = self.game.clone().with_move_made(mv);
 
             if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
-                // eprintln!("Repetition in Search after {mv} on {}", new_pos.fen());
                 continue;
             }
 
@@ -259,7 +207,6 @@ impl<'a> Searcher<'a> {
         }
 
         Ok(best)
-        // Ok(alpha)
     }
 
     fn quiescence(
@@ -291,16 +238,10 @@ impl<'a> Searcher<'a> {
 
         // Only search captures
         for i in 0..captures.len() {
-            // for mv in moves.iter().filter(|mv| mv.is_capture()) {
             let mv = captures[i];
 
             // Make the score move on the position, getting a new position in return
             let new_pos = game.clone().with_move_made(mv);
-            if new_pos.is_repetition() {
-                // eprintln!("Repetition in QSearch after {mv} on {}", new_pos.fen());
-                continue;
-            }
-            // self.result.nodes_searched += 1;
 
             // Recursively search our opponent's responses
             let score = -self.quiescence(&new_pos, ply + 1, -beta, -alpha)?;
@@ -314,6 +255,7 @@ impl<'a> Searcher<'a> {
                     self.starttime.elapsed(),
                 );
             }
+
             if score > best {
                 best = score;
 
@@ -340,7 +282,7 @@ impl<'a> Searcher<'a> {
     }
 }
 
-// TODO: Refactor this into its own function and verify that its values are good: https://discord.com/channels/719576389245993010/719576389690589244/1268914745298391071
+// TODO: verify the values are good: https://discord.com/channels/719576389245993010/719576389690589244/1268914745298391071
 fn mvv_lva(kind: PieceKind, captured: PieceKind) -> i32 {
     10 * value_of(captured) - value_of(kind)
 }
@@ -361,15 +303,16 @@ fn score_move(game: &Game, mv: &Move) -> i32 {
     }
 
     // Promoting is also a good idea
-    // if let Some(promotion) = mv.promotion() {
-    //     score += value_of(promotion);
-    // }
+    if let Some(promotion) = mv.promotion() {
+        score += value_of(promotion);
+    }
 
-    // Going somewhere attacked by an opponent is not a good idea
-    // let attacks = game.attacks_by_color(game.current_player().opponent());
-    // if attacks.get(mv.to()) {
-    //     score -= value_of(kind);
-    // }
+    // Going somewhere attacked by an opponent is not a good idea, but may be necessary,
+    // so negate it, but not by much
+    let attacks = game.attacks_by_color(game.current_player().opponent());
+    if attacks.get(mv.to()) {
+        score -= value_of(kind) / 10;
+    }
 
     -score // We're sorting, so a lower number is better
 }

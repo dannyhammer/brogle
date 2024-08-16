@@ -294,6 +294,32 @@ impl Tile {
         }
     }
 
+    /// Iterating over [`Tile`]s increases their internal counter by 1.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Tile;
+    /// assert_eq!(Tile::A1.next(), Some(Tile::B1));
+    /// assert_eq!(Tile::H3.next(), Some(Tile::A4));
+    /// assert_eq!(Tile::H8.next(), None);
+    /// ```
+    pub fn next(self) -> Option<Self> {
+        (self.0 < Self::MAX).then(|| Self::from_bits_unchecked(self.0 + 1))
+    }
+
+    /// Iterating backwards over [`Tile`]s decreases their internal counter by 1.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Tile;
+    /// assert_eq!(Tile::A1.prev(), None);
+    /// assert_eq!(Tile::A4.prev(), Some(Tile::H3));
+    /// assert_eq!(Tile::H8.prev(), Some(Tile::G8));
+    /// ```
+    pub fn prev(self) -> Option<Self> {
+        (self.0 > Self::MIN).then(|| Self::from_bits_unchecked(self.0 - 1))
+    }
+
     /// Fetches the inner index value of the [`Tile`], which represented as a [`u8`].
     ///
     /// # Example
