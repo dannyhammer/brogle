@@ -603,8 +603,7 @@ impl UciEngine for Engine {
                 Duration::MAX
             };
 
-            // time_remaining / 20 // 5% of time remaining
-            time_remaining / 100 // 1% of time remaining
+            time_remaining / 20 // 5% of time remaining
         };
 
         // Clone the arcs for whether we're searching and our found results
