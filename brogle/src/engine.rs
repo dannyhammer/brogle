@@ -4,7 +4,7 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Sender},
-        Arc, LazyLock, RwLock,
+        Arc, LazyLock, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -74,7 +74,7 @@ pub struct Engine {
     game: Game,
 
     /// Transposition table for game states.
-    ttable: Arc<RwLock<TTable>>,
+    ttable: Arc<Mutex<TTable>>,
 
     /// Whether to display additional information in `info` commands.
     ///
@@ -620,6 +620,8 @@ impl UciEngine for Engine {
         let mut bestmove = game.legal_moves().first().cloned();
 
         POOL.execute(move || {
+            let mut ttable = ttable.lock().unwrap();
+
             // Iterative Deepening
             for depth in 1..=max_depth {
                 // If we've been told to stop, exit the loop
@@ -632,7 +634,7 @@ impl UciEngine for Engine {
                     &game,
                     starttime,
                     timeout,
-                    Arc::clone(&ttable),
+                    &mut ttable,
                     Arc::clone(&is_searching),
                 );
 

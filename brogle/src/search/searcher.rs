@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -30,7 +30,7 @@ impl Default for SearchData {
 pub struct Searcher<'a> {
     game: &'a Game,
     timeout: Duration,
-    ttable: Arc<RwLock<TTable>>,
+    ttable: &'a mut TTable,
     stopper: Arc<AtomicBool>,
     starttime: Instant,
 
@@ -49,7 +49,7 @@ impl<'a> Searcher<'a> {
         game: &'a Game,
         starttime: Instant,
         timeout: Duration,
-        ttable: Arc<RwLock<TTable>>,
+        ttable: &'a mut TTable,
         stopper: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -309,13 +309,11 @@ impl<'a> Searcher<'a> {
         flag: NodeType,
     ) {
         let entry = TTableEntry::new(key, bestmove, score, depth, flag);
-        let mut tt = self.ttable.write().unwrap();
-        tt.store(entry);
+        self.ttable.store(entry);
     }
 
     fn get_tt_bestmove(&self, key: ZobristKey) -> Option<Move> {
-        let tt = self.ttable.read().unwrap();
-        tt.get(&key).map(|entry| entry.bestmove)
+        self.ttable.get(&key).map(|entry| entry.bestmove)
     }
 }
 
