@@ -413,9 +413,11 @@ impl Position {
         &self.key
     }
 
-    /// Returns `true` if the half-move counter is 50 or greater.
+    /// Returns `true` if the half-move counter is 100 or greater.
+    /// 
+    /// Since "half-move" increases with ply, the 50-move rule takes effect at 100 ply.
     pub const fn can_draw_by_fifty(&self) -> bool {
-        self.halfmove() >= 50
+        self.halfmove() >= 100
     }
 
     /// Toggles the current player from White to Black (or vice versa).
