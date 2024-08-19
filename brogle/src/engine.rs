@@ -4,7 +4,7 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Sender},
-        Arc, LazyLock,
+        Arc, LazyLock, RwLock,
     },
     time::{Duration, Instant},
 };
@@ -14,11 +14,11 @@ use brogle_core::{print_perft, Bitboard, Color, Game, Move, Position, Tile, FEN_
 use log::{error, warn};
 use threadpool::ThreadPool;
 
-use crate::protocols::UciInfo;
-
 use super::{
-    protocols::{UciCommand, UciEngine, UciOption, UciResponse, UciScore, UciSearchOptions},
-    search::Searcher,
+    protocols::{
+        UciCommand, UciEngine, UciInfo, UciOption, UciResponse, UciScore, UciSearchOptions,
+    },
+    search::{Searcher, TTable},
     Evaluator, MATE, MAX_DEPTH, MAX_MATE,
 };
 
@@ -73,9 +73,9 @@ pub struct Engine {
     /// etc.
     game: Game,
 
-    // /// Transposition table for game states.
-    // ttable: TranspositionTable,
-    //
+    /// Transposition table for game states.
+    ttable: Arc<RwLock<TTable>>,
+
     /// Whether to display additional information in `info` commands.
     ///
     /// Defaults to `false`.`
@@ -613,6 +613,7 @@ impl UciEngine for Engine {
         let sender = self.sender.clone().unwrap();
 
         let game = self.game.clone();
+        let ttable = Arc::clone(&self.ttable);
         let max_depth = options.depth.unwrap_or(MAX_DEPTH);
 
         // Initialize bestmove to the first move available, if there are any
@@ -627,7 +628,13 @@ impl UciEngine for Engine {
                 }
 
                 // Create a search instance with the appropriate thread data
-                let search = Searcher::new(&game, starttime, timeout, Arc::clone(&is_searching));
+                let search = Searcher::new(
+                    &game,
+                    starttime,
+                    timeout,
+                    Arc::clone(&ttable),
+                    Arc::clone(&is_searching),
+                );
 
                 // If we received an error, that means the search was stopped externally
                 match search.start(depth) {
@@ -733,7 +740,7 @@ impl Default for Engine {
     fn default() -> Self {
         Self {
             game: Game::default(),
-            // ttable: TranspositionTable::default(),
+            ttable: Arc::default(),
             debug: Arc::default(),
             is_searching: Arc::default(),
             sender: None,

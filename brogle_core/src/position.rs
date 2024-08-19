@@ -409,8 +409,8 @@ impl Position {
     }
 
     /// Fetch the Zobrist hash key of this position.
-    pub fn key(&self) -> &ZobristKey {
-        &self.key
+    pub fn key(&self) -> ZobristKey {
+        self.key
     }
 
     /// Returns `true` if the half-move counter is 50 or greater.

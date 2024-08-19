@@ -5,7 +5,9 @@ pub use engine::*;
 
 pub mod search {
     pub mod searcher;
+    pub mod transposition_table;
     pub use searcher::*;
+    pub use transposition_table::*;
 }
 
 pub mod eval {

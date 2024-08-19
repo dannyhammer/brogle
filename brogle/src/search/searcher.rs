@@ -1,12 +1,14 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::{bail, Result};
-use brogle_core::{Game, Move, PieceKind};
+use brogle_core::{Game, Move, PieceKind, ZobristKey};
 
 use crate::{value_of, Evaluator, Score, INF, MATE};
+
+use super::{NodeType, TTable, TTableEntry};
 
 pub struct SearchData {
     pub nodes_searched: usize,
@@ -28,6 +30,7 @@ impl Default for SearchData {
 pub struct Searcher<'a> {
     game: &'a Game,
     timeout: Duration,
+    ttable: Arc<RwLock<TTable>>,
     stopper: Arc<AtomicBool>,
     starttime: Instant,
 
@@ -46,6 +49,7 @@ impl<'a> Searcher<'a> {
         game: &'a Game,
         starttime: Instant,
         timeout: Duration,
+        ttable: Arc<RwLock<TTable>>,
         stopper: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -53,6 +57,7 @@ impl<'a> Searcher<'a> {
             starttime,
             timeout,
             stopper,
+            ttable,
             data: SearchData::default(),
         }
     }
@@ -71,15 +76,18 @@ impl<'a> Searcher<'a> {
 
         self.data.bestmove = moves.first().cloned();
 
-        moves.sort_by_cached_key(|mv| score_move(self.game, mv));
+        let tt_bestmove = self.get_tt_bestmove(self.game.key());
+        moves.sort_by_cached_key(|mv| score_move(self.game, mv, tt_bestmove));
 
         // Start with a default (very bad) result.
         let mut alpha = -INF;
+        let original_alpha = alpha;
         let beta = INF;
         let ply = 0;
 
         for i in 0..moves.len() {
             let mv = moves[i];
+
             // Make the score move on the position, getting a new position in return
             let new_pos = self.game.clone().with_move_made(mv);
 
@@ -122,6 +130,9 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        let bestmove = self.data.bestmove.unwrap(); // safe unwrap because if `moves` was empty, we would have returned earlier. So `bestmove` is guaranteed to be *something*
+        let flag = NodeType::new(self.data.score, original_alpha, beta);
+        self.save_to_ttable(self.game.key(), bestmove, self.data.score, 0, flag);
         Ok(self.data)
     }
 
@@ -153,11 +164,13 @@ impl<'a> Searcher<'a> {
             });
         }
 
-        moves.sort_by_cached_key(|mv| score_move(game, mv));
+        let tt_bestmove = self.get_tt_bestmove(game.key());
+        moves.sort_by_cached_key(|mv| score_move(game, mv, tt_bestmove));
 
         // Start with a default (very bad) result.
         let mut best = -INF;
         let mut bestmove = moves[0]; // Safe because we already checked that moves isn't empty
+        let original_alpha = alpha;
 
         for i in 0..moves.len() {
             let mv = moves[i];
@@ -206,6 +219,8 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        let flag = NodeType::new(best, original_alpha, beta);
+        self.save_to_ttable(game.key(), bestmove, best, depth, flag);
         Ok(best)
     }
 
@@ -230,11 +245,13 @@ impl<'a> Searcher<'a> {
             return Ok(stand_pat);
         }
 
-        captures.sort_by_cached_key(|mv| score_move(game, mv));
+        let tt_bestmove = self.get_tt_bestmove(game.key());
+        captures.sort_by_cached_key(|mv| score_move(game, mv, tt_bestmove));
 
         // let original_alpha = alpha;
         let mut best = stand_pat;
         let mut bestmove = captures[0]; // Safe because we already checked that moves isn't empty
+        let original_alpha = alpha;
 
         // Only search captures
         for i in 0..captures.len() {
@@ -278,7 +295,27 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        let flag = NodeType::new(best, original_alpha, beta);
+        self.save_to_ttable(game.key(), bestmove, best, 0, flag);
         Ok(alpha)
+    }
+
+    fn save_to_ttable(
+        &mut self,
+        key: ZobristKey,
+        bestmove: Move,
+        score: Score,
+        depth: u32,
+        flag: NodeType,
+    ) {
+        let entry = TTableEntry::new(key, bestmove, score, depth, flag);
+        let mut tt = self.ttable.write().unwrap();
+        tt.store(entry);
+    }
+
+    fn get_tt_bestmove(&self, key: ZobristKey) -> Option<Move> {
+        let tt = self.ttable.read().unwrap();
+        tt.get(&key).map(|entry| entry.bestmove)
     }
 }
 
@@ -287,12 +324,10 @@ fn mvv_lva(kind: PieceKind, captured: PieceKind) -> i32 {
     10 * value_of(captured) - value_of(kind)
 }
 
-fn score_move(game: &Game, mv: &Move) -> i32 {
-    // if let Some(ponder) = self.result.ponder.take() {
-    //     if *mv == ponder {
-    //         return i32::MIN;
-    //     }
-    // }
+fn score_move(game: &Game, mv: &Move, tt_bestmove: Option<Move>) -> i32 {
+    if tt_bestmove.is_some_and(|tt_mv| tt_mv == *mv) {
+        return Score::MIN;
+    }
 
     let mut score = 0;
     let kind = game.kind_at(mv.from()).unwrap();

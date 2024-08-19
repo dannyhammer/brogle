@@ -11,7 +11,7 @@ use super::{
 const ZOBRIST_TABLE: ZobristHashTable = ZobristHashTable::new();
 
 /// Represents a key generated from a Zobrist Hash
-#[derive(Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
 pub struct ZobristKey(u64);
 
 impl ZobristKey {
@@ -49,6 +49,11 @@ impl ZobristKey {
         key.hash_side_to_move(color);
 
         key
+    }
+
+    /// Return the inner `u64` of this key.
+    pub fn inner(&self) -> u64 {
+        self.0
     }
 
     /// Adds/removes `hash_key` to this [`ZobristKey`].
