@@ -602,8 +602,8 @@ impl UciEngine for Engine {
 
             let (time, inc) = (time.unwrap_or(Duration::MAX), inc.unwrap_or(Duration::ZERO));
 
-            // 5% of time remaining + time increment
-            time / 20 + inc
+            // 5% of time remaining + 50% time increment
+            time / 20 + inc / 2
         };
 
         // eprintln!("Starting search for {timeout:?}");
