@@ -632,9 +632,9 @@ impl UciEngine for Engine {
                 // Create a search instance with the appropriate thread data
                 let search = Searcher::new(
                     &game,
+                    &mut ttable,
                     starttime,
                     timeout,
-                    &mut ttable,
                     Arc::clone(&is_searching),
                 );
 
@@ -673,10 +673,7 @@ impl UciEngine for Engine {
                     }
 
                     // Search was stopped abruptly; exit iterative deepening loop
-                    Err(_err) => {
-                        // eprintln!("{_err}");
-                        break;
-                    }
+                    Err(_) => break,
                 }
             }
             // If this line of code is reached, it means the search has stopped.

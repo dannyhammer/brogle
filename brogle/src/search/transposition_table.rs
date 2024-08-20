@@ -2,16 +2,28 @@ use brogle_core::{Move, ZobristKey};
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
 pub enum NodeType {
-    /// The score is exact
+    /// The score is exact.
     #[default]
     Pv,
-    /// The score is less than alpha (upper bound)
+
+    /// The score is less than alpha (upper bound).
     All,
-    /// The score is greater than or equal to beta (lower bound)
+
+    /// The score is greater than or equal to beta (lower bound).
     Cut,
 }
 
 impl NodeType {
+    /// Creates a new [`NodeType`] based on the parameters as follows:
+    ///
+    /// ```text
+    /// if score <= alpha:
+    ///     UPPERBOUND
+    /// else if score >= beta:
+    ///     LOWERBOUND
+    /// else:
+    ///     EXACT
+    /// ```
     pub fn new(score: i32, alpha: i32, beta: i32) -> Self {
         if score <= alpha {
             Self::All
@@ -30,25 +42,12 @@ pub struct TTableEntry {
     pub(crate) bestmove: Move,
     pub(crate) score: i32,
     pub(crate) flag: NodeType,
-    pub(crate) age: usize,
-}
-
-impl TTableEntry {
-    pub fn new(key: ZobristKey, bestmove: Move, score: i32, depth: u32, flag: NodeType) -> Self {
-        Self {
-            key,
-            bestmove,
-            score,
-            depth,
-            flag,
-            age: 0,
-        }
-    }
 }
 
 /// Default size of the Transposition Table, in bytes
 const DEFAULT_TTABLE_SIZE: usize = 1_048_576; // 1 mb
 
+/// Transposition Table
 #[derive(Debug)]
 pub struct TTable(pub Vec<Option<TTableEntry>>);
 
@@ -65,6 +64,7 @@ impl TTable {
         Self(vec![None; capacity])
     }
 
+    /// Map `key` to an index into this [`TTable`].
     pub fn index(&self, key: &ZobristKey) -> usize {
         // TODO: Enforce size as a power of two so you can use & instead of %
         key.inner() as usize % self.0.len()
@@ -84,23 +84,23 @@ impl TTable {
 
     /// Get the entry if and only if it matches the provided key
     pub fn get(&self, key: &ZobristKey) -> Option<&TTableEntry> {
-        if let Some(entry) = self.get_entry(key) {
-            if &entry.key == key {
-                return Some(entry);
-            }
+        let entry = self.get_entry(key);
+        if entry.is_some_and(|entry| &entry.key == key) {
+            return entry;
         }
         None
     }
 
+    /// Mutably get the entry if and only if it matches the provided key
     pub fn get_mut(&mut self, key: &ZobristKey) -> Option<&mut TTableEntry> {
-        if let Some(entry) = self.get_entry_mut(key) {
-            if &entry.key == key {
-                return Some(entry);
-            }
+        let entry = self.get_entry_mut(key);
+        if entry.as_ref().is_some_and(|entry| &entry.key == key) {
+            return entry;
         }
         None
     }
 
+    /*
     pub fn update_flag(&mut self, key: &ZobristKey, flag: NodeType) {
         if let Some(entry) = self.get_mut(key) {
             entry.flag = flag;
@@ -112,12 +112,15 @@ impl TTable {
             entry.score = new_score;
         }
     }
+     */
 
     /// Store `entry` in the table at `entry.key`, overriding whatever was there.
     pub fn store(&mut self, entry: TTableEntry) {
-        self.insert(entry);
+        let index = self.index(&entry.key);
+        self.0[index] = Some(entry);
     }
 
+    /*
     /// Store `entry` in the table at `entry.key`, if the existing entry at `entry.key` is either `None` or has a lower `depth` than `entry`.
     pub fn store_if_greater_depth(&mut self, entry: TTableEntry) {
         if self
@@ -133,6 +136,7 @@ impl TTable {
         let index = self.index(&entry.key);
         self.0[index].insert(entry)
     }
+     */
 }
 
 impl Default for TTable {
