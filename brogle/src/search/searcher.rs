@@ -112,21 +112,16 @@ impl<'a> Searcher<'a> {
             if score > self.data.score {
                 self.data.score = score;
 
+                if self.data.score > alpha {
+                    alpha = score;
+                    self.data.bestmove = Some(mv);
+                }
+
                 // Fail soft beta-cutoff.
                 // Could also `return Ok(self.data.score)` here, but we need to save bestmove to TT
                 if self.data.score >= beta {
                     break;
                 }
-
-                if self.data.score > alpha {
-                    alpha = score;
-                    self.data.bestmove = Some(mv);
-                }
-            }
-
-            // Opponent would never choose this branch, so we can prune
-            if alpha >= beta {
-                break;
             }
         }
 
@@ -199,23 +194,17 @@ impl<'a> Searcher<'a> {
             if score > best {
                 best = score;
 
-                // Fail soft beta-cutoff.
-                // Could also `return Ok(best)` here, but we need to save bestmove to TT
-                if score >= beta {
-                    break;
-                }
-
                 if score > alpha {
                     alpha = score;
                     // PV found
                     bestmove = mv;
                 }
-            }
 
-            // Beta cutoff (fail high)
-            if alpha >= beta {
-                // This was a "killer move"
-                break;
+                // Fail soft beta-cutoff.
+                // Could also `return Ok(best)` here, but we need to save bestmove to TT
+                if score >= beta {
+                    break;
+                }
             }
         }
 
@@ -273,31 +262,27 @@ impl<'a> Searcher<'a> {
                 );
             }
 
+            // If we've found a better move than our current best, update our result
             if score > best {
                 best = score;
 
-                // Update alpha.
                 if score > alpha {
                     alpha = score;
                     // PV found
                     bestmove = mv;
                 }
 
-                // Opponent would never choose this branch, so we can prune (fail-high)
-                if alpha >= beta {
+                // Fail soft beta-cutoff.
+                // Could also `return Ok(best)` here, but we need to save bestmove to TT
+                if score >= beta {
                     break;
                 }
-            }
-
-            // Fail soft beta-cutoff;
-            if score >= beta {
-                break;
             }
         }
 
         let flag = NodeType::new(best, original_alpha, beta);
         self.save_to_ttable(game.key(), bestmove, best, 0, flag);
-        Ok(alpha)
+        Ok(best)
     }
 
     fn save_to_ttable(
