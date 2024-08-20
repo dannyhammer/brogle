@@ -86,7 +86,6 @@ impl<'a> Searcher<'a> {
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
             return self.quiescence(game, ply + 1, alpha, beta);
-            // return Ok(Evaluator::new(game).eval());
         }
 
         let mut moves = game.legal_moves();
@@ -109,13 +108,14 @@ impl<'a> Searcher<'a> {
 
             // Make the score move on the position, getting a new position in return
             let new_pos = game.clone().with_move_made(mv);
-            if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
-                // eprintln!("Repetition in Negamax after {mv} on {}", new_pos.fen());
-                continue;
-            }
 
-            // Recursively search our opponent's responses
-            let score = -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?;
+            // If it's a draw, don't recurse, but set the score to 0 and continue as normal
+            let score = if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
+                0
+            } else {
+                // Otherwise, recursively search our opponent's responses
+                -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?
+            };
             self.data.nodes_searched += 1;
 
             // Check if we've run out of time or if we've been told to stop searching
