@@ -7,7 +7,7 @@ use anyhow::{bail, Result};
 use brogle_core::{Game, Move, PieceKind, ZobristKey};
 
 use super::{NodeType, TTable, TTableEntry};
-use crate::{value_of, Evaluator, INF, MATE};
+use crate::{value_of, Evaluator, INF, MATE, MAX_MATE};
 
 pub struct SearchData {
     pub nodes_searched: usize,
@@ -142,7 +142,14 @@ impl<'a> Searcher<'a> {
         }
 
         let flag = NodeType::new(best, original_alpha, beta);
-        self.save_to_ttable(game.key(), bestmove, best, depth, flag);
+        let score = if best >= MAX_MATE {
+            best + ply
+        } else if best <= -MAX_MATE {
+            best - ply
+        } else {
+            best
+        };
+        self.save_to_ttable(game.key(), bestmove, score, depth, flag);
 
         Ok(best) // fail-soft
     }
@@ -155,24 +162,46 @@ impl<'a> Searcher<'a> {
             alpha = stand_pat;
         }
 
-        let mut captures = game.legal_captures();
+        // Check for mate in qsearch if and only if we're in check.
+        /*
+        let mut moves = if game.is_in_check() {
+            let moves = game.legal_moves();
 
-        // Can't check for mates in qsearch, since we're not looking at *all* moves.
-        if captures.is_empty() {
+            // If we're in check and have no legal moves, we can return a mate score
+            if moves.is_empty() {
+                return Ok(-MATE + ply);
+            }
+
+            moves
+        } else {
+            let captures = game.legal_captures();
+
+            // Can't check for mates in normal qsearch, since we're not looking at *all* moves.
+            if captures.is_empty() {
+                return Ok(stand_pat);
+            }
+
+            captures
+        };
+         */
+        let mut moves = game.legal_captures();
+
+        // Can't check for mates in normal qsearch, since we're not looking at *all* moves.
+        if moves.is_empty() {
             return Ok(stand_pat);
         }
 
         let tt_bestmove = self.get_tt_bestmove(game.key());
-        captures.sort_by_cached_key(|mv| score_move(game, mv, tt_bestmove));
+        moves.sort_by_cached_key(|mv| score_move(game, mv, tt_bestmove));
 
         // let original_alpha = alpha;
         let mut best = stand_pat;
-        let mut bestmove = captures[0]; // Safe because we already checked that `captures` isn't empty
+        let mut bestmove = moves[0]; // Safe because we already checked that `moves` isn't empty
         let original_alpha = alpha;
 
-        // Only search captures
-        for i in 0..captures.len() {
-            let mv = captures[i];
+        // Only search moves
+        for i in 0..moves.len() {
+            let mv = moves[i];
 
             // Make the score move on the position, getting a new position in return
             let new_pos = game.clone().with_move_made(mv);
@@ -205,7 +234,14 @@ impl<'a> Searcher<'a> {
         }
 
         let flag = NodeType::new(best, original_alpha, beta);
-        self.save_to_ttable(game.key(), bestmove, best, 0, flag);
+        let score = if best >= MAX_MATE {
+            best + ply
+        } else if best <= -MAX_MATE {
+            best - ply
+        } else {
+            best
+        };
+        self.save_to_ttable(game.key(), bestmove, score, 0, flag);
 
         Ok(best) // fail-soft
     }
