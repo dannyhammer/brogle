@@ -143,11 +143,27 @@ impl<'a> Searcher<'a> {
         depth: u32,
         ply: i32,
         mut alpha: Score,
-        beta: Score,
+        mut beta: Score,
     ) -> Result<Score> {
         // Clear the PV for score node
         // self.pv.push(Vec::with_capacity(depth));
         // self.pv[ply] = Vec::with_capacity(depth);
+
+        // TTable lookup: https://en.wikipedia.org/wiki/Negamax#Negamax_with_alpha_beta_pruning_and_transposition_tables
+        let original_alpha = alpha;
+        if let Some(tt_entry) = self.ttable.get(&game.key()) {
+            if tt_entry.depth >= depth {
+                match tt_entry.flag {
+                    NodeType::Pv => return Ok(tt_entry.score),
+                    NodeType::Cut => alpha = alpha.max(tt_entry.score),
+                    NodeType::All => beta = beta.min(tt_entry.score),
+                }
+
+                if alpha >= beta {
+                    return Ok(tt_entry.score);
+                }
+            }
+        }
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
@@ -167,10 +183,8 @@ impl<'a> Searcher<'a> {
         let tt_bestmove = self.get_tt_bestmove(game.key());
         moves.sort_by_cached_key(|mv| score_move(game, mv, tt_bestmove));
 
-        // Start with a default (very bad) result.
         let mut best = -INF;
         let mut bestmove = moves[0]; // Safe because we already checked that moves isn't empty
-        let original_alpha = alpha;
 
         for i in 0..moves.len() {
             let mv = moves[i];
@@ -229,8 +243,23 @@ impl<'a> Searcher<'a> {
         game: &Game,
         ply: i32,
         mut alpha: Score,
-        beta: Score,
+        mut beta: Score,
     ) -> Result<Score> {
+        let original_alpha = alpha;
+        if let Some(tt_entry) = self.ttable.get(&game.key()) {
+            if tt_entry.depth >= 0 {
+                match tt_entry.flag {
+                    NodeType::Pv => return Ok(tt_entry.score),
+                    NodeType::Cut => alpha = alpha.max(tt_entry.score),
+                    NodeType::All => beta = beta.min(tt_entry.score),
+                }
+
+                if alpha >= beta {
+                    return Ok(tt_entry.score);
+                }
+            }
+        }
+
         let stand_pat = Evaluator::new(game).eval_current_player();
         if stand_pat >= beta {
             return Ok(beta);
@@ -251,7 +280,6 @@ impl<'a> Searcher<'a> {
         // let original_alpha = alpha;
         let mut best = stand_pat;
         let mut bestmove = captures[0]; // Safe because we already checked that moves isn't empty
-        let original_alpha = alpha;
 
         // Only search captures
         for i in 0..captures.len() {
