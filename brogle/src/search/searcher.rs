@@ -4,11 +4,10 @@ use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::{bail, Result};
-use arrayvec::ArrayVec;
 use brogle_core::{Game, Move, PieceKind, ZobristKey};
 
 use super::{NodeType, TTable, TTableEntry};
-use crate::{value_of, Evaluator, INF, MATE, MAX_DEPTH, MAX_MATE};
+use crate::{value_of, Evaluator, INF, MATE, MAX_MATE};
 
 pub struct SearchData {
     /// Total number of nodes evaluated during this search.
@@ -16,26 +15,30 @@ pub struct SearchData {
     /// Note this is *not* the total number of nodes possible, as it does not consider nodes that were pruned through alpha/beta.
     pub nodes_searched: usize,
 
+    /// Best move found during this search.
+    pub bestmove: Option<Move>,
+
     /// Score for making the associated `bestmove`.
     pub score: i32,
 
+    /*
     /// Principle Variation of the search.
     ///
     /// pv[i][j] is the PV at the i'th ply (0 is root), which has j descendants
     ///
     /// For example, if you searched at depth 4, then 'i' would be at most 3.
     /// pv[0] would have depth+q entries, where 'q' is the number of plies searched in qsearch.
-    // pub(crate) pv: Vec<Vec<Move>>,
-    // pub pv: [[Move; MAX_DEPTH as usize]; MAX_DEPTH as usize],
     pub pv: ArrayVec<ArrayVec<Move, MAX_DEPTH>, MAX_DEPTH>,
+     */
 }
 
 impl Default for SearchData {
     fn default() -> Self {
         Self {
             nodes_searched: 0,
+            bestmove: None,
             score: -INF,
-            pv: ArrayVec::new(),
+            // pv: ArrayVec::new(),
         }
     }
 }
@@ -85,11 +88,14 @@ impl<'a> Searcher<'a> {
         // Initialize PV arrays to be empty
         // Note this doesn't allocate enough to add PVs in QSearch,
         // but QSearch doesn't search all moves, so adding PVs there doesn't make sense.
-        for _ in 0..=depth {
-            self.data.pv.push(ArrayVec::new());
-        }
+        // for _ in 0..=depth {
+        //     self.data.pv.push(ArrayVec::new());
+        // }
 
+        let key = self.game.key();
         self.data.score = self.negamax(self.game, depth, 0, -INF, INF)?;
+
+        self.data.bestmove = self.ttable.get(&key).map(|entry| entry.bestmove);
 
         Ok(self.data)
     }
@@ -104,7 +110,7 @@ impl<'a> Searcher<'a> {
         beta: i32,
     ) -> Result<i32> {
         // Clear PV for this node
-        self.data.pv[ply as usize] = ArrayVec::new();
+        // self.data.pv[ply as usize] = ArrayVec::new();
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
@@ -157,10 +163,10 @@ impl<'a> Searcher<'a> {
 
                     // Clear PV for this node
                     // NOTE: The `clone` gets compiled away, and various methods all compile to the same thing: https://godbolt.org/z/45GM5TqGh
-                    self.data.pv[ply as usize].clear();
-                    self.data.pv[ply as usize].push(mv);
-                    let rest = self.data.pv[ply as usize + 1].clone();
-                    self.data.pv[ply as usize].extend(rest);
+                    // self.data.pv[ply as usize].clear();
+                    // self.data.pv[ply as usize].push(mv);
+                    // let rest = self.data.pv[ply as usize + 1].clone();
+                    // self.data.pv[ply as usize].extend(rest);
                 }
 
                 // Fail soft beta-cutoff.

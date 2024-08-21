@@ -645,7 +645,6 @@ impl UciEngine for Engine {
 
         // Initialize bestmove to the first move available, if there are any
         let mut bestmove = game.legal_moves().first().cloned();
-        let mut ponder = None;
 
         POOL.execute(move || {
             let mut ttable = ttable.lock().unwrap();
@@ -672,8 +671,7 @@ impl UciEngine for Engine {
                     Ok(data) => {
                         let elapsed = starttime.elapsed();
 
-                        bestmove = data.pv[0].first().copied();
-                        ponder = data.pv[0].get(1).copied();
+                        bestmove = data.bestmove;
 
                         // Determine whether the score is an evaluation or a "mate in y"
                         // Assistance provided by @Ciekce on Discord
@@ -693,8 +691,8 @@ impl UciEngine for Engine {
                             .nodes(data.nodes_searched)
                             .nps((data.nodes_searched as f32 / elapsed.as_secs_f32()).trunc())
                             .time(elapsed.as_millis())
-                            // .pv(data.bestmove);
-                            .pv(&data.pv[0]);
+                            .pv(data.bestmove);
+                            // .pv(&data.pv[0]);
 
                         let info_resp = Box::new(UciResponse::Info(Box::new(info)));
                         if let Err(err) = sender.send(EngineCommand::UciResponse(info_resp)) {
@@ -710,7 +708,7 @@ impl UciEngine for Engine {
             // So we need to send a bestmove and ensure the search flag is set to false
 
             let bestmove = bestmove.map(|mv| mv.to_string());
-            let ponder = ponder.map(|mv| mv.to_string());
+            let ponder = None;
             let bestmove_resp = Box::new(UciResponse::BestMove { bestmove, ponder });
 
             if let Err(err) = sender.send(EngineCommand::UciResponse(bestmove_resp)) {
