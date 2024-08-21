@@ -20,5 +20,5 @@ fn main() {
         .make_move(moves.split_ascii_whitespace())
         .expect("msg");
 
-    engine.perft(depth, false, true);
+    _ = engine.perft(depth, false, true);
 }

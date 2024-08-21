@@ -14,6 +14,8 @@ use brogle_core::{print_perft, Bitboard, Color, Game, Move, Position, Tile, FEN_
 use log::{error, warn};
 use threadpool::ThreadPool;
 
+use crate::search::DEFAULT_TTABLE_SIZE;
+
 use super::{
     protocols::{
         UciCommand, UciEngine, UciInfo, UciOption, UciResponse, UciScore, UciSearchOptions,
@@ -128,7 +130,7 @@ impl Engine {
 
         // Main event loop: Handle inputs from various sources
         for cmd in receiver {
-            match cmd {
+            let res = match cmd {
                 EngineCommand::Help => self.help(),
                 EngineCommand::Show => self.show(),
                 EngineCommand::History => self.history(),
@@ -137,16 +139,20 @@ impl Engine {
                     pretty,
                     split,
                 } => self.perft(depth, pretty, split),
-                EngineCommand::Fen(fen) => self.fen(fen)?,
+                EngineCommand::Fen(fen) => self.fen(fen),
                 EngineCommand::Eval(game) => self.eval(*game),
                 EngineCommand::Moves(from, debug) => self.moves(from, debug),
                 EngineCommand::Bench => todo!("Implement `bench` command"),
-                EngineCommand::MakeMove(moves) => self.make_move(moves)?,
+                EngineCommand::MakeMove(moves) => self.make_move(moves),
                 EngineCommand::Undo => self.undo(),
                 EngineCommand::Option(name) => self.option(name),
-                EngineCommand::UciCommand(uci_cmd) => self.execute_uci_command(uci_cmd)?,
-                EngineCommand::UciResponse(uci_resp) => self.send_uci_response(*uci_resp)?,
+                EngineCommand::UciCommand(uci_cmd) => self.execute_uci_command(uci_cmd),
+                EngineCommand::UciResponse(uci_resp) => self.send_uci_response(*uci_resp),
                 EngineCommand::Exit => break,
+            };
+
+            if let Err(err) = res {
+                eprintln!("{err}");
             }
         }
 
@@ -358,17 +364,19 @@ impl Engine {
     }
 
     /// Executes the `help` command, displaying a list of available commands this engine has.
-    fn help(&self) {
+    fn help(&self) -> Result<()> {
         println!("available commands: help, perft, show, history, fen, move, moves, eval, uci, bench, undo");
+        Ok(())
     }
 
     /// Executes the `show` command, printing the current state of the board.
-    fn show(&self) {
+    fn show(&self) -> Result<()> {
         println!("{:?}", self.game.position());
+        Ok(())
     }
 
     /// Executes the `history` command, printing all moves made on this current game.
-    fn history(&self) {
+    fn history(&self) -> Result<()> {
         // TODO: Replace with to_pgn function
         println!(
             "{}",
@@ -380,10 +388,11 @@ impl Engine {
                 .collect::<Vec<_>>()
                 .join(" ")
         );
+        Ok(())
     }
 
     /// Executes the `perft` command, performing `perft(depth)` for benchmarking and testing.
-    pub fn perft(&self, depth: usize, pretty: bool, split: bool) {
+    pub fn perft(&self, depth: usize, pretty: bool, split: bool) -> Result<()> {
         // Man, I wish I could just pass `split` and `pretty` in directly
         if split {
             if pretty {
@@ -396,6 +405,7 @@ impl Engine {
         } else {
             print_perft::<false, false>(self.game.position(), depth);
         }
+        Ok(())
     }
 
     /// Executes the `fen` command, setting the position of the board and displaying the current state as a FEN string.
@@ -408,16 +418,17 @@ impl Engine {
     }
 
     /// Executes the `eval` command, calling the engine's internal evaluator on the current game state, printing the result.
-    fn eval(&self, game: Option<Game>) {
+    fn eval(&self, game: Option<Game>) -> Result<()> {
         if let Some(game) = game {
             println!("{}", Evaluator::new(&game).eval(Color::White));
         } else {
             println!("{}", Evaluator::new(&self.game).eval(Color::White));
         }
+        Ok(())
     }
 
     /// Executes the `moves` command, displaying all legal moves available.
-    fn moves(&self, from: Option<Tile>, debug: bool) {
+    fn moves(&self, from: Option<Tile>, debug: bool) -> Result<()> {
         if let Some(from) = from {
             let moves = self
                 .game
@@ -445,6 +456,7 @@ impl Engine {
             moves.sort();
             println!("{}", moves.join(" "));
         }
+        Ok(())
     }
 
     /// Executes the `move` command, applying the provided move(s) to the current position.
@@ -458,13 +470,15 @@ impl Engine {
     }
 
     /// Executes the `undo` command, un-making the previously-made move.
-    fn undo(&mut self) {
+    fn undo(&mut self) -> Result<()> {
         self.game.unmake_move();
+        Ok(())
     }
 
     /// Executes the `option` command, displaying the current value of a provided engine option.
-    fn option(&self, name: String) {
+    fn option(&self, name: String) -> Result<()> {
         println!("{name}=UNSET");
+        Ok(())
     }
 }
 
@@ -545,7 +559,20 @@ impl UciEngine for Engine {
 
     fn setoption(&mut self, name: String, value: Option<String>) -> Result<()> {
         match name.as_str() {
-            "placeholder" => todo!(),
+            "Hash" => {
+                let Some(value) = value else {
+                    bail!("usage: setoption name hash value <value>");
+                };
+
+                let mb = value
+                    .parse::<usize>()
+                    .context(format!("expected integer. got {value:?}"))?;
+
+                *self.ttable.lock().unwrap() = TTable::new(mb * 1_048_576); // multiply by # bytes in MB
+            }
+
+            "Clear Hash" => self.ttable.lock().unwrap().clear(),
+
             _ => {
                 if let Some(value) = value {
                     eprintln!("Unrecognized option {name:?} with value {value:?}")
@@ -610,14 +637,15 @@ impl UciEngine for Engine {
 
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);
-        let sender = self.sender.clone().unwrap();
+        let sender = self.sender.clone().unwrap(); // Safe unwrap because sender is initialized on engine startup
 
         let game = self.game.clone();
         let ttable = Arc::clone(&self.ttable);
-        let max_depth = options.depth.unwrap_or(MAX_DEPTH);
+        let max_depth = options.depth.unwrap_or(MAX_DEPTH as u32);
 
         // Initialize bestmove to the first move available, if there are any
         let mut bestmove = game.legal_moves().first().cloned();
+        let mut ponder = None;
 
         POOL.execute(move || {
             let mut ttable = ttable.lock().unwrap();
@@ -644,7 +672,8 @@ impl UciEngine for Engine {
                     Ok(data) => {
                         let elapsed = starttime.elapsed();
 
-                        bestmove = data.bestmove;
+                        bestmove = data.pv[0].first().copied();
+                        ponder = data.pv[0].get(1).copied();
 
                         // Determine whether the score is an evaluation or a "mate in y"
                         // Assistance provided by @Ciekce on Discord
@@ -664,7 +693,8 @@ impl UciEngine for Engine {
                             .nodes(data.nodes_searched)
                             .nps((data.nodes_searched as f32 / elapsed.as_secs_f32()).trunc())
                             .time(elapsed.as_millis())
-                            .pv(data.bestmove);
+                            // .pv(data.bestmove);
+                            .pv(&data.pv[0]);
 
                         let info_resp = Box::new(UciResponse::Info(Box::new(info)));
                         if let Err(err) = sender.send(EngineCommand::UciResponse(info_resp)) {
@@ -680,7 +710,7 @@ impl UciEngine for Engine {
             // So we need to send a bestmove and ensure the search flag is set to false
 
             let bestmove = bestmove.map(|mv| mv.to_string());
-            let ponder = None;
+            let ponder = ponder.map(|mv| mv.to_string());
             let bestmove_resp = Box::new(UciResponse::BestMove { bestmove, ponder });
 
             if let Err(err) = sender.send(EngineCommand::UciResponse(bestmove_resp)) {
@@ -711,7 +741,7 @@ impl UciEngine for Engine {
     /* Engine to GUI communication */
 
     fn option(&self) -> Result<()> {
-        let options: [UciOption<&str>; 0] = [
+        let options = [
             // All available options will be defined here.
             // UciOption::check("TestOpt Check", false),
             // UciOption::spin("TestOpt Spin", -8, i32::MIN, i32::MAX),
@@ -722,9 +752,9 @@ impl UciEngine for Engine {
             // UciOption::spin("Selectivity", 2, 0, 4),
             // UciOption::combo("Style", "Normal", ["Solid", "Normal", "Risky"]),
             // UciOption::string("NalimovPath", "c:\\"),
-            // UciOption::button("Clear Hash"),
+            UciOption::button("Clear Hash"),
             // UciOption::spin("Threads", 1, 1, 1),
-            // UciOption::spin("Hash", 1, 1, 1),
+            UciOption::spin("Hash", DEFAULT_TTABLE_SIZE as i32 / 1_048_576, 1, 2_048), // I got 2048 from Stockfish: https://github.com/official-stockfish/Stockfish/blob/9fb58328e363d84e3cf720b018e639b139ba95c2/src/engine.cpp#L48
         ];
 
         for opt in options {

@@ -45,11 +45,11 @@ pub struct TTableEntry {
 }
 
 /// Default size of the Transposition Table, in bytes
-const DEFAULT_TTABLE_SIZE: usize = 1_048_576; // 1 mb
+pub(crate) const DEFAULT_TTABLE_SIZE: usize = 1_048_576; // 1 mb
 
 /// Transposition Table
 #[derive(Debug)]
-pub struct TTable(pub Vec<Option<TTableEntry>>);
+pub struct TTable(Vec<Option<TTableEntry>>);
 
 impl TTable {
     /// Create a new [`TTable`] that is `size` bytes.
@@ -62,6 +62,16 @@ impl TTable {
     /// Create a new [`TTable`] that can hold `capacity` entries.
     pub fn from_capacity(capacity: usize) -> Self {
         Self(vec![None; capacity])
+    }
+
+    /// Clears the entries of this [`TTable`].
+    pub fn clear(&mut self) {
+        self.0.iter_mut().for_each(|entry| *entry = None);
+    }
+
+    /// Returns the size of this [`TTable`], in bytes.
+    pub fn size(&self) -> usize {
+        self.0.len() * size_of::<TTableEntry>()
     }
 
     /// Map `key` to an index into this [`TTable`].

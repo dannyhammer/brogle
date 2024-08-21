@@ -4,24 +4,30 @@ use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::{bail, Result};
+use arrayvec::ArrayVec;
 use brogle_core::{Game, Move, PieceKind, ZobristKey};
 
 use super::{NodeType, TTable, TTableEntry};
-use crate::{value_of, Evaluator, INF, MATE, MAX_MATE};
+use crate::{value_of, Evaluator, INF, MATE, MAX_DEPTH, MAX_MATE};
 
 pub struct SearchData {
+    /// Total number of nodes evaluated during this search.
+    ///
+    /// Note this is *not* the total number of nodes possible, as it does not consider nodes that were pruned through alpha/beta.
     pub nodes_searched: usize,
+
+    /// Score for making the associated `bestmove`.
     pub score: i32,
-    pub bestmove: Option<Move>,
-    /*
+
     /// Principle Variation of the search.
     ///
     /// pv[i][j] is the PV at the i'th ply (0 is root), which has j descendants
     ///
     /// For example, if you searched at depth 4, then 'i' would be at most 3.
     /// pv[0] would have depth+q entries, where 'q' is the number of plies searched in qsearch.
-    pub(crate) pv: Vec<Vec<Move>>,
-     */
+    // pub(crate) pv: Vec<Vec<Move>>,
+    // pub pv: [[Move; MAX_DEPTH as usize]; MAX_DEPTH as usize],
+    pub pv: ArrayVec<ArrayVec<Move, MAX_DEPTH>, MAX_DEPTH>,
 }
 
 impl Default for SearchData {
@@ -29,17 +35,26 @@ impl Default for SearchData {
         Self {
             nodes_searched: 0,
             score: -INF,
-            bestmove: None,
+            pv: ArrayVec::new(),
         }
     }
 }
 
 /// A struct to encapsulate the logic of searching through moves for a given a chess position.
 pub struct Searcher<'a> {
+    /// Game to search on.
     game: &'a Game,
+
+    /// Transposition table for lookups.
     ttable: &'a mut TTable,
+
+    /// Start time of the search.
     starttime: Instant,
+
+    /// How long we can search for.
     timeout: Duration,
+
+    /// We can continue searching as long as this is `true`.
     stopper: Arc<AtomicBool>,
 
     // Search data
@@ -67,9 +82,14 @@ impl<'a> Searcher<'a> {
 
     /// Start a search of depth `depth` at the root node.
     pub fn start(mut self, depth: u32) -> Result<SearchData> {
-        let key = self.game.key();
+        // Initialize PV arrays to be empty
+        // Note this doesn't allocate enough to add PVs in QSearch,
+        // but QSearch doesn't search all moves, so adding PVs there doesn't make sense.
+        for _ in 0..=depth {
+            self.data.pv.push(ArrayVec::new());
+        }
+
         self.data.score = self.negamax(self.game, depth, 0, -INF, INF)?;
-        self.data.bestmove = self.ttable.get(&key).map(|entry| entry.bestmove);
 
         Ok(self.data)
     }
@@ -83,6 +103,9 @@ impl<'a> Searcher<'a> {
         mut alpha: i32,
         beta: i32,
     ) -> Result<i32> {
+        // Clear PV for this node
+        self.data.pv[ply as usize] = ArrayVec::new();
+
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
             return self.quiescence(game, ply + 1, alpha, beta);
@@ -131,6 +154,13 @@ impl<'a> Searcher<'a> {
                     alpha = score;
                     // PV found
                     bestmove = mv;
+
+                    // Clear PV for this node
+                    // NOTE: The `clone` gets compiled away, and various methods all compile to the same thing: https://godbolt.org/z/45GM5TqGh
+                    self.data.pv[ply as usize].clear();
+                    self.data.pv[ply as usize].push(mv);
+                    let rest = self.data.pv[ply as usize + 1].clone();
+                    self.data.pv[ply as usize].extend(rest);
                 }
 
                 // Fail soft beta-cutoff.

@@ -5,7 +5,7 @@ pub const INF: i32 = i16::MAX as i32;
 pub const MATE: i32 = INF - 1;
 
 /// Maximum depth that can be searched
-pub const MAX_DEPTH: u32 = 255;
+pub const MAX_DEPTH: usize = 255;
 
 /// Maximum possible score for mate
 pub const MAX_MATE: i32 = MATE - MAX_DEPTH as i32;

@@ -340,17 +340,17 @@ impl Move {
         // Extract the to/from squares
         let from = uci
             .get(0..2)
-            .ok_or(anyhow!("Move str must contain a `from` tile."))?;
+            .ok_or(anyhow!("Move str must contain a `from` tile. Got {uci:?}"))?;
         let to = uci
             .get(2..4)
-            .ok_or(anyhow!("Move str must contain a `to` tile."))?;
+            .ok_or(anyhow!("Move str must contain a `to` tile. Got {uci:?}"))?;
 
         let from = Tile::from_uci(from)?;
         let to = Tile::from_uci(to)?;
 
         // Extract information about the piece being moved
         let piece = position.board().piece_at(from).ok_or(anyhow!(
-            "No piece found at {from} when parsing UCI move string on position {position}"
+            "No piece found at {from} when parsing {uci:?} on position {position}"
         ))?;
         let color = piece.color();
 
