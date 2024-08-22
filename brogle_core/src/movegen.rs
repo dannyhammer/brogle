@@ -315,8 +315,13 @@ impl MoveGenerator {
         checkmask: Bitboard,
         moves: &mut ArrayVec<Move, MAX_NUM_MOVES>,
     ) {
-        // A Bitboard of our King
+        // A Bitboard and Tile of our King
         let king_bb = self.king(color);
+        let king_tile = king_bb.to_tile_unchecked();
+
+        // Enemy sliders; used for checking if EP is legal
+        let enemy_rooks = self.orthogonal_sliders(color.opponent());
+        let enemy_bishops = self.diagonal_sliders(color.opponent());
 
         for from in self.piece_parts(color, PieceKind::Pawn) {
             // The File / Rank / Diagonal containing our King and this Piece
@@ -341,22 +346,16 @@ impl MoveGenerator {
 
             // En passant happens so rarely, so we have an expensive check for its legality
             let ep_bb = if let Some(ep_tile) = self.position().ep_tile() {
-                // Construct a board without the EP target and EP capturer
+                // Compute a blockers bitboard as if EP was performed.
                 let ep_bb = ep_tile.bitboard();
-                let ep_target = ep_bb.advance_by(color.opponent(), 1);
-                let board_after_ep = self
-                    .board()
-                    .without(piece_bb | ep_target)
-                    .with_piece(Piece::new(color, PieceKind::Pawn), ep_tile);
+                let ep_target_bb = ep_bb.advance_by(color.opponent(), 1);
+                let board_after_ep = (self.occupied() ^ ep_target_bb ^ piece_bb) | ep_bb;
 
-                // Get all enemy attacks on the board without these pieces.
-                // This is expensive, but EP is rare, so it's fine to pay this price on occasion.
-                let enemy_attacks =
-                    self.compute_squares_attacked_by(&board_after_ep, color.opponent());
+                // If enemy sliders can attack our King, then EP is not legal to perform
+                let checkers = (rook_attacks(king_tile, board_after_ep) & enemy_rooks)
+                    | (bishop_attacks(king_tile, board_after_ep) & enemy_bishops);
 
-                // If the enemy could now attack our King, en passant is not legal
-                // eprintln!("EP IS SAFE");
-                Bitboard::from_bool(!enemy_attacks.contains(&king_bb)) & ep_bb
+                Bitboard::from_bool(checkers.is_empty()) & ep_bb
             } else {
                 // eprintln!("EP IS NOT SAFE");
                 Bitboard::default()
@@ -544,23 +543,6 @@ impl MoveGenerator {
         for checker in self.checkers & !self.position().board().kind(PieceKind::Pawn) {
             self.discoverable_checks |= ray_containing(king_tile, checker) ^ checker.bitboard();
         }
-    }
-
-    /// Computes a [`Bitboard`] of all of the squares that can be attacked by [`Color`] pieces.
-    fn compute_squares_attacked_by(&self, board: &ChessBoard, color: Color) -> Bitboard {
-        let mut attacks = Bitboard::EMPTY_BOARD;
-
-        // All occupied spaces
-        let blockers = board.occupied();
-
-        // Get the attack tables for all pieces of this color
-        for tile in board.color(color) {
-            // Safe unwrap because we're iterating over all pieces of this color
-            let piece = board.piece_at(tile).unwrap();
-            attacks |= pseudo_legal_movement_for(&piece, tile, blockers);
-        }
-
-        attacks
     }
 
     /// Computes a [`Bitboard`] of all the pieces that attack the provided [`Tile`].
