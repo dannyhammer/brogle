@@ -1,8 +1,9 @@
 use std::fmt;
 
+use brogle_types::PieceKind;
+
 use super::{
     CastlingRights, ChessBoard, Color, Piece, Position, Rank, Tile, XoShiRo, NUM_CASTLING_RIGHTS,
-    NUM_COLORS, NUM_PIECES, NUM_TILES,
 };
 
 /// Stores Zobrist hash keys, for hashing [`Position`]s.
@@ -100,16 +101,16 @@ impl fmt::Display for ZobristKey {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 struct ZobristHashTable {
     /// One unique key for every possible piece and every possible tile.
-    piece_keys: [[u64; NUM_PIECES]; NUM_TILES],
+    piece_keys: [[u64; PieceKind::COUNT]; Tile::COUNT],
 
     /// One unique key for every tile where en passant is possible.
-    ep_keys: [u64; NUM_TILES],
+    ep_keys: [u64; Tile::COUNT],
 
     /// One key for every possible combination of castling rights.
     castling_keys: [u64; NUM_CASTLING_RIGHTS],
 
     /// One key for the side-to-move (only if side-to-move is Black- White's key is 0).
-    color_key: [u64; NUM_COLORS],
+    color_key: [u64; Color::COUNT],
 }
 
 impl ZobristHashTable {
@@ -117,19 +118,19 @@ impl ZobristHashTable {
     ///
     /// This is only done once, at compilation, and is stored in the global `ZOBRIST_TABLE` constant.
     const fn new() -> Self {
-        let mut piece_keys = [[0; NUM_PIECES]; NUM_TILES];
-        let mut color_key = [0; NUM_COLORS];
-        let mut ep_keys = [0; NUM_TILES];
+        let mut piece_keys = [[0; PieceKind::COUNT]; Tile::COUNT];
+        let mut color_key = [0; Color::COUNT];
+        let mut ep_keys = [0; Tile::COUNT];
         let mut castling_keys = [0; NUM_CASTLING_RIGHTS];
 
         let mut prng = XoShiRo::new();
 
         // Initialize keys for pieces and EP
         let mut i = 0;
-        while i < NUM_TILES {
+        while i < Tile::COUNT {
             let mut j = 0;
             // Initialize keys for pieces
-            while j < NUM_PIECES {
+            while j < PieceKind::COUNT {
                 let key;
                 (key, prng) = prng.get_next_const();
                 piece_keys[i][j] = key;

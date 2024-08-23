@@ -4,7 +4,7 @@ use arrayvec::ArrayVec;
 
 use super::{
     Bitboard, ChessBoard, Color, Move, MoveKind, Piece, PieceKind, Position, Rank, Tile,
-    MAX_NUM_MOVES, NUM_COLORS, NUM_PIECE_TYPES,
+    MAX_NUM_MOVES,
 };
 
 include!("blobs/magics.rs"); // TODO: Make these into blobs
@@ -78,7 +78,7 @@ impl Deref for MoveGen {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MoveGenerator {
     pub(crate) position: Position,
-    attacks_by_color: [Bitboard; NUM_COLORS],
+    attacks_by_color: [Bitboard; Color::COUNT],
     attacks_by_tile: [Bitboard; Tile::COUNT],
     pinmasks: (Bitboard, Bitboard),
     checkers: Bitboard,
@@ -90,7 +90,7 @@ impl MoveGenerator {
     pub fn new(position: Position) -> Self {
         let mut movegen = Self {
             position,
-            attacks_by_color: [Bitboard::default(); NUM_COLORS],
+            attacks_by_color: [Bitboard::default(); Color::COUNT],
             pinmasks: (Bitboard::default(), Bitboard::default()),
             checkers: Bitboard::default(),
             discoverable_checks: Bitboard::default(),
@@ -332,7 +332,6 @@ impl MoveGenerator {
             let pinmask = Bitboard::from_bool(!is_pinned) | pinning_ray;
             // println!("PAWN PINMASK ({is_pinned}):\n{pinmask:?}");
 
-            //
             // A pinned pawn's movement depends on its pin:
             //  - If pinned on a file, it can only push
             //  - If pinned on a rank, it cannot do anything
@@ -342,7 +341,6 @@ impl MoveGenerator {
             let piece_bb = from.bitboard();
             // All pseudo-legal attacks for this Pawn
             let attacks = pawn_attacks(from, color);
-            // let attacks = self.attacks_by_tile(from);
 
             // En passant happens so rarely, so we have an expensive check for its legality
             let ep_bb = if let Some(ep_tile) = self.position().ep_tile() {
@@ -466,7 +464,7 @@ impl MoveGenerator {
             // A king can move anywhere that isn't attacked by the enemy
             let enemy_attacks = self.attacks_by_color(color.opponent());
 
-            let castling_availability = |side: [Option<Tile>; NUM_COLORS], dst_tile: Tile| {
+            let castling_availability = |side: [Option<Tile>; Color::COUNT], dst_tile: Tile| {
                 // Check if we can castle at all on this side
                 if let Some(rook_tile) = side[color] {
                     // No squares between the King and his destination may be under attack
@@ -589,7 +587,7 @@ impl MoveGenerator {
             let ray = ray_between_exclusive(tile, attacker_tile);
 
             // A ray is a pin if there is only one piece along it
-            if (ray & occupied).is_only_one() {
+            if (ray & occupied).population() == 1 {
                 pinmask_ortho |= ray;
             }
         }
@@ -600,7 +598,7 @@ impl MoveGenerator {
 
         for attacker_tile in diagonal_attacks & enemy_diagonal_sliders {
             let ray = ray_between_exclusive(tile, attacker_tile);
-            if (ray & occupied).is_only_one() {
+            if (ray & occupied).population() == 1 {
                 pinmask_diag |= ray;
             }
         }
@@ -713,7 +711,7 @@ pub fn pseudo_legal_movement_for(piece: &Piece, tile: Tile, blockers: Bitboard) 
     MOVE_HELPERS[piece.kind().index()](tile, blockers, piece.color())
 }
 
-const MOVE_HELPERS: [fn(Tile, Bitboard, Color) -> Bitboard; NUM_PIECE_TYPES] = [
+const MOVE_HELPERS: [fn(Tile, Bitboard, Color) -> Bitboard; PieceKind::COUNT] = [
     pawn_move_helper,
     knight_move_helper,
     bishop_move_helper,

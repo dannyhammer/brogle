@@ -20,7 +20,6 @@ pub struct SearchData {
 
     /// Score for making the associated `bestmove`.
     pub score: i32,
-
     /*
     /// Principle Variation of the search.
     ///
@@ -199,7 +198,6 @@ impl<'a> Searcher<'a> {
         }
 
         // Check for mate in qsearch if and only if we're in check.
-        /*
         let mut moves = if game.is_in_check() {
             let moves = game.legal_moves();
 
@@ -219,8 +217,6 @@ impl<'a> Searcher<'a> {
 
             captures
         };
-         */
-        let mut moves = game.legal_captures();
 
         // Can't check for mates in normal qsearch, since we're not looking at *all* moves.
         if moves.is_empty() {

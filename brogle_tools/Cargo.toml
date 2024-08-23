@@ -37,3 +37,4 @@ egui-macroquad = "0.15.0"
 macroquad = "0.4.8"
 chess = "3.2.0"
 clap = { version = "4.5.10", features = ["derive"] }
+colored = "2.1.0"

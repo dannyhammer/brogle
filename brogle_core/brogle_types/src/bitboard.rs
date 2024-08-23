@@ -243,7 +243,7 @@ impl Bitboard {
     /// assert_eq!(invalid.to_tile(), None);
     /// ```
     pub const fn to_tile(&self) -> Option<Tile> {
-        if self.is_only_one() {
+        if self.population() == 1 {
             Some(self.to_tile_unchecked())
         } else {
             None
@@ -305,16 +305,6 @@ impl Bitboard {
     /// ```
     pub const fn is_nonempty(&self) -> bool {
         self.0 != 0
-    }
-
-    /// Returns `true` if this [`Bitboard`] has at most `n` bits set.
-    pub const fn is_at_most(&self, n: u8) -> bool {
-        self.population() <= n
-    }
-
-    /// Returns `true` if this [`Bitboard`] has exactly `1` bit set.
-    pub const fn is_only_one(&self) -> bool {
-        self.population() == 1
     }
 
     /// Checks if this [`Bitboard`] contains any of the bits within `other`.

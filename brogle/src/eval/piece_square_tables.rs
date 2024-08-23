@@ -1,6 +1,6 @@
 use std::fmt;
 
-use brogle_core::{Color, File, Piece, PieceKind, Rank, Tile, NUM_TILES};
+use brogle_core::{Color, File, Piece, PieceKind, Rank, Tile};
 
 #[rustfmt::skip]
 const PAWNS: Psq = Psq([
@@ -91,7 +91,7 @@ const KING_EG: Psq = Psq([
 /// When defining a PSQ, the table as-written in code will apply for White.
 /// That is, the lowest 8 indices correspond to the first rank, and so on.
 #[derive(PartialEq, Eq, Debug)]
-struct Psq([i32; NUM_TILES]);
+struct Psq([i32; Tile::COUNT]);
 
 impl Psq {
     /// Get the value of this PSQ at the provided tile.

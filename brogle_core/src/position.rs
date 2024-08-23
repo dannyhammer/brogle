@@ -8,14 +8,13 @@ use anyhow::{anyhow, bail, Result};
 
 use super::{
     Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind, Rank, Tile, ZobristKey,
-    FEN_STARTPOS, NUM_CASTLING_RIGHTS, NUM_COLORS, NUM_PIECE_TYPES,
+    FEN_STARTPOS, NUM_CASTLING_RIGHTS,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Game {
-    pub(crate) movegen: MoveGenerator,
-    prev_positions: Vec<Position>,
-    history: Vec<Move>,
+    movegen: MoveGenerator,
+    history: Vec<ZobristKey>,
 }
 
 impl Game {
@@ -23,7 +22,6 @@ impl Game {
     pub fn new() -> Self {
         Self {
             movegen: MoveGenerator::new_legal(Position::new()),
-            prev_positions: Vec::with_capacity(128),
             history: Vec::with_capacity(128),
         }
     }
@@ -32,7 +30,6 @@ impl Game {
     pub fn from_fen(fen: &str) -> Result<Self> {
         Ok(Self {
             movegen: MoveGenerator::new_legal(Position::from_fen(fen)?),
-            prev_positions: Vec::with_capacity(128),
             history: Vec::with_capacity(128),
         })
     }
@@ -62,23 +59,13 @@ impl Game {
     /// assert_eq!(game.is_repetition(), true);
     /// ```
     pub fn is_repetition(&self) -> bool {
-        for prev_pos in self.prev_positions.iter().rev().skip(1).step_by(2) {
-            if prev_pos.key() == self.position().key() {
+        for prev in self.history.iter().rev().skip(1).step_by(2) {
+            if *prev == self.position().key() {
                 return true;
             }
         }
 
         false
-    }
-
-    /// Fetches this game's [`MoveGenerator`].
-    pub fn movegen(&self) -> &MoveGenerator {
-        &self.movegen
-    }
-
-    /// Mutably fetches this game's [`MoveGenerator`].
-    pub fn movegen_mut(&mut self) -> &mut MoveGenerator {
-        &mut self.movegen
     }
 
     /// Applies the move, if it is legal to make. If it is not legal, returns an `Err` explaining why.
@@ -90,8 +77,7 @@ impl Game {
 
     /// Applies the provided [`Move`]. No enforcement of legality.
     pub fn make_move(&mut self, mv: Move) {
-        self.prev_positions.push(self.position().clone());
-        self.history.push(mv);
+        self.history.push(self.position().key());
         let new_pos = self.position().clone().with_move_made(mv);
         self.movegen = MoveGenerator::new_legal(new_pos);
     }
@@ -102,30 +88,12 @@ impl Game {
             self.make_move(mv);
         }
     }
-
-    /// Returns a list of all [`Move`]s made during this game.
-    pub fn history(&self) -> &[Move] {
-        &self.history
-    }
-
-    /// Undo the previously-made move, if there was one, and restore the position.
-    pub fn unmake_move(&mut self) {
-        let Some(prev_pos) = self.prev_positions.pop() else {
-            return;
-        };
-
-        let Some(_mv) = self.history.pop() else {
-            return;
-        };
-
-        self.movegen = MoveGenerator::new_legal(prev_pos);
-    }
 }
 
 impl Deref for Game {
     type Target = MoveGenerator;
     fn deref(&self) -> &Self::Target {
-        self.movegen()
+        &self.movegen
     }
 }
 
@@ -134,21 +102,21 @@ impl Deref for Game {
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct CastlingRights {
     /// If a right is `Some(tile)`, then `tile` is the *rook*'s location
-    pub(crate) kingside: [Option<Tile>; NUM_COLORS],
-    pub(crate) queenside: [Option<Tile>; NUM_COLORS],
+    pub(crate) kingside: [Option<Tile>; Color::COUNT],
+    pub(crate) queenside: [Option<Tile>; Color::COUNT],
 }
 
 impl CastlingRights {
     pub const fn new() -> Self {
         Self {
-            kingside: [None; NUM_COLORS],
-            queenside: [None; NUM_COLORS],
+            kingside: [None; Color::COUNT],
+            queenside: [None; Color::COUNT],
         }
     }
 
     pub fn from_uci(uci: &str) -> Result<Self> {
-        let mut kingside = [None; NUM_COLORS];
-        let mut queenside = [None; NUM_COLORS];
+        let mut kingside = [None; Color::COUNT];
+        let mut queenside = [None; Color::COUNT];
 
         if uci.contains(['K', 'k', 'Q', 'q']) {
             kingside[Color::White] = uci.contains('K').then_some(Tile::H1);
@@ -414,7 +382,7 @@ impl Position {
     }
 
     /// Returns `true` if the half-move counter is 100 or greater.
-    /// 
+    ///
     /// Since "half-move" increases with ply, the 50-move rule takes effect at 100 ply.
     pub const fn can_draw_by_fifty(&self) -> bool {
         self.halfmove() >= 100
@@ -728,10 +696,10 @@ impl fmt::Debug for Position {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ChessBoard {
     /// All tiles occupied by a specific color
-    colors: [Bitboard; NUM_COLORS],
+    colors: [Bitboard; Color::COUNT],
 
     /// All tiles occupied by a specific piece kind
-    pieces: [Bitboard; NUM_PIECE_TYPES],
+    pieces: [Bitboard; PieceKind::COUNT],
 }
 
 impl ChessBoard {
@@ -745,8 +713,8 @@ impl ChessBoard {
     /// ```
     pub const fn new() -> Self {
         Self {
-            colors: [Bitboard::EMPTY_BOARD; NUM_COLORS],
-            pieces: [Bitboard::EMPTY_BOARD; NUM_PIECE_TYPES],
+            colors: [Bitboard::EMPTY_BOARD; Color::COUNT],
+            pieces: [Bitboard::EMPTY_BOARD; PieceKind::COUNT],
         }
     }
 
@@ -957,7 +925,7 @@ impl ChessBoard {
     /// ```
     pub const fn color_at(&self, tile: Tile) -> Option<Color> {
         let mut i = 0;
-        while i < NUM_COLORS {
+        while i < Color::COUNT {
             if self.colors[i].get(tile) {
                 // If it was found, we have the correct PieceKind, so break
                 return Some(Color::from_bits_unchecked(i as u8));
@@ -979,7 +947,7 @@ impl ChessBoard {
     /// ```
     pub const fn kind_at(&self, tile: Tile) -> Option<PieceKind> {
         let mut i = 0;
-        while i < NUM_PIECE_TYPES {
+        while i < PieceKind::COUNT {
             if self.pieces[i].get(tile) {
                 // If it was found, we have the correct PieceKind, so break
                 return Some(PieceKind::from_bits_unchecked(i as u8));

@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use colored::*;
+
 use brogle_core::{perft, Position};
 
 fn main() {
@@ -16,6 +18,8 @@ fn main() {
 
         let fen = parts.next().unwrap().trim();
 
+        print!("{}", "\n[INIT]".yellow());
+        println!(" Beginning perft on {fen:?}");
         for perft_data in parts {
             let depth = perft_data
                 .get(1..2)
@@ -27,20 +31,27 @@ fn main() {
 
             let position = Position::from_fen(fen).unwrap();
 
+            let start = Instant::now();
             let nodes = perft(&position, depth);
+            let elapsed = start.elapsed();
             total_nodes += nodes;
 
             assert_eq!(
                 nodes, expected,
                 "\n{i} Perft({depth}, \"{fen}\") failed\nExpected: {expected}\nGot     : {nodes}",
             );
+            print!("{}", "[PASS]".green());
+            let nps = nodes as f32 / elapsed.as_secs_f32();
+            let m_nps = nps / 1_000_000.0;
+            println!(" Depth {depth}: {nodes} nodes / {elapsed:?} = {m_nps} mNPS",);
         }
 
         let elapsed = now.elapsed();
+        let percentage = ((1.0 + i as f32) / len as f32) * 100.0;
         let nps = total_nodes as f32 / elapsed.as_secs_f32();
         let m_nps = nps / 1_000_000.0;
-        let percentage = ((1.0 + i as f32) / len as f32) * 100.0;
-        println!("{percentage:>5.1}% complete - NPS: {nps:.0}, mNPS {m_nps:.1}",);
+        print!("{}", "[INFO]".cyan());
+        println!(" {percentage:>3.1}% completed, avg NPS: {nps:.0}, avg mNPS {m_nps:.1}",);
     }
     let elapsed = now.elapsed();
 

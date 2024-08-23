@@ -1,12 +1,263 @@
 use std::{
     fmt,
-    ops::{Index, IndexMut},
+    ops::{Index, IndexMut, Neg},
     str::FromStr,
 };
 
 use anyhow::{bail, Result};
 
-use super::{Color, NUM_PIECE_TYPES};
+/// Represents the color of a player, piece, tile, etc. within a chess board.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum Color {
+    #[default]
+    White,
+    Black,
+}
+
+impl Color {
+    /// Number of color variants.
+    pub const COUNT: usize = 2;
+
+    /// An array of both colors, starting with White.
+    pub const fn all() -> [Self; Self::COUNT] {
+        [Self::White, Self::Black]
+    }
+
+    /// An iterator over both colors, starting with White.
+    pub fn iter() -> impl Iterator<Item = Self> {
+        Self::all().into_iter()
+    }
+
+    /// Creates a new [`Color`] from a set of bits.
+    ///
+    /// `bits` must be `[0,1]`.
+    ///
+    /// # Panics
+    /// If `bits` is greater than `1`.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// let white = Color::from_bits(0);
+    /// assert!(white.is_ok());
+    /// assert_eq!(white.unwrap(), Color::White);
+    ///
+    /// let err = Color::from_bits(42);
+    /// assert!(err.is_err());
+    /// ```
+    pub fn from_bits(bits: u8) -> Result<Self> {
+        match bits {
+            0 => Ok(Self::White),
+            1 => Ok(Self::Black),
+            _ => bail!("Invalid bits for Color: Bits must be between [0,1]. Got {bits}."),
+        }
+    }
+
+    /// Creates a new [`Color`] from a set of bits, ignoring safety checks.
+    ///
+    /// `bits` must be `[0,1]`.
+    ///
+    /// # Panics
+    /// If `bits` is greater than `1` and debug assertions are enabled.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// let white = Color::from_bits(0);
+    /// assert!(white.is_ok());
+    /// assert_eq!(white.unwrap(), Color::White);
+    ///
+    /// let err = Color::from_bits(42);
+    /// assert!(err.is_err());
+    /// ```
+    pub const fn from_bits_unchecked(bits: u8) -> Self {
+        debug_assert!(
+            bits <= 1,
+            "Invalid bits for Color: Bits must be between [0,1]"
+        );
+
+        // Safety: Since `Color` is a `repr(u8)` enum, we can cast safely here.
+        unsafe { std::mem::transmute(bits) }
+    }
+
+    /// Creates a new [`Color`] from a `bool`, where `false = White`.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// let white = Color::from_bool(false);
+    /// assert_eq!(white, Color::White);
+    ///
+    /// let black = Color::from_bool(true);
+    /// assert_eq!(black, Color::Black);
+    /// ```
+    pub const fn from_bool(color: bool) -> Self {
+        Self::from_bits_unchecked(color as u8)
+    }
+
+    /// Returns `true` if this [`Color`] is White.
+    pub const fn is_white(&self) -> bool {
+        *self as u8 & 1 == 0
+    }
+
+    /// Returns `true` if this [`Color`] is Black.
+    pub const fn is_black(&self) -> bool {
+        *self as u8 & 1 != 0
+    }
+
+    /// Returns a multiplier for negating numbers relative to this color.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// assert_eq!(Color::White.negation_multiplier(), 1);
+    /// assert_eq!(Color::Black.negation_multiplier(), -1);
+    /// ```
+    pub const fn negation_multiplier(&self) -> i8 {
+        // TODO: Which of these 3 is faster?
+
+        // A: Match
+        match self {
+            Self::White => 1,
+            Self::Black => -1,
+        }
+
+        // B: Shift
+        // 1 - ((*self as i8) << 1)
+
+        // C: Bitwise
+        // (*self as i8 ^ 1) - (*self as i8 & 1)
+    }
+
+    /// Returns this [`Color`]'s opposite / inverse / enemy.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// assert_eq!(Color::White.opponent(), Color::Black);
+    /// assert_eq!(Color::Black.opponent(), Color::White);
+    /// ```
+    pub const fn opponent(&self) -> Self {
+        Self::from_bits_unchecked(self.bits() ^ 1)
+    }
+
+    /// Returns this [`Color`] as a `usize`.
+    ///
+    /// Will be `0` for White, `1` for Black.
+    ///
+    /// Useful for indexing into lists.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// assert_eq!(Color::White.index(), 0);
+    /// assert_eq!(Color::Black.index(), 1);
+    /// ```
+    pub const fn index(&self) -> usize {
+        *self as usize
+    }
+
+    /// Returns this [`Color`] as a `u8`.
+    ///
+    /// Will be `0` for White, `1` for Black.
+    ///
+    /// Useful for bit twiddling.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// assert_eq!(Color::White.bits(), 0);
+    /// assert_eq!(Color::Black.bits(), 1);
+    /// ```
+    pub const fn bits(&self) -> u8 {
+        *self as u8
+    }
+
+    /// Creates a [`Color`] from a `char`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// let white = Color::from_uci('w');
+    /// assert!(white.is_ok());
+    /// assert_eq!(white.unwrap(), Color::White);
+    ///
+    /// let err = Color::from_uci('x');
+    /// assert!(err.is_err());
+    /// ```
+    pub fn from_uci(color: char) -> Result<Self> {
+        match color {
+            'w' | 'W' => Ok(Self::White),
+            'b' | 'B' => Ok(Self::Black),
+            _ => bail!("Color must be either 'w' or 'b' (case-insensitive). Found {color}"),
+        }
+    }
+
+    /// Creates a [`Color`] based on the ASCII case of the provided character, with uppercase being White and lowercase being Black.
+    ///
+    /// Note this is intended to follow the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation, but can be used in odd ways, such as trying to find the color of the char `'z'` (Black).
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// assert_eq!(Color::from_case('k'), Color::Black);
+    /// ```
+    pub const fn from_case(c: char) -> Self {
+        Self::from_bool(c.is_ascii_lowercase())
+    }
+
+    /// Converts this [`Color`] to a char, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// assert_eq!(Color::White.to_uci(), 'w');
+    /// ```
+    pub const fn to_uci(&self) -> char {
+        match self {
+            Self::White => 'w',
+            Self::Black => 'b',
+        }
+    }
+
+    /// Converts this [`Color`] to a `str`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// assert_eq!(Color::White.as_str(), "w");
+    /// ```
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::White => "w",
+            Self::Black => "b",
+        }
+    }
+
+    /// Fetches a human-readable name for this [`Color`].
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Color;
+    /// let white = Color::White;
+    /// assert_eq!(white.name(), "white");
+    /// ```
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::White => "white",
+            Self::Black => "black",
+        }
+    }
+}
+
+impl Neg for Color {
+    type Output = Self;
+    /// Negating [`Color::White`] yields [`Color::Black`] and vice versa.
+    fn neg(self) -> Self::Output {
+        self.opponent()
+    }
+}
 
 /// Represents the kind (or "class") that a chess piece can be.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -21,8 +272,11 @@ pub enum PieceKind {
 }
 
 impl PieceKind {
+    /// Number of piece variants.
+    pub const COUNT: usize = 6;
+
     /// An array of all 6 [`PieceKind`]s, starting with Pawn.
-    pub const fn all() -> [Self; NUM_PIECE_TYPES] {
+    pub const fn all() -> [Self; Self::COUNT] {
         use PieceKind::*;
         [Pawn, Knight, Bishop, Rook, Queen, King]
     }
@@ -137,11 +391,6 @@ impl PieceKind {
         }
     }
 
-    /// Alias for [`PieceKind::from_uci`].
-    pub fn from_char(kind: char) -> Result<Self> {
-        Self::from_uci(kind)
-    }
-
     /// Fetches a human-readable name for this [`PieceKind`].
     ///
     /// # Example
@@ -209,55 +458,6 @@ impl PieceKind {
     }
 }
 
-impl FromStr for PieceKind {
-    type Err = anyhow::Error;
-    /// Does the same as [`PieceKind::from_uci`], but only if `kind` is one character in length.
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        if s.is_empty() || s.len() > 1 {
-            bail!(
-                "Invalid str for PieceKind: Must be a str of len 1. Got {}",
-                s.len()
-            );
-        }
-
-        Self::from_char(s.as_bytes()[0] as char)
-    }
-}
-
-impl<T> Index<PieceKind> for [T; 6] {
-    type Output = T;
-    fn index(&self, index: PieceKind) -> &Self::Output {
-        &self[index.index()]
-    }
-}
-
-impl<T> IndexMut<PieceKind> for [T; 6] {
-    fn index_mut(&mut self, index: PieceKind) -> &mut Self::Output {
-        &mut self[index.index()]
-    }
-}
-
-impl AsRef<str> for PieceKind {
-    /// Alias for [`PieceKind::as_str`].
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl fmt::Display for PieceKind {
-    /// By default, piece classes display as lowercase chars.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_uci())
-    }
-}
-
-impl fmt::Debug for PieceKind {
-    /// Debug formatting displays piece kinds as their UCI char and inner index.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"{self}\" ({})", self.index())
-    }
-}
-
 /// Represents a chess piece on the game board.
 ///
 /// Internally, this is represented as a `u8` with the following bit pattern:
@@ -286,6 +486,9 @@ impl Piece {
     pub const BLACK_QUEEN: Self = Self::new(Color::Black, PieceKind::Queen);
     pub const BLACK_KNIGHT: Self = Self::new(Color::Black, PieceKind::Knight);
     pub const BLACK_BISHOP: Self = Self::new(Color::Black, PieceKind::Bishop);
+
+    /// Number of unique piece variants.
+    pub const COUNT: usize = Color::COUNT * PieceKind::COUNT;
 
     /// Mask for the color bits.
     const COLOR_MASK: u8 = 0b0000_1000;
@@ -433,7 +636,7 @@ impl Piece {
     /// assert_eq!(white_knight.kind(), PieceKind::Knight);
     /// ```
     pub fn from_uci(piece: char) -> Result<Self> {
-        let kind = PieceKind::from_char(piece)?;
+        let kind = PieceKind::from_uci(piece)?;
         let color = Color::from_case(piece);
         Ok(Self::new(color, kind))
     }
@@ -457,6 +660,35 @@ impl Piece {
     /// Alias for [`Piece::to_uci`].
     pub const fn char(&self) -> char {
         self.to_uci()
+    }
+
+    /// Converts this [`Piece`] to a `str`, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    ///
+    /// # Example
+    /// ```
+    /// # use brogle_types::Piece;
+    /// assert_eq!(Piece::WHITE_QUEEN.as_str(), "Q");
+    /// assert_eq!(Piece::BLACK_PAWN.as_str(), "p");
+    /// ```
+    pub const fn as_str(&self) -> &'static str {
+        match self.color() {
+            Color::White => match self.kind() {
+                PieceKind::Pawn => "P",
+                PieceKind::Knight => "N",
+                PieceKind::Bishop => "B",
+                PieceKind::Rook => "R",
+                PieceKind::Queen => "Q",
+                PieceKind::King => "K",
+            },
+            Color::Black => match self.kind() {
+                PieceKind::Pawn => "p",
+                PieceKind::Knight => "n",
+                PieceKind::Bishop => "b",
+                PieceKind::Rook => "r",
+                PieceKind::Queen => "q",
+                PieceKind::King => "k",
+            },
+        }
     }
 
     /// Promotes (or, in a less likely scenario, demotes) this [`Piece`] to a new [`PieceKind`], based on the value of `promotion`, consuming `self` in the process and returning the promoted [`Piece`].
@@ -502,7 +734,7 @@ impl Piece {
     }
 }
 
-impl<T> Index<Piece> for [T; NUM_PIECE_TYPES] {
+impl<T> Index<Piece> for [T; PieceKind::COUNT] {
     type Output = T;
     /// [`Piece`] can be used to index into a list of six elements.
     fn index(&self, index: Piece) -> &Self::Output {
@@ -510,36 +742,65 @@ impl<T> Index<Piece> for [T; NUM_PIECE_TYPES] {
     }
 }
 
-impl<T> IndexMut<Piece> for [T; NUM_PIECE_TYPES] {
+impl<T> IndexMut<Piece> for [T; PieceKind::COUNT] {
     /// [`Piece`] can be used to index into a list of six elements.
     fn index_mut(&mut self, index: Piece) -> &mut Self::Output {
         &mut self[index.kind().index()]
     }
 }
 
-impl<T> Index<Piece> for [T; 2 * NUM_PIECE_TYPES] {
-    type Output = T;
-    /// [`Piece`] can be used to index into a list of twelve elements.
-    fn index(&self, index: Piece) -> &Self::Output {
-        &self[index.index()]
-    }
+macro_rules! impl_common_traits {
+    ($type:ty) => {
+        impl<T> Index<$type> for [T; <$type>::COUNT] {
+            type Output = T;
+            /// [`$type`] can be used to index into a list of [`<$type>::COUNT`] elements.
+            fn index(&self, index: $type) -> &Self::Output {
+                &self[index.index()]
+            }
+        }
+
+        impl<T> IndexMut<$type> for [T; <$type>::COUNT] {
+            /// [`$type`] can be used to mutably index into a list of [`<$type>::COUNT`] elements.
+            fn index_mut(&mut self, index: $type) -> &mut Self::Output {
+                &mut self[index.index()]
+            }
+        }
+
+        impl FromStr for $type {
+            type Err = anyhow::Error;
+            /// Does the same as [`Self::from_uci`], but only if `s` is one character in length.
+            fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+                if s.len() != 1 {
+                    bail!("Invalid str for <$type>: Must be a str of len 1. Got {s:?}");
+                }
+
+                Self::from_uci(s.as_bytes()[0] as char)
+            }
+        }
+
+        impl AsRef<str> for $type {
+            /// Alias for [`Self::as_str`].
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl fmt::Display for $type {
+            /// By default, a $type displays as a lowercase char.
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{}", self.to_uci())
+            }
+        }
+
+        impl fmt::Debug for $type {
+            /// Debug formatting displays a $type as its UCI char and index value.
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "\"{self}\" ({})", self.index())
+            }
+        }
+    };
 }
 
-impl<T> IndexMut<Piece> for [T; 2 * NUM_PIECE_TYPES] {
-    /// [`Piece`] can be used to index into a list of twelve elements.
-    fn index_mut(&mut self, index: Piece) -> &mut Self::Output {
-        &mut self[index.index()]
-    }
-}
-
-impl fmt::Display for Piece {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_uci())
-    }
-}
-
-impl fmt::Debug for Piece {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"{self}\" ({})", self.0)
-    }
-}
+impl_common_traits!(Piece);
+impl_common_traits!(PieceKind);
+impl_common_traits!(Color);

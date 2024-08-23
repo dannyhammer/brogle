@@ -737,7 +737,6 @@ impl Rank {
 
     pub const MIN: u8 = 0;
     pub const MAX: u8 = 7;
-
     pub const COUNT: usize = 8;
 
     /// An array of all [`Rank`]s, in ascending order.
@@ -1099,7 +1098,6 @@ impl File {
 
     pub const MIN: u8 = 0;
     pub const MAX: u8 = 7;
-
     pub const COUNT: usize = 8;
 
     /// An array of all [`File`]s, in ascending order.

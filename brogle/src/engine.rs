@@ -14,47 +14,16 @@ use brogle_core::{print_perft, Bitboard, Color, Game, Move, Position, Tile, FEN_
 use log::{error, warn};
 use threadpool::ThreadPool;
 
-use crate::search::DEFAULT_TTABLE_SIZE;
-
 use super::{
     protocols::{
         UciCommand, UciEngine, UciInfo, UciOption, UciResponse, UciScore, UciSearchOptions,
     },
-    search::{Searcher, TTable},
+    search::{Searcher, TTable, DEFAULT_TTABLE_SIZE},
     Evaluator, MATE, MAX_DEPTH, MAX_MATE,
 };
 
 /// Threadpool from which to spawn threads for searches, user input, etc.
 pub static POOL: LazyLock<ThreadPool> = LazyLock::new(|| ThreadPool::new(num_cpus::get()));
-
-/// Represents the possible communication protocols supported by this engine.
-///
-/// Presently, only [UCI](https://backscattering.de/chess/uci/) is supported.
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
-enum EngineProtocol {
-    #[default]
-    Uci,
-}
-
-/*
-pub enum ScoreBound {
-    // The score is exact
-    Exact,
-    /// The score is less than alpha
-    Upper,
-    /// The score is greater than or equal to beta
-    Lower,
-}
-
-pub struct TranspositionTableEntry {
-    key: u64,
-    bestmove: Move,
-    depth: usize,
-    score: i32,
-    score_bound: ScoreBound,
-    age: usize,
-}
- */
 
 /// A chess engine responds to inputs (such as from a GUI or terminal) and
 /// responds with computed outputs. The most common modern protocol is UCI.
@@ -88,9 +57,6 @@ pub struct Engine {
 
     /// Handles sending events to the internal event pump.
     sender: Option<Sender<EngineCommand>>,
-    //
-    // /// List of available configuration options
-    // options: todo!(),
 }
 
 impl Engine {
@@ -133,7 +99,6 @@ impl Engine {
             let res = match cmd {
                 EngineCommand::Help => self.help(),
                 EngineCommand::Show => self.show(),
-                EngineCommand::History => self.history(),
                 EngineCommand::Perft {
                     depth,
                     pretty,
@@ -144,7 +109,6 @@ impl Engine {
                 EngineCommand::Moves(from, debug) => self.moves(from, debug),
                 EngineCommand::Bench => todo!("Implement `bench` command"),
                 EngineCommand::MakeMove(moves) => self.make_move(moves),
-                EngineCommand::Undo => self.undo(),
                 EngineCommand::Option(name) => self.option(name),
                 EngineCommand::UciCommand(uci_cmd) => self.execute_uci_command(uci_cmd),
                 EngineCommand::UciResponse(uci_resp) => self.send_uci_response(*uci_resp),
@@ -234,14 +198,12 @@ impl Engine {
         match cmd {
             "help" => Ok(EngineCommand::Help),
             "show" => Ok(EngineCommand::Show),
-            "history" => Ok(EngineCommand::History),
             "perft" => Self::parse_perft_command(rest),
             "eval" => Self::parse_eval_command(rest),
             "move" => Self::parse_move_command(rest),
             "moves" => Self::parse_moves_command(rest),
             "fen" => Self::parse_fen_command(rest),
             "option" => Self::parse_option_command(rest),
-            "undo" => Ok(EngineCommand::Undo),
             "bench" => Ok(EngineCommand::Bench),
             "quit" | "exit" => Ok(EngineCommand::Exit),
             _ => Self::parse_uci_input(input).map(EngineCommand::UciCommand),
@@ -365,29 +327,15 @@ impl Engine {
 
     /// Executes the `help` command, displaying a list of available commands this engine has.
     fn help(&self) -> Result<()> {
-        println!("available commands: help, perft, show, history, fen, move, moves, eval, uci, bench, undo");
+        println!(
+            "available commands: help, perft, show, option, fen, move, moves, eval, uci, bench"
+        );
         Ok(())
     }
 
     /// Executes the `show` command, printing the current state of the board.
     fn show(&self) -> Result<()> {
         println!("{:?}", self.game.position());
-        Ok(())
-    }
-
-    /// Executes the `history` command, printing all moves made on this current game.
-    fn history(&self) -> Result<()> {
-        // TODO: Replace with to_pgn function
-        println!(
-            "{}",
-            self.game
-                .history()
-                .iter()
-                .enumerate()
-                .map(|(i, m)| format!("{}) {m}", i + 1))
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
         Ok(())
     }
 
@@ -469,12 +417,6 @@ impl Engine {
         Ok(())
     }
 
-    /// Executes the `undo` command, un-making the previously-made move.
-    fn undo(&mut self) -> Result<()> {
-        self.game.unmake_move();
-        Ok(())
-    }
-
     /// Executes the `option` command, displaying the current value of a provided engine option.
     fn option(&self, name: String) -> Result<()> {
         println!("{name}=UNSET");
@@ -515,9 +457,6 @@ pub enum EngineCommand {
     /// Pretty-print the current state of the board.
     Show,
 
-    /// Display the moves made during this game.
-    History,
-
     /// Show the current state of of the board as a FEN string.
     Fen(Option<String>),
 
@@ -532,9 +471,6 @@ pub enum EngineCommand {
 
     /// Benchmark this engine.
     Bench,
-
-    /// Undo the last move made.
-    Undo,
 
     /// View the current value of an option
     Option(String),
@@ -692,7 +628,7 @@ impl UciEngine for Engine {
                             .nps((data.nodes_searched as f32 / elapsed.as_secs_f32()).trunc())
                             .time(elapsed.as_millis())
                             .pv(data.bestmove);
-                            // .pv(&data.pv[0]);
+                        // .pv(&data.pv[0]);
 
                         let info_resp = Box::new(UciResponse::Info(Box::new(info)));
                         if let Err(err) = sender.send(EngineCommand::UciResponse(info_resp)) {

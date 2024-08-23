@@ -2,19 +2,21 @@ use std::path::Path;
 
 use super::{Bitboard, Color, Rank, Tile};
 
+/// FEN string for the starting position of chess.
 pub const FEN_STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+/// A popular FEN string for debugging move generation.
 pub const FEN_KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
 
 /// <https://www.chessprogramming.org/Chess_Position#cite_note-4>
 pub const MAX_NUM_MOVES: usize = 218;
 
-pub const NUM_TILES: usize = 64;
-pub const NUM_PIECE_TYPES: usize = 6;
-pub const NUM_PIECES: usize = 6;
+/// Number of possible combinations of castling rights.
+///
+/// Used for Zobrist hashing.
 pub const NUM_CASTLING_RIGHTS: usize = 16;
 
-pub const NUM_COLORS: usize = 2;
-
+/// Deltas for the movement of the Queen.
 pub const QUEEN_DELTAS: [(i8, i8); 8] = [
     /* Rook */
     (1, 0),
@@ -28,6 +30,7 @@ pub const QUEEN_DELTAS: [(i8, i8); 8] = [
     (-1, 1),
 ];
 
+/// Deltas for the movement of the Rook.
 pub const ROOK_DELTAS: [(i8, i8); 4] = [
     QUEEN_DELTAS[0],
     QUEEN_DELTAS[1],
@@ -35,6 +38,7 @@ pub const ROOK_DELTAS: [(i8, i8); 4] = [
     QUEEN_DELTAS[3],
 ];
 
+/// Deltas for the movement of the Bishop.
 pub const BISHOP_DELTAS: [(i8, i8); 4] = [
     QUEEN_DELTAS[4],
     QUEEN_DELTAS[5],
@@ -42,6 +46,7 @@ pub const BISHOP_DELTAS: [(i8, i8); 4] = [
     QUEEN_DELTAS[7],
 ];
 
+/// Deltas for the movement of the Knight.
 pub const KNIGHT_DELTAS: [(i8, i8); 8] = [
     (1, 2),
     (1, -2),
@@ -53,6 +58,9 @@ pub const KNIGHT_DELTAS: [(i8, i8); 8] = [
     (-2, -1),
 ];
 
+/// Generates `.dat` files for ray tables.
+///
+/// See `ray_containing` and others for more details in `brogle_core`.
 pub fn generate_ray_table_datfiles<P: AsRef<Path>>(outdir: P) -> std::io::Result<()> {
     // 64 * 64 * 8 = 32,768
     // 2D Bitboard array being cast to u8 (8 u8 in a u64)

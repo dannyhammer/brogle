@@ -45,7 +45,7 @@ pub struct TTableEntry {
 }
 
 /// Default size of the Transposition Table, in bytes
-pub(crate) const DEFAULT_TTABLE_SIZE: usize = 1_048_576; // 1 mb
+pub(crate) const DEFAULT_TTABLE_SIZE: usize = 16_777_216; // 16 mb
 
 /// Transposition Table
 #[derive(Debug)]
