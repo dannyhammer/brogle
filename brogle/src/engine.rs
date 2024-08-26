@@ -185,6 +185,7 @@ impl Engine {
     /// Called when `ucinewgame` command is received. Resets all game-specific options.
     fn new_game(&mut self) {
         self.game = Game::default();
+        *self.ttable.lock().unwrap() = TTable::default();
     }
 
     /// Parses an input string a yields an [`EngineCommand`], if possible.
