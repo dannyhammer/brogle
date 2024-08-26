@@ -566,8 +566,8 @@ impl UciEngine for Engine {
             let (time, inc) = (time.unwrap_or(Duration::MAX), inc.unwrap_or(Duration::ZERO));
 
             (
-                time / 25 + inc / 2, // Soft Timeout: 4% of time remaining + 50% time increment
-                time / 20 + inc / 2, // Hard Timeout: 5% of time remaining + 50% time increment
+                time / 20 + inc / 2, // Soft Timeout: 5% of time remaining + 50% time increment
+                time / 5 + inc / 2,  // Hard Timeout: 20% of time remaining + 50% time increment
             )
         };
 

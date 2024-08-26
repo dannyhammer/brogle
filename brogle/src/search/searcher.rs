@@ -106,16 +106,48 @@ impl<'a> Searcher<'a> {
         depth: u32,
         ply: i32,
         mut alpha: i32,
-        beta: i32,
+        mut beta: i32,
     ) -> Result<i32> {
         // Clear PV for this node
         // self.data.pv[ply as usize] = ArrayVec::new();
+
+        // Store original alpha to be compared with at the end of the function
+
+        let original_alpha = alpha;
+        // TTable lookup: https://en.wikipedia.org/wiki/Negamax#Negamax_with_alpha_beta_pruning_and_transposition_tables
+        // If we have a TT entry for this node, we may be able to use it's evaluation
+        if let Some(tt_entry) = self.ttable.get(&game.key()) {
+            // If the entry exists, but for a lower depth, we can't use it
+            if tt_entry.depth >= depth {
+                // Adjust mate score based on current ply
+                let tt_score = if tt_entry.score >= MAX_MATE {
+                    tt_entry.score - ply
+                } else if tt_entry.score <= -MAX_MATE {
+                    tt_entry.score + ply
+                } else {
+                    tt_entry.score
+                };
+
+                // Depending on the node type, we may be able to exit early or tighten our bounds
+                match tt_entry.flag {
+                    NodeType::Pv => return Ok(tt_score),
+                    NodeType::Cut => alpha = alpha.max(tt_score),
+                    NodeType::All => beta = beta.min(tt_score),
+                }
+
+                // Fail-high
+                if alpha >= beta {
+                    return Ok(tt_score);
+                }
+            }
+        }
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
             return self.quiescence(game, ply + 1, alpha, beta);
         }
 
+        // If we've no legal moves available, it's either checkmate or stalemate.
         let mut moves = game.legal_moves();
         if moves.is_empty() {
             // Prefer earlier mates, and drawing is better than being mated.
@@ -129,7 +161,6 @@ impl<'a> Searcher<'a> {
         // Start with a default (very bad) result.
         let mut best = -INF;
         let mut bestmove = moves[0]; // Safe because we already checked that `moves` isn't empty
-        let original_alpha = alpha;
 
         for i in 0..moves.len() {
             let mv = moves[i];
@@ -177,6 +208,7 @@ impl<'a> Searcher<'a> {
         }
 
         let flag = NodeType::new(best, original_alpha, beta);
+        // We need to adjust the score by ply if it's mate.
         let score = if best >= MAX_MATE {
             best + ply
         } else if best <= -MAX_MATE {
@@ -266,6 +298,7 @@ impl<'a> Searcher<'a> {
         }
 
         let flag = NodeType::new(best, original_alpha, beta);
+        // We need to adjust the score by ply if it's mate.
         let score = if best >= MAX_MATE {
             best + ply
         } else if best <= -MAX_MATE {
