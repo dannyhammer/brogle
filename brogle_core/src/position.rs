@@ -1122,7 +1122,7 @@ impl ChessBoard {
                         placements[rank.index()] += &empty_spaces.to_string();
                         empty_spaces = 0;
                     }
-                    placements[rank.index()] += &piece.to_string();
+                    placements[rank.index()] += piece.as_ref();
                 } else {
                     empty_spaces += 1;
                 }
