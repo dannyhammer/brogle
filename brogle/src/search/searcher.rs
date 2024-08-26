@@ -106,7 +106,7 @@ impl<'a> Searcher<'a> {
         depth: u32,
         ply: i32,
         mut alpha: i32,
-        mut beta: i32,
+        beta: i32,
     ) -> Result<i32> {
         // Clear PV for this node
         // self.data.pv[ply as usize] = ArrayVec::new();
@@ -114,6 +114,7 @@ impl<'a> Searcher<'a> {
         // Store original alpha to be compared with at the end of the function
 
         let original_alpha = alpha;
+        /*
         // TTable lookup: https://en.wikipedia.org/wiki/Negamax#Negamax_with_alpha_beta_pruning_and_transposition_tables
         // If we have a TT entry for this node, we may be able to use it's evaluation
         if let Some(tt_entry) = self.ttable.get(&game.key()) {
@@ -141,6 +142,7 @@ impl<'a> Searcher<'a> {
                 }
             }
         }
+         */
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
@@ -171,9 +173,23 @@ impl<'a> Searcher<'a> {
             // If it's a draw, don't recurse, but set the score to 0 and continue as normal
             let score = if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
                 0
-            } else {
-                // Otherwise, recursively search our opponent's responses
+            }
+            // Otherwise, we run a Principal Variation Search: https://en.wikipedia.org/wiki/Principal_variation_search#Pseudocode
+            else if i == 0 {
+                // Normal a/b search on the first node of PVS
                 -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?
+            } else {
+                // Null window search on all other nodes
+                let score = -self.negamax(&new_pos, depth - 1, ply + 1, -alpha - 1, -alpha)?;
+
+                // If the null-window search failed high, do re-search with a normal a/b search
+                if alpha < score && score < beta {
+                    -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?
+                }
+                // Otherwise, return the result of the null-window search
+                else {
+                    score
+                }
             };
             self.data.nodes_searched += 1;
 
