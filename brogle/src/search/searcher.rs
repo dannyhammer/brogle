@@ -131,9 +131,7 @@ impl<'a> Searcher<'a> {
         let mut bestmove = moves[0]; // Safe because we already checked that `moves` isn't empty
         let original_alpha = alpha;
 
-        for i in 0..moves.len() {
-            let mv = moves[i];
-
+        for (i, mv) in moves.into_iter().enumerate() {
             // Make the score move on the position, getting a new position in return
             let new_pos = game.clone().with_move_made(mv);
 
@@ -232,9 +230,7 @@ impl<'a> Searcher<'a> {
         let original_alpha = alpha;
 
         // Only search moves
-        for i in 0..moves.len() {
-            let mv = moves[i];
-
+        for mv in moves {
             // Make the score move on the position, getting a new position in return
             let new_pos = game.clone().with_move_made(mv);
 

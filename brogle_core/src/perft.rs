@@ -151,8 +151,7 @@ pub fn print_perft<const PRETTY: bool, const SPLIT: bool>(position: &Position, d
     if SPLIT {
         let movegen = MoveGenerator::new_legal(position.clone());
         let moves = movegen.legal_moves();
-        for i in 0..moves.len() {
-            let mv = moves[i];
+        for mv in moves {
             let new_pos = position.clone().with_move_made(mv);
 
             let nodes = perft(&new_pos, depth - 1);
@@ -203,8 +202,7 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
         return res;
     }
 
-    for i in 0..moves.len() {
-        let mv = moves[i];
+    for mv in moves {
         let new_pos = position.clone().with_move_made(mv);
         res += perft_full(&new_pos, depth - 1);
     }
@@ -230,8 +228,7 @@ pub fn perft(position: &Position, depth: usize) -> u64 {
     let movegen = MoveGenerator::new_legal(position.clone());
     let moves = movegen.legal_moves();
 
-    for i in 0..moves.len() {
-        let mv = moves[i];
+    for mv in moves {
         let new_pos = position.clone().with_move_made(mv);
 
         nodes += perft(&new_pos, depth - 1);
