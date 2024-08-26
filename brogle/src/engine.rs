@@ -553,8 +553,8 @@ impl UciEngine for Engine {
         self.start_search();
 
         // If `movetime` was supplied, search that long.
-        let timeout = if let Some(movetime) = options.move_time {
-            movetime
+        let (soft_timeout, hard_timeout) = if let Some(movetime) = options.move_time {
+            (movetime, movetime)
         } else {
             // Otherwise, search based on time remaining and increment
             let (time, inc) = if self.game.current_player().is_white() {
@@ -565,11 +565,13 @@ impl UciEngine for Engine {
 
             let (time, inc) = (time.unwrap_or(Duration::MAX), inc.unwrap_or(Duration::ZERO));
 
-            // 5% of time remaining + 50% time increment
-            time / 20 + inc / 2
+            (
+                time / 25 + inc / 2, // Soft Timeout: 4% of time remaining + 50% time increment
+                time / 20 + inc / 2, // Hard Timeout: 5% of time remaining + 50% time increment
+            )
         };
 
-        // eprintln!("Starting search for {timeout:?}");
+        // eprintln!("Starting search with soft timeout: {soft_timeout:?} and hard timeout: {hard_timeout:?}");
 
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);
@@ -587,8 +589,8 @@ impl UciEngine for Engine {
 
             // Iterative Deepening
             for depth in 1..=max_depth {
-                // If we've been told to stop, exit the loop
-                if !is_searching.load(Ordering::Relaxed) {
+                // If we've been told to stop, or if we've hit the soft timeout, exit the loop
+                if !is_searching.load(Ordering::Relaxed) || starttime.elapsed() >= soft_timeout {
                     break;
                 }
 
@@ -597,7 +599,7 @@ impl UciEngine for Engine {
                     &game,
                     &mut ttable,
                     starttime,
-                    timeout,
+                    hard_timeout,
                     Arc::clone(&is_searching),
                 );
 
