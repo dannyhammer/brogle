@@ -4,8 +4,10 @@ pub use config::*;
 pub use engine::*;
 
 pub mod search {
+    pub mod score;
     pub mod searcher;
     pub mod transposition_table;
+    pub use score::*;
     pub use searcher::*;
     pub use transposition_table::*;
 }

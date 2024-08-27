@@ -18,8 +18,8 @@ use super::{
     protocols::{
         UciCommand, UciEngine, UciInfo, UciOption, UciResponse, UciScore, UciSearchOptions,
     },
-    search::{Searcher, TTable, DEFAULT_TTABLE_SIZE},
-    Evaluator, MATE, MAX_DEPTH, MAX_MATE,
+    search::{Score, Searcher, TTable, DEFAULT_TTABLE_SIZE},
+    Evaluator, MAX_DEPTH,
 };
 
 /// Threadpool from which to spawn threads for searches, user input, etc.
@@ -615,12 +615,16 @@ impl UciEngine for Engine {
                         // Determine whether the score is an evaluation or a "mate in y"
                         // Assistance provided by @Ciekce on Discord
                         // https://github.com/Ciekce/Stormphrax/blob/main/src/search.cpp#L1163
-                        let score = if data.score.abs() >= MAX_MATE {
-                            let dist = MATE - data.score; // distance to mate (in plies)
-                            let moves_to_mate = if data.score > 0 { dist + 1 } else { -dist } / 2;
+                        let score = if data.score.is_mate() {
+                            let dist = Score::MATE - data.score; // distance to mate (in plies)
+                            let moves_to_mate = if data.score.0 > 0 {
+                                dist.0 + 1
+                            } else {
+                                -dist.0
+                            } / 2;
                             UciScore::mate(moves_to_mate)
                         } else {
-                            UciScore::cp(data.score)
+                            UciScore::cp(data.score.0)
                         };
 
                         // Construct and send an `info` command

@@ -6,8 +6,8 @@ use std::time::Instant;
 use anyhow::{bail, Result};
 use brogle_core::{Game, Move, PieceKind, ZobristKey};
 
-use super::{NodeType, TTable, TTableEntry};
-use crate::{value_of, Evaluator, INF, MATE, MAX_MATE};
+use super::{NodeType, Score, TTable, TTableEntry};
+use crate::{value_of, Evaluator};
 
 pub struct SearchData {
     /// Total number of nodes evaluated during this search.
@@ -19,7 +19,7 @@ pub struct SearchData {
     pub bestmove: Option<Move>,
 
     /// Score for making the associated `bestmove`.
-    pub score: i32,
+    pub score: Score,
     /*
     /// Principle Variation of the search.
     ///
@@ -36,7 +36,7 @@ impl Default for SearchData {
         Self {
             nodes_searched: 0,
             bestmove: None,
-            score: -INF,
+            score: -Score::INF,
             // pv: ArrayVec::new(),
         }
     }
@@ -92,7 +92,7 @@ impl<'a> Searcher<'a> {
         // }
 
         let key = self.game.key();
-        self.data.score = self.negamax(self.game, depth, 0, -INF, INF)?;
+        self.data.score = self.negamax::<true>(self.game, depth, 0, -Score::INF, Score::INF)?;
 
         self.data.bestmove = self.ttable.get(&key).map(|entry| entry.bestmove);
 
@@ -100,14 +100,14 @@ impl<'a> Searcher<'a> {
     }
 
     /// Uses [Fail soft](https://www.chessprogramming.org/Alpha-Beta#Fail_soft)
-    fn negamax(
+    fn negamax<const IS_PV_NODE: bool>(
         &mut self,
         game: &Game,
         depth: u32,
         ply: i32,
-        mut alpha: i32,
-        beta: i32,
-    ) -> Result<i32> {
+        mut alpha: Score,
+        beta: Score,
+    ) -> Result<Score> {
         // Clear PV for this node
         // self.data.pv[ply as usize] = ArrayVec::new();
 
@@ -121,9 +121,9 @@ impl<'a> Searcher<'a> {
             // If the entry exists, but for a lower depth, we can't use it
             if tt_entry.depth >= depth {
                 // Adjust mate score based on current ply
-                let tt_score = if tt_entry.score >= MAX_MATE {
+                let tt_score = if tt_entry.score >= Score::LOWEST_MATE {
                     tt_entry.score - ply
-                } else if tt_entry.score <= -MAX_MATE {
+                } else if tt_entry.score <= -Score::LOWEST_MATE {
                     tt_entry.score + ply
                 } else {
                     tt_entry.score
@@ -143,6 +143,12 @@ impl<'a> Searcher<'a> {
             }
         }
          */
+        // TODO: Don't do TT cutoffs in PV node!
+        if let Some(tt_entry) = self.ttable.get(&game.key()) {
+            if let Some(score) = tt_entry.try_score(alpha, beta, depth, ply) {
+                return Ok(score);
+            }
+        }
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
@@ -153,7 +159,11 @@ impl<'a> Searcher<'a> {
         let mut moves = game.legal_moves();
         if moves.is_empty() {
             // Prefer earlier mates, and drawing is better than being mated.
-            let score = if game.is_in_check() { -MATE + ply } else { 0 };
+            let score = if game.is_in_check() {
+                -Score::MATE + ply
+            } else {
+                Score::DRAW
+            };
             return Ok(score);
         }
 
@@ -161,7 +171,7 @@ impl<'a> Searcher<'a> {
         moves.sort_by_cached_key(|mv| score_move(game, mv, tt_bestmove));
 
         // Start with a default (very bad) result.
-        let mut best = -INF;
+        let mut best = -Score::INF;
         let mut bestmove = moves[0]; // Safe because we already checked that `moves` isn't empty
 
         for i in 0..moves.len() {
@@ -172,19 +182,20 @@ impl<'a> Searcher<'a> {
 
             // If it's a draw, don't recurse, but set the score to 0 and continue as normal
             let score = if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
-                0
+                Score::DRAW
             }
             // Otherwise, we run a Principal Variation Search: https://en.wikipedia.org/wiki/Principal_variation_search#Pseudocode
             else if i == 0 {
                 // Normal a/b search on the first node of PVS
-                -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?
+                -self.negamax::<IS_PV_NODE>(&new_pos, depth - 1, ply + 1, -beta, -alpha)?
             } else {
                 // Null window search on all other nodes
-                let score = -self.negamax(&new_pos, depth - 1, ply + 1, -alpha - 1, -alpha)?;
+                let score =
+                    -self.negamax::<false>(&new_pos, depth - 1, ply + 1, -alpha - 1, -alpha)?;
 
                 // If the null-window search failed high, do re-search with a normal a/b search
                 if alpha < score && score < beta {
-                    -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?
+                    -self.negamax::<IS_PV_NODE>(&new_pos, depth - 1, ply + 1, -beta, -alpha)?
                 }
                 // Otherwise, return the result of the null-window search
                 else {
@@ -223,21 +234,27 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        let flag = NodeType::new(best, original_alpha, beta);
         // We need to adjust the score by ply if it's mate.
-        let score = if best >= MAX_MATE {
+        let score = if best >= Score::LOWEST_MATE {
             best + ply
-        } else if best <= -MAX_MATE {
+        } else if best <= -Score::LOWEST_MATE {
             best - ply
         } else {
             best
         };
+        let flag = NodeType::new(score, original_alpha, beta);
         self.save_to_ttable(game.key(), bestmove, score, depth, flag);
 
         Ok(best) // fail-soft
     }
 
-    fn quiescence(&mut self, game: &Game, ply: i32, mut alpha: i32, beta: i32) -> Result<i32> {
+    fn quiescence(
+        &mut self,
+        game: &Game,
+        ply: i32,
+        mut alpha: Score,
+        beta: Score,
+    ) -> Result<Score> {
         let stand_pat = Evaluator::new(game).eval_current_player();
         if stand_pat >= beta {
             return Ok(beta);
@@ -251,7 +268,7 @@ impl<'a> Searcher<'a> {
 
             // If we're in check and have no legal moves, we can return a mate score
             if moves.is_empty() {
-                return Ok(-MATE + ply);
+                return Ok(-Score::MATE + ply);
             }
 
             moves
@@ -276,8 +293,8 @@ impl<'a> Searcher<'a> {
 
         // let original_alpha = alpha;
         let mut best = stand_pat;
-        let mut bestmove = moves[0]; // Safe because we already checked that `moves` isn't empty
-        let original_alpha = alpha;
+        // let mut bestmove = moves[0]; // Safe because we already checked that `moves` isn't empty
+        // let original_alpha = alpha;
 
         // Only search moves
         for i in 0..moves.len() {
@@ -302,7 +319,7 @@ impl<'a> Searcher<'a> {
                 if score > alpha {
                     alpha = score;
                     // PV found
-                    bestmove = mv;
+                    // bestmove = mv;
                 }
 
                 // Fail soft beta-cutoff.
@@ -313,16 +330,16 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        let flag = NodeType::new(best, original_alpha, beta);
         // We need to adjust the score by ply if it's mate.
-        let score = if best >= MAX_MATE {
-            best + ply
-        } else if best <= -MAX_MATE {
-            best - ply
-        } else {
-            best
-        };
-        self.save_to_ttable(game.key(), bestmove, score, 0, flag);
+        // let score = if best >= MAX_MATE {
+        //     best + ply
+        // } else if best <= -MAX_MATE {
+        //     best - ply
+        // } else {
+        //     best
+        // };
+        // let flag = NodeType::new(best, original_alpha, beta);
+        // self.save_to_ttable(game.key(), bestmove, score, 0, flag);
 
         Ok(best) // fail-soft
     }
@@ -331,7 +348,7 @@ impl<'a> Searcher<'a> {
         &mut self,
         key: ZobristKey,
         bestmove: Move,
-        score: i32,
+        score: Score,
         depth: u32,
         flag: NodeType,
     ) {
