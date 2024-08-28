@@ -2,10 +2,9 @@ use brogle_core::{Move, ZobristKey};
 
 use crate::search::Score;
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, Default)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
 pub enum NodeType {
     /// The score is exact.
-    #[default]
     Pv,
 
     /// The score is less than alpha (upper bound).
@@ -43,7 +42,7 @@ pub struct TTableEntry {
     pub depth: u32,
     pub bestmove: Move,
     pub score: Score,
-    pub flag: NodeType,
+    pub node_type: NodeType,
 }
 
 impl TTableEntry {
@@ -56,7 +55,7 @@ impl TTableEntry {
         }
 
         let absolute_score = self.score.absolute(ply);
-        match self.flag {
+        match self.node_type {
             NodeType::Pv => Some(absolute_score),
             NodeType::All if absolute_score <= alpha => Some(absolute_score),
             NodeType::Cut if absolute_score >= beta => Some(absolute_score),
@@ -136,43 +135,11 @@ impl TTable {
         None
     }
 
-    /*
-    pub fn update_flag(&mut self, key: &ZobristKey, flag: NodeType) {
-        if let Some(entry) = self.get_mut(key) {
-            entry.flag = flag;
-        }
-    }
-
-    pub fn update_score(&mut self, key: &ZobristKey, new_score: i32) {
-        if let Some(entry) = self.get_mut(key) {
-            entry.score = new_score;
-        }
-    }
-     */
-
     /// Store `entry` in the table at `entry.key`, overriding whatever was there.
     pub fn store(&mut self, entry: TTableEntry) {
         let index = self.index(&entry.key);
         self.0[index] = Some(entry);
     }
-
-    /*
-    /// Store `entry` in the table at `entry.key`, if the existing entry at `entry.key` is either `None` or has a lower `depth` than `entry`.
-    pub fn store_if_greater_depth(&mut self, entry: TTableEntry) {
-        if self
-            .get(&entry.key)
-            .is_some_and(|old_entry| old_entry.depth < entry.depth)
-        {
-            self.store(entry);
-        }
-    }
-
-    /// Inserts `entry` in the table at `entry.key`, overriding whatever was there and returning a mutable reference to it.
-    pub fn insert(&mut self, entry: TTableEntry) -> &mut TTableEntry {
-        let index = self.index(&entry.key);
-        self.0[index].insert(entry)
-    }
-     */
 }
 
 impl Default for TTable {
@@ -203,7 +170,7 @@ mod test {
             bestmove: Move::illegal(),
             score: Score::DRAW,
             depth: 0,
-            flag: NodeType::Pv,
+            node_type: NodeType::Pv,
         };
 
         let kiwipete_entry = TTableEntry {
@@ -211,7 +178,7 @@ mod test {
             bestmove: Move::illegal(),
             score: Score::MATE,
             depth: 0,
-            flag: NodeType::Pv,
+            node_type: NodeType::Pv,
         };
 
         // Create a TTable that can hold two elements.

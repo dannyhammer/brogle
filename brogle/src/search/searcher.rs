@@ -112,43 +112,18 @@ impl<'a> Searcher<'a> {
         // self.data.pv[ply as usize] = ArrayVec::new();
 
         // Store original alpha to be compared with at the end of the function
-
         let original_alpha = alpha;
+
         /*
-        // TTable lookup: https://en.wikipedia.org/wiki/Negamax#Negamax_with_alpha_beta_pruning_and_transposition_tables
-        // If we have a TT entry for this node, we may be able to use it's evaluation
-        if let Some(tt_entry) = self.ttable.get(&game.key()) {
-            // If the entry exists, but for a lower depth, we can't use it
-            if tt_entry.depth >= depth {
-                // Adjust mate score based on current ply
-                let tt_score = if tt_entry.score >= Score::LOWEST_MATE {
-                    tt_entry.score - ply
-                } else if tt_entry.score <= -Score::LOWEST_MATE {
-                    tt_entry.score + ply
-                } else {
-                    tt_entry.score
-                };
-
-                // Depending on the node type, we may be able to exit early or tighten our bounds
-                match tt_entry.flag {
-                    NodeType::Pv => return Ok(tt_score),
-                    NodeType::Cut => alpha = alpha.max(tt_score),
-                    NodeType::All => beta = beta.min(tt_score),
-                }
-
-                // Fail-high
-                if alpha >= beta {
-                    return Ok(tt_score);
-                }
-            }
-        }
-         */
         // TODO: Don't do TT cutoffs in PV node!
         if let Some(tt_entry) = self.ttable.get(&game.key()) {
             if let Some(score) = tt_entry.try_score(alpha, beta, depth, ply) {
+                // Adjust score to be relative to this ply
+                // let score = score.relative(ply);
                 return Ok(score);
             }
         }
+         */
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
@@ -234,16 +209,8 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        // We need to adjust the score by ply if it's mate.
-        let score = if best >= Score::LOWEST_MATE {
-            best + ply
-        } else if best <= -Score::LOWEST_MATE {
-            best - ply
-        } else {
-            best
-        };
-        let flag = NodeType::new(score, original_alpha, beta);
-        self.save_to_ttable(game.key(), bestmove, score, depth, flag);
+        // Store this node in the TTable
+        self.save_to_ttable(game.key(), bestmove, best, original_alpha, beta, depth, ply);
 
         Ok(best) // fail-soft
     }
@@ -293,8 +260,8 @@ impl<'a> Searcher<'a> {
 
         // let original_alpha = alpha;
         let mut best = stand_pat;
-        // let mut bestmove = moves[0]; // Safe because we already checked that `moves` isn't empty
-        // let original_alpha = alpha;
+        let mut bestmove = moves[0]; // Safe because we already checked that `moves` isn't empty
+        let original_alpha = alpha;
 
         // Only search moves
         for i in 0..moves.len() {
@@ -319,7 +286,7 @@ impl<'a> Searcher<'a> {
                 if score > alpha {
                     alpha = score;
                     // PV found
-                    // bestmove = mv;
+                    bestmove = mv;
                 }
 
                 // Fail soft beta-cutoff.
@@ -330,16 +297,8 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        // We need to adjust the score by ply if it's mate.
-        // let score = if best >= MAX_MATE {
-        //     best + ply
-        // } else if best <= -MAX_MATE {
-        //     best - ply
-        // } else {
-        //     best
-        // };
-        // let flag = NodeType::new(best, original_alpha, beta);
-        // self.save_to_ttable(game.key(), bestmove, score, 0, flag);
+        // Store this node in the TTable
+        self.save_to_ttable(game.key(), bestmove, best, original_alpha, beta, 0, ply);
 
         Ok(best) // fail-soft
     }
@@ -349,15 +308,31 @@ impl<'a> Searcher<'a> {
         key: ZobristKey,
         bestmove: Move,
         score: Score,
+        alpha: Score,
+        beta: Score,
         depth: u32,
-        flag: NodeType,
+        ply: i32,
     ) {
+        // Determine what kind of node this is fist, before score adjustment
+        let node_type = NodeType::new(score, alpha, beta);
+
+        // We need to adjust the score by ply if it's mate.
+        let score = if score >= Score::LOWEST_MATE {
+            score + ply
+        } else if score <= -Score::LOWEST_MATE {
+            score - ply
+        } else {
+            score
+        };
+
+        // let score = score.absolute(ply);
+
         self.ttable.store(TTableEntry {
             key,
             bestmove,
             score,
             depth,
-            flag,
+            node_type,
         });
     }
 

@@ -25,10 +25,12 @@ impl Score {
         self.0.abs() >= Self::LOWEST_MATE.0
     }
 
+    /*
     /// Returns the number of plies this score is from mate.
     pub const fn mate_dist(&self) -> i32 {
         Self::MATE.0 - self.0.abs()
     }
+     */
 
     /// Normalize the score to the provided ply.
     ///
