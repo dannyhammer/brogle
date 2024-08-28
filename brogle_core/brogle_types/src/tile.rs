@@ -20,7 +20,19 @@ use super::{Bitboard, Color};
 /// ```
 ///
 /// This bit pattern is also known as [Least Significant File Mapping](https://www.chessprogramming.org/Square_Mapping_Considerations#Deduction_on_Files_and_Ranks),
-/// so `tile = file + rank * 8`.
+/// so `tile = file + rank * 8`. The indices of each square on the board is given as follows:
+/// ```text
+/// 8| 56 57 58 59 59 61 62 62
+/// 7| 48 49 50 51 52 53 54 55
+/// 6| 40 41 42 43 44 45 46 47
+/// 5| 32 33 34 35 36 37 38 39
+/// 4| 24 25 26 27 28 29 30 31
+/// 3| 16 17 18 19 20 21 22 23
+/// 2| 08 09 10 11 12 13 14 15
+/// 1| 00 01 02 03 04 05 06 07
+///  +------------------------
+///    a  b  c  d  e  f  g  h   
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 #[repr(transparent)]
 pub struct Tile(pub(crate) u8);
@@ -107,7 +119,7 @@ impl Tile {
     pub const QUEENSIDE_CASTLE_SQUARES: [Self; 2] = [Self::C1, Self::C8];
 
     const FILE_MASK: u8 = 0b0000_0111;
-    // const RANK_MASK: u8 = 0b0011_1000;
+    const RANK_MASK: u8 = 0b0011_1000;
 
     /// Returns an iterator over all available tiles.
     ///
@@ -204,19 +216,19 @@ impl Tile {
         Self(bits)
     }
 
-    /// Flips this [`Tile`], viewing it from the opponent's perspective.
+    /// Inverts this [`Tile`], as if the board was rotated 180 degrees.
     ///
     /// # Example
     /// ```
     /// # use brogle_types::Tile;
-    /// assert_eq!(Tile::A1.flipped(), Tile::H8);
-    /// assert_eq!(Tile::C4.flipped(), Tile::F5);
+    /// assert_eq!(Tile::A1.inverted(), Tile::H8);
+    /// assert_eq!(Tile::C4.inverted(), Tile::F5);
     /// ```
-    pub const fn flipped(self) -> Self {
+    pub const fn inverted(self) -> Self {
         Self(Self::MAX - self.0)
     }
 
-    /// Flips the [`File`] of this [`Tile`]..
+    /// Flips the [`File`] of this [`Tile`].
     ///
     /// # Example
     /// ```
@@ -225,10 +237,10 @@ impl Tile {
     /// assert_eq!(Tile::C4.flipped_file(), Tile::F4);
     /// ```
     pub const fn flipped_file(self) -> Self {
-        Self::new(self.file().flipped(), self.rank())
+        Self(self.0 ^ Self::FILE_MASK)
     }
 
-    /// Flips the [`Rank`] of this [`Tile`]..
+    /// Flips the [`Rank`] of this [`Tile`].
     ///
     /// # Example
     /// ```
@@ -237,9 +249,10 @@ impl Tile {
     /// assert_eq!(Tile::C4.flipped_rank(), Tile::C5);
     /// ```
     pub const fn flipped_rank(self) -> Self {
-        Self::new(self.file(), self.rank().flipped())
+        Self(self.0 ^ Self::RANK_MASK)
     }
 
+    /*
     /// If `color` is Black, flips this [`Tile`].
     /// If `color` is White, does nothing.
     ///
@@ -249,7 +262,7 @@ impl Tile {
     /// ```
     /// # use brogle_types::{Color, Tile};
     /// assert_eq!(Tile::C4.relative_to(Color::White), Tile::C4);
-    /// assert_eq!(Tile::C4.relative_to(Color::Black), Tile::F5);
+    /// assert_eq!(Tile::C4.relative_to(Color::Black), Tile::F4);
     /// ```
     pub const fn relative_to(self, color: Color) -> Self {
         match color {
@@ -257,6 +270,7 @@ impl Tile {
             Color::Black => self.flipped(),
         }
     }
+     */
 
     /// If `color` is Black, flips the [`Rank`] of this [`Tile`].
     /// If `color` is White, does nothing.
@@ -839,8 +853,11 @@ impl Rank {
         self.0
     }
 
+    /// Obtain the inner value as a `usize`.
+    ///
+    /// Useful for indexing.
     pub const fn index(&self) -> usize {
-        self.index_le()
+        self.inner() as usize
     }
 
     pub const fn char(&self) -> char {
@@ -864,16 +881,6 @@ impl Rank {
     /// `const` analog of `==`.
     pub const fn is(&self, other: &Self) -> bool {
         self.0 == other.0
-    }
-
-    // Index in Little Endian (default)
-    pub const fn index_le(&self) -> usize {
-        self.0 as usize
-    }
-
-    // Index in Big Endian
-    pub const fn index_be(&self) -> usize {
-        self.index_le() ^ 56
     }
 
     /// Alias for [`Bitboard::from_rank`].
@@ -1169,8 +1176,11 @@ impl File {
         self.0
     }
 
+    /// Obtain the inner value as a `usize`.
+    ///
+    /// Useful for indexing.
     pub const fn index(&self) -> usize {
-        self.index_le()
+        self.inner() as usize
     }
 
     pub const fn char(&self) -> char {
@@ -1189,16 +1199,6 @@ impl File {
             7 => "h",
             _ => unreachable!(),
         }
-    }
-
-    // Index in Little Endian (default)
-    pub const fn index_le(&self) -> usize {
-        self.0 as usize
-    }
-
-    // Index in Big Endian
-    pub const fn index_be(&self) -> usize {
-        self.index_le() ^ 7
     }
 
     /// Alias for [`Bitboard::from_file`].
