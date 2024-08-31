@@ -2,6 +2,7 @@ use std::{
     fmt,
     ops::{Add, AddAssign, Index, IndexMut, Mul, Sub, SubAssign},
     str::FromStr,
+    u8,
 };
 
 use anyhow::{bail, Context, Result};
@@ -216,15 +217,18 @@ impl Tile {
         Self(bits)
     }
 
-    /// Inverts this [`Tile`], as if the board was rotated 180 degrees.
+    /// Flips this [`Tile`], as if the board was rotated 180 degrees.
+    ///
+    /// This is equivalent to calling [`Tile::flipped_rank`] and [`Tile::flipped_file`]
+    /// subsequently, but faster.
     ///
     /// # Example
     /// ```
     /// # use brogle_types::Tile;
-    /// assert_eq!(Tile::A1.inverted(), Tile::H8);
-    /// assert_eq!(Tile::C4.inverted(), Tile::F5);
+    /// assert_eq!(Tile::A1.flipped(), Tile::H8);
+    /// assert_eq!(Tile::C4.flipped(), Tile::F5);
     /// ```
-    pub const fn inverted(self) -> Self {
+    pub const fn flipped(self) -> Self {
         Self(Self::MAX - self.0)
     }
 
@@ -252,7 +256,6 @@ impl Tile {
         Self(self.0 ^ Self::RANK_MASK)
     }
 
-    /*
     /// If `color` is Black, flips this [`Tile`].
     /// If `color` is White, does nothing.
     ///
@@ -262,7 +265,7 @@ impl Tile {
     /// ```
     /// # use brogle_types::{Color, Tile};
     /// assert_eq!(Tile::C4.relative_to(Color::White), Tile::C4);
-    /// assert_eq!(Tile::C4.relative_to(Color::Black), Tile::F4);
+    /// assert_eq!(Tile::C4.relative_to(Color::Black), Tile::F5);
     /// ```
     pub const fn relative_to(self, color: Color) -> Self {
         match color {
@@ -270,7 +273,6 @@ impl Tile {
             Color::Black => self.flipped(),
         }
     }
-     */
 
     /// If `color` is Black, flips the [`Rank`] of this [`Tile`].
     /// If `color` is White, does nothing.
