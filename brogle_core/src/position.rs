@@ -97,6 +97,15 @@ impl Deref for Game {
     }
 }
 
+impl From<Position> for Game {
+    fn from(value: Position) -> Self {
+        Self {
+            movegen: MoveGenerator::new_legal(value),
+            history: Vec::with_capacity(128),
+        }
+    }
+}
+
 // TODO: Refactor this to be Option<tile> instead of bool arrays
 /// Represents the castling rights of both players
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]

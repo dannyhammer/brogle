@@ -14,12 +14,12 @@ use brogle_core::{print_perft, Bitboard, Color, Game, Move, Position, Tile, FEN_
 use log::{error, warn};
 use threadpool::ThreadPool;
 
+use crate::BENCHMARK_FENS;
+
 use super::{
-    protocols::{
-        UciCommand, UciEngine, UciInfo, UciOption, UciResponse, UciScore, UciSearchOptions,
-    },
+    protocols::{UciCommand, UciEngine, UciInfo, UciOption, UciResponse, UciSearchOptions},
     search::{Searcher, TTable, DEFAULT_TTABLE_SIZE},
-    Evaluator, MATE, MAX_DEPTH, MAX_MATE,
+    Evaluator, MAX_DEPTH,
 };
 
 /// Threadpool from which to spawn threads for searches, user input, etc.
@@ -107,7 +107,7 @@ impl Engine {
                 EngineCommand::Fen(fen) => self.fen(fen),
                 EngineCommand::Eval(game) => self.eval(*game),
                 EngineCommand::Moves(from, debug) => self.moves(from, debug),
-                EngineCommand::Bench => todo!("Implement `bench` command"),
+                EngineCommand::Bench(depth) => self.bench(depth),
                 EngineCommand::MakeMove(moves) => self.make_move(moves),
                 EngineCommand::Option(name) => self.option(name),
                 EngineCommand::UciCommand(uci_cmd) => self.execute_uci_command(uci_cmd),
@@ -185,6 +185,11 @@ impl Engine {
     /// Called when `ucinewgame` command is received. Resets all game-specific options.
     fn new_game(&mut self) {
         self.game = Game::default();
+        self.clear_hash_tables();
+    }
+
+    fn clear_hash_tables(&mut self) {
+        *self.ttable.lock().unwrap() = TTable::default();
     }
 
     /// Parses an input string a yields an [`EngineCommand`], if possible.
@@ -204,7 +209,7 @@ impl Engine {
             "moves" => Self::parse_moves_command(rest),
             "fen" => Self::parse_fen_command(rest),
             "option" => Self::parse_option_command(rest),
-            "bench" => Ok(EngineCommand::Bench),
+            "bench" => Self::parse_bench_command(rest),
             "quit" | "exit" => Ok(EngineCommand::Exit),
             _ => Self::parse_uci_input(input).map(EngineCommand::UciCommand),
         }
@@ -325,6 +330,23 @@ impl Engine {
         Ok(EngineCommand::Option(name))
     }
 
+    /// Parses the `bench` command
+    fn parse_bench_command(rest: &str) -> Result<EngineCommand> {
+        let mut args = rest.split_ascii_whitespace();
+
+        let mut depth = 5;
+
+        if let Some(d) = args.next() {
+            let Ok(d) = d.parse() else {
+                bail!("usage: bench [depth]");
+            };
+
+            depth = d
+        }
+
+        Ok(EngineCommand::Bench(depth))
+    }
+
     /// Executes the `help` command, displaying a list of available commands this engine has.
     fn help(&self) -> Result<()> {
         println!(
@@ -422,6 +444,44 @@ impl Engine {
         println!("{name}=UNSET");
         Ok(())
     }
+
+    /// Run a benchmark on a suite of positions
+    fn bench(&mut self, depth: u32) -> Result<()> {
+        self.clear_hash_tables();
+
+        let starttime = Instant::now();
+        let mut nodes_searched = 0;
+
+        for fen in BENCHMARK_FENS {
+            self.game = Game::from_fen(fen)?;
+
+            let mut ttable = self.ttable.lock().unwrap();
+            let mut searcher = Searcher::new(
+                &self.game,
+                &mut ttable,
+                self.sender.as_ref().unwrap().clone(),
+                starttime,
+                // These parameters don't matter, as they're only used in timed searches
+                Duration::MAX,
+                Duration::MAX,
+                Arc::new(AtomicBool::new(true)),
+            );
+
+            searcher.start::<false>(depth).unwrap();
+            nodes_searched += searcher.nodes_searched;
+        }
+
+        let elapsed = starttime.elapsed();
+
+        let nps = nodes_searched as f32 / elapsed.as_secs_f32();
+        let info = UciInfo::new().string(format!("{} seconds", elapsed.as_secs()));
+        self.info(info)?;
+        let info = UciInfo::new().nodes(nodes_searched).nps(nps);
+        self.info(info)?;
+
+        self.clear_hash_tables();
+        Ok(())
+    }
 }
 
 impl Read for Engine {
@@ -469,8 +529,8 @@ pub enum EngineCommand {
     /// Evaluates the current position.
     Eval(Box<Option<Game>>),
 
-    /// Benchmark this engine.
-    Bench,
+    /// Benchmark this engine at a supplied depth.
+    Bench(u32),
 
     /// View the current value of an option
     Option(String),
@@ -547,10 +607,12 @@ impl UciEngine for Engine {
             warn!("Engine was told to search while it is already searching. Stopping current search...");
             self.stop_search();
         }
-        let starttime = Instant::now();
 
         // Flip the flag to signal a search has begun.
         self.start_search();
+
+        // Start the timer as soon as possible.
+        let starttime = Instant::now();
 
         // If `movetime` was supplied, search that long.
         let (soft_timeout, hard_timeout) = if let Some(movetime) = options.move_time {
@@ -576,75 +638,39 @@ impl UciEngine for Engine {
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);
         let sender = self.sender.clone().unwrap(); // Safe unwrap because sender is initialized on engine startup
-
-        let game = self.game.clone();
         let ttable = Arc::clone(&self.ttable);
+        let game = self.game.clone();
         let max_depth = options.depth.unwrap_or(MAX_DEPTH as u32);
 
         // Initialize bestmove to the first move available, if there are any
         let mut bestmove = game.legal_moves().first().cloned();
 
         POOL.execute(move || {
+            // Lock the TTable for the duration of the search.
             let mut ttable = ttable.lock().unwrap();
 
-            // Iterative Deepening
-            for depth in 1..=max_depth {
-                // If we've been told to stop, or if we've hit the soft timeout, exit the loop
-                if !is_searching.load(Ordering::Relaxed) || starttime.elapsed() >= soft_timeout {
-                    break;
-                }
+            let mut searcher = Searcher::new(
+                &game,
+                &mut ttable,
+                sender.clone(),
+                starttime,
+                soft_timeout,
+                hard_timeout,
+                is_searching,
+            );
 
-                // Create a search instance with the appropriate thread data
-                let search = Searcher::new(
-                    &game,
-                    &mut ttable,
-                    starttime,
-                    hard_timeout,
-                    Arc::clone(&is_searching),
-                );
-
-                // If we received an error, that means the search was stopped externally
-                match search.start(depth) {
-                    // Send info via UCI
-                    Ok(data) => {
-                        let elapsed = starttime.elapsed();
-
-                        bestmove = data.bestmove;
-
-                        // Determine whether the score is an evaluation or a "mate in y"
-                        // Assistance provided by @Ciekce on Discord
-                        // https://github.com/Ciekce/Stormphrax/blob/main/src/search.cpp#L1163
-                        let score = if data.score.abs() >= MAX_MATE {
-                            let dist = MATE - data.score; // distance to mate (in plies)
-                            let moves_to_mate = if data.score > 0 { dist + 1 } else { -dist } / 2;
-                            UciScore::mate(moves_to_mate)
-                        } else {
-                            UciScore::cp(data.score)
-                        };
-
-                        // Construct and send an `info` command
-                        let info = UciInfo::default()
-                            .depth(depth)
-                            .score(score)
-                            .nodes(data.nodes_searched)
-                            .nps((data.nodes_searched as f32 / elapsed.as_secs_f32()).trunc())
-                            .time(elapsed.as_millis())
-                            .pv(data.bestmove);
-                        // .pv(&data.pv[0]);
-
-                        let info_resp = Box::new(UciResponse::Info(Box::new(info)));
-                        if let Err(err) = sender.send(EngineCommand::UciResponse(info_resp)) {
-                            error!("Failed to send 'info' to engine during search: {err:?}");
-                        }
-                    }
-
-                    // Search was stopped abruptly; exit iterative deepening loop
-                    Err(_) => break,
-                }
+            // If an error was returned, the search was cancelled
+            if let Err(_err) = searcher.start::<true>(max_depth) {
+                // eprintln!("{_err}");
             }
-            // If this line of code is reached, it means the search has stopped.
-            // So we need to send a bestmove and ensure the search flag is set to false
 
+            let key = game.key();
+            if let Some(new_bestmove) = ttable.get(&key).map(|entry| entry.bestmove) {
+                // We only update the bestmove if one was provided
+                bestmove = Some(new_bestmove);
+            }
+
+            // Search concluded; send bestmove
             let bestmove = bestmove.map(|mv| mv.to_string());
             let ponder = None;
             let bestmove_resp = Box::new(UciResponse::BestMove { bestmove, ponder });

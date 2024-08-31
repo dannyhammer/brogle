@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -7,16 +8,38 @@ use anyhow::{bail, Result};
 use brogle_core::{Game, Move, PieceKind, ZobristKey};
 
 use super::{NodeType, TTable, TTableEntry};
-use crate::{value_of, Evaluator, INF, MATE, MAX_MATE};
+use crate::protocols::{UciInfo, UciResponse, UciScore};
+use crate::{value_of, EngineCommand, Evaluator, INF, MATE, MAX_MATE};
 
-pub struct SearchData {
+/// A struct to encapsulate the logic of searching through moves for a given a chess position.
+pub struct Searcher<'a> {
+    /// Game to search on.
+    game: &'a Game,
+
+    /// Transposition table for lookups.
+    ttable: &'a mut TTable,
+
+    /// Used to send search info to the engine.
+    sender: Sender<EngineCommand>,
+
+    /// Start time of the search.
+    starttime: Instant,
+
+    /// If we finish a search iteration after this runs out, exit.
+    soft_timeout: Duration,
+
+    /// Maximum amount of time we can search for.
+    ///
+    /// If we're in the middle of a search and this runs out, we must exit immediately.
+    hard_timeout: Duration,
+
+    /// We can continue searching as long as this is `true`.
+    is_searching: Arc<AtomicBool>,
+
     /// Total number of nodes evaluated during this search.
     ///
     /// Note this is *not* the total number of nodes possible, as it does not consider nodes that were pruned through alpha/beta.
     pub nodes_searched: usize,
-
-    /// Best move found during this search.
-    pub bestmove: Option<Move>,
 
     /// Score for making the associated `bestmove`.
     pub score: i32,
@@ -31,72 +54,83 @@ pub struct SearchData {
      */
 }
 
-impl Default for SearchData {
-    fn default() -> Self {
-        Self {
-            nodes_searched: 0,
-            bestmove: None,
-            score: -INF,
-            // pv: ArrayVec::new(),
-        }
-    }
-}
-
-/// A struct to encapsulate the logic of searching through moves for a given a chess position.
-pub struct Searcher<'a> {
-    /// Game to search on.
-    game: &'a Game,
-
-    /// Transposition table for lookups.
-    ttable: &'a mut TTable,
-
-    /// Start time of the search.
-    starttime: Instant,
-
-    /// How long we can search for.
-    timeout: Duration,
-
-    /// We can continue searching as long as this is `true`.
-    stopper: Arc<AtomicBool>,
-
-    // Search data
-    data: SearchData,
-}
-
 impl<'a> Searcher<'a> {
     /// Create a new search that will search the provided position.
     pub fn new(
         game: &'a Game,
         ttable: &'a mut TTable,
+        sender: Sender<EngineCommand>,
         starttime: Instant,
-        timeout: Duration,
-        stopper: Arc<AtomicBool>,
+        soft_timeout: Duration,
+        hard_timeout: Duration,
+        is_searching: Arc<AtomicBool>,
     ) -> Self {
         Self {
             game,
             ttable,
+            sender,
             starttime,
-            timeout,
-            stopper,
-            data: SearchData::default(),
+            soft_timeout,
+            hard_timeout,
+            is_searching,
+            nodes_searched: 0,
+            score: -INF,
         }
     }
 
+    fn send_info(&self, depth: u32) -> Result<()> {
+        // Determine whether the score is an evaluation or a "mate in y"
+        let score = if self.score.abs() >= MAX_MATE {
+            let dist = MATE - self.score; // distance to mate (in plies)
+            let moves_to_mate = if self.score > 0 { dist + 1 } else { -dist } / 2;
+            UciScore::mate(moves_to_mate)
+        } else {
+            UciScore::cp(self.score)
+        };
+
+        let elapsed = self.starttime.elapsed();
+
+        // Construct and send an `info` command
+        let info = UciInfo::default()
+            .depth(depth)
+            .score(score)
+            .nodes(self.nodes_searched)
+            .nps((self.nodes_searched as f32 / elapsed.as_secs_f32()).trunc())
+            .time(elapsed.as_millis());
+
+        let info_resp = Box::new(UciResponse::Info(Box::new(info)));
+        self.sender.send(EngineCommand::UciResponse(info_resp))?;
+
+        Ok(())
+    }
+
     /// Start a search of depth `depth` at the root node.
-    pub fn start(mut self, depth: u32) -> Result<SearchData> {
+    pub fn start<const SEND_INFO: bool>(&mut self, max_depth: u32) -> Result<()> {
         // Initialize PV arrays to be empty
         // Note this doesn't allocate enough to add PVs in QSearch,
         // but QSearch doesn't search all moves, so adding PVs there doesn't make sense.
         // for _ in 0..=depth {
-        //     self.data.pv.push(ArrayVec::new());
+        //     self.pv.push(ArrayVec::new());
         // }
 
-        let key = self.game.key();
-        self.data.score = self.negamax(self.game, depth, 0, -INF, INF)?;
+        for depth in 1..=max_depth {
+            // If we've been told to stop, or if we've hit the soft timeout, exit the loop
+            if !self.is_searching.load(Ordering::Relaxed)
+                || self.starttime.elapsed() >= self.soft_timeout
+            {
+                break;
+            }
 
-        self.data.bestmove = self.ttable.get(&key).map(|entry| entry.bestmove);
+            // Actually run the negamax search
+            self.score = self.negamax(self.game, depth, 0, -INF, INF)?;
 
-        Ok(self.data)
+            // Send info to the GUI, if necessary
+            if SEND_INFO {
+                self.send_info(depth)?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Uses [Fail soft](https://www.chessprogramming.org/Alpha-Beta#Fail_soft)
@@ -109,7 +143,7 @@ impl<'a> Searcher<'a> {
         beta: i32,
     ) -> Result<i32> {
         // Clear PV for this node
-        // self.data.pv[ply as usize] = ArrayVec::new();
+        // self.pv[ply as usize] = ArrayVec::new();
 
         // Reached the end of the depth; start a qsearch for captures only
         if depth == 0 {
@@ -142,10 +176,12 @@ impl<'a> Searcher<'a> {
                 // Otherwise, recursively search our opponent's responses
                 -self.negamax(&new_pos, depth - 1, ply + 1, -beta, -alpha)?
             };
-            self.data.nodes_searched += 1;
+            self.nodes_searched += 1;
 
             // Check if we've run out of time or if we've been told to stop searching
-            if self.starttime.elapsed() >= self.timeout || !self.stopper.load(Ordering::Relaxed) {
+            if self.starttime.elapsed() >= self.hard_timeout
+                || !self.is_searching.load(Ordering::Relaxed)
+            {
                 bail!("Negamax was cancelled while evaluating {mv}");
             }
 
@@ -160,10 +196,10 @@ impl<'a> Searcher<'a> {
 
                     // Clear PV for this node
                     // NOTE: The `clone` gets compiled away, and various methods all compile to the same thing: https://godbolt.org/z/45GM5TqGh
-                    // self.data.pv[ply as usize].clear();
-                    // self.data.pv[ply as usize].push(mv);
-                    // let rest = self.data.pv[ply as usize + 1].clone();
-                    // self.data.pv[ply as usize].extend(rest);
+                    // self.pv[ply as usize].clear();
+                    // self.pv[ply as usize].push(mv);
+                    // let rest = self.pv[ply as usize + 1].clone();
+                    // self.pv[ply as usize].extend(rest);
                 }
 
                 // Fail soft beta-cutoff.
@@ -236,10 +272,12 @@ impl<'a> Searcher<'a> {
 
             // Recursively search our opponent's responses
             let score = -self.quiescence(&new_pos, ply + 1, -beta, -alpha)?;
-            self.data.nodes_searched += 1;
+            self.nodes_searched += 1;
 
             // Check if we've run out of time or if we've been told to stop searching
-            if self.starttime.elapsed() >= self.timeout || !self.stopper.load(Ordering::Relaxed) {
+            if self.starttime.elapsed() >= self.hard_timeout
+                || !self.is_searching.load(Ordering::Relaxed)
+            {
                 bail!("QSearch was cancelled while evaluating {mv}");
             }
 
