@@ -128,7 +128,7 @@ impl Psq {
 
     /// Get the value of this PSQ at the provided tile, relative to `color`.
     const fn get_relative(&self, tile: Tile, color: Color) -> i32 {
-        self.get(tile.file_relative_to(color))
+        self.get(tile.relative_to(color))
     }
 
     /// Interpolate a value between this PSQ and another.
@@ -148,7 +148,7 @@ impl Psq {
         other: &Self,
         weight: i32,
     ) -> i32 {
-        self.get_weighted(tile.file_relative_to(color), other, weight)
+        self.get_weighted(tile.relative_to(color), other, weight)
     }
 }
 
