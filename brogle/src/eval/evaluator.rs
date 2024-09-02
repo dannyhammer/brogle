@@ -1,6 +1,7 @@
 use brogle_core::{ChessBoard, Color, Game, PieceKind};
 
 use super::piece_square_tables::psq_eval;
+use crate::search::Score;
 
 /// Initial material value of all pieces of a given side (minus King)
 const INITIAL_MATERIAL_VALUE: i32 = value_of(PieceKind::Pawn) * 8
@@ -35,7 +36,7 @@ impl<'a> Evaluator<'a> {
     ///
     /// A positive number is good for `color`.
     /// A negative number is good for `color`'s opponent.
-    pub fn eval(&self, color: Color) -> i32 {
+    pub fn eval(&self, color: Color) -> Score {
         let friendly = self.compute_score_for(color);
         let enemy = self.compute_score_for(color.opponent());
 
@@ -43,12 +44,12 @@ impl<'a> Evaluator<'a> {
     }
 
     /// Run the evaluator, yielding a result that is positive if good for the current player and negative if good for the opponent.
-    pub fn eval_current_player(&self) -> i32 {
+    pub fn eval_current_player(&self) -> Score {
         self.eval(self.game.current_player())
     }
 
     /// Compute the evaluation score for `color` only.
-    pub fn compute_score_for(&self, color: Color) -> i32 {
+    pub fn compute_score_for(&self, color: Color) -> Score {
         let material = count_material(self.game.board(), color);
         let mut positional = 0;
 
@@ -56,7 +57,7 @@ impl<'a> Evaluator<'a> {
             positional += psq_eval(piece, tile, self.endgame_weight);
         }
 
-        material + positional
+        Score(material + positional)
     }
 }
 
