@@ -113,14 +113,12 @@ impl<'a> Searcher<'a> {
         //     self.pv.push(ArrayVec::new());
         // }
 
-        for depth in 1..=max_depth {
-            // If we've been told to stop, or if we've hit the soft timeout, exit the loop
-            if !self.is_searching.load(Ordering::Relaxed)
-                || self.starttime.elapsed() >= self.soft_timeout
-            {
-                break;
-            }
+        let mut depth = 1;
 
+        while depth <= max_depth
+            && self.starttime.elapsed() < self.soft_timeout
+            && self.is_searching.load(Ordering::Relaxed)
+        {
             // Actually run the negamax search
             self.score = self.negamax(self.game, depth, 0, -INF, INF)?;
 
@@ -128,6 +126,8 @@ impl<'a> Searcher<'a> {
             if SEND_INFO {
                 self.send_info(depth)?;
             }
+
+            depth += 1;
         }
 
         Ok(())

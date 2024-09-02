@@ -638,8 +638,9 @@ impl UciEngine for Engine {
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);
         let sender = self.sender.clone().unwrap(); // Safe unwrap because sender is initialized on engine startup
-        let ttable = Arc::clone(&self.ttable);
+
         let game = self.game.clone();
+        let ttable = Arc::clone(&self.ttable);
         let max_depth = options.depth.unwrap_or(MAX_DEPTH as u32);
 
         // Initialize bestmove to the first move available, if there are any
