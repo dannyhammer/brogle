@@ -2,7 +2,6 @@ use std::{
     fmt,
     ops::{Add, AddAssign, Index, IndexMut, Mul, Sub, SubAssign},
     str::FromStr,
-    u8,
 };
 
 use anyhow::{bail, Context, Result};

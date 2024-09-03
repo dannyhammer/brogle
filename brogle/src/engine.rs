@@ -3,7 +3,7 @@ use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, Sender},
+        mpsc::{self, Receiver, Sender},
         Arc, LazyLock, Mutex,
     },
     time::{Duration, Instant},
@@ -19,7 +19,7 @@ use super::{
         UciCommand, UciEngine, UciInfo, UciOption, UciResponse, UciScore, UciSearchOptions,
     },
     search::{Score, Searcher, TTable, DEFAULT_TTABLE_SIZE},
-    Evaluator, MAX_DEPTH,
+    Evaluator, BENCHMARK_FENS, MAX_DEPTH,
 };
 
 /// Threadpool from which to spawn threads for searches, user input, etc.
@@ -56,7 +56,10 @@ pub struct Engine {
     is_searching: Arc<AtomicBool>,
 
     /// Handles sending events to the internal event pump.
-    sender: Option<Sender<EngineCommand>>,
+    sender: Sender<EngineCommand>,
+
+    /// Handles receiving events in the internal event pump.
+    receiver: Receiver<EngineCommand>,
 }
 
 impl Engine {
@@ -83,11 +86,8 @@ impl Engine {
         let authors = env!("CARGO_PKG_AUTHORS").replace(':', ", "); // Split multiple authors by comma-space
         println!("{name} {version} by {authors}");
 
-        // Create (and store) the channel(s) for communication
-        let (sender, receiver) = mpsc::channel();
-        self.sender = Some(sender.clone());
-
         // Spin up a thread for handling user/GUI input
+        let sender = self.sender.clone();
         POOL.execute(move || {
             if let Err(err) = Self::user_input_handler(sender) {
                 error!("{err}");
@@ -95,7 +95,7 @@ impl Engine {
         });
 
         // Main event loop: Handle inputs from various sources
-        for cmd in receiver {
+        while let Ok(cmd) = self.receiver.recv() {
             let res = match cmd {
                 EngineCommand::Help => self.help(),
                 EngineCommand::Show => self.show(),
@@ -107,7 +107,7 @@ impl Engine {
                 EngineCommand::Fen(fen) => self.fen(fen),
                 EngineCommand::Eval(game) => self.eval(*game),
                 EngineCommand::Moves(from, debug) => self.moves(from, debug),
-                EngineCommand::Bench => todo!("Implement `bench` command"),
+                EngineCommand::Bench(depth) => self.bench(depth),
                 EngineCommand::MakeMove(moves) => self.make_move(moves),
                 EngineCommand::Option(name) => self.option(name),
                 EngineCommand::UciCommand(uci_cmd) => self.execute_uci_command(uci_cmd),
@@ -205,7 +205,7 @@ impl Engine {
             "moves" => Self::parse_moves_command(rest),
             "fen" => Self::parse_fen_command(rest),
             "option" => Self::parse_option_command(rest),
-            "bench" => Ok(EngineCommand::Bench),
+            "bench" => Self::parse_bench_command(rest),
             "quit" | "exit" => Ok(EngineCommand::Exit),
             _ => Self::parse_uci_input(input).map(EngineCommand::UciCommand),
         }
@@ -326,6 +326,23 @@ impl Engine {
         Ok(EngineCommand::Option(name))
     }
 
+    /// Parses the `bench` command
+    fn parse_bench_command(rest: &str) -> Result<EngineCommand> {
+        let mut args = rest.split_ascii_whitespace();
+
+        let mut depth = 5;
+
+        if let Some(d) = args.next() {
+            let Ok(d) = d.parse() else {
+                bail!("usage: bench [depth]");
+            };
+
+            depth = d
+        }
+
+        Ok(EngineCommand::Bench(depth))
+    }
+
     /// Executes the `help` command, displaying a list of available commands this engine has.
     fn help(&self) -> Result<()> {
         println!(
@@ -424,8 +441,49 @@ impl Engine {
         Ok(())
     }
 
+    /// Clears the transposition table
     fn clear_ttable(&mut self) {
         *self.ttable.lock().unwrap() = TTable::default();
+    }
+
+    fn bench(&mut self, depth: u32) -> Result<()> {
+        error!("Benchmarking not currently implemented due to requiring a refactor of search code");
+        self.clear_ttable();
+        println!(
+            "Starting benchmark of {} positions at depth {depth}",
+            BENCHMARK_FENS.len()
+        );
+
+        let starttime = Instant::now();
+        let mut nodes_searched = 0;
+
+        for fen in &BENCHMARK_FENS[..1] {
+            self.game = Game::from_fen(fen)?;
+
+            // Doesn't work because the search happens in it's own thread, which ends *after* this loop ends.
+            // Need to refactor search code so that `Searcher::start` launches the iterative deepening loop.
+            /*
+            let search_opts = UciSearchOptions {
+                depth: Some(depth),
+                ..Default::default()
+            };
+            let go_cmd = EngineCommand::UciCommand(UciCommand::Go(search_opts));
+            self.sender.as_ref().unwrap().send(go_cmd)?;
+             */
+            nodes_searched += 0;
+        }
+
+        let elapsed = starttime.elapsed();
+
+        let info = UciInfo::new().string(format!("{} seconds", elapsed.as_secs()));
+        self.info(info)?;
+
+        let nps = nodes_searched as f32 / elapsed.as_secs_f32();
+        let info = UciInfo::new().nodes(nodes_searched).nps(nps);
+        self.info(info)?;
+
+        self.clear_ttable();
+        Ok(())
     }
 }
 
@@ -474,8 +532,8 @@ pub enum EngineCommand {
     /// Evaluates the current position.
     Eval(Box<Option<Game>>),
 
-    /// Benchmark this engine.
-    Bench,
+    /// Benchmark this engine at the provided depth.
+    Bench(u32),
 
     /// View the current value of an option
     Option(String),
@@ -512,7 +570,7 @@ impl UciEngine for Engine {
                 *self.ttable.lock().unwrap() = TTable::new(mb * 1_048_576); // multiply by # bytes in MB
             }
 
-            "Clear Hash" => self.ttable.lock().unwrap().clear(),
+            "Clear Hash" => self.clear_ttable(),
 
             _ => {
                 if let Some(value) = value {
@@ -580,7 +638,7 @@ impl UciEngine for Engine {
 
         // Clone the arcs for whether we're searching and our found results
         let is_searching = Arc::clone(&self.is_searching);
-        let sender = self.sender.clone().unwrap(); // Safe unwrap because sender is initialized on engine startup
+        let sender = self.sender.clone();
 
         let game = self.game.clone();
         let ttable = Arc::clone(&self.ttable);
@@ -712,12 +770,14 @@ impl UciEngine for Engine {
 impl Default for Engine {
     /// Default engine starts with standard piece set up.
     fn default() -> Self {
+        let (sender, receiver) = mpsc::channel();
         Self {
             game: Game::default(),
             ttable: Arc::default(),
             debug: Arc::default(),
             is_searching: Arc::default(),
-            sender: None,
+            sender,
+            receiver,
         }
     }
 }
