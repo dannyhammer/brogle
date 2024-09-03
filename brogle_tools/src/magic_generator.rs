@@ -3,7 +3,7 @@ use std::io::prelude::*;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use chessie::{Bitboard, Tile};
+use chessie::{Bitboard, Square};
 mod magics;
 use crate::magics::*;
 
@@ -14,10 +14,10 @@ fn magic_index(entry: &MagicEntry, blockers: Bitboard) -> usize {
     entry.offset + index
 }
 
-fn slider_moves(slider_deltas: &[(i8, i8)], tile: Tile, blockers: Bitboard) -> Bitboard {
+fn slider_moves(slider_deltas: &[(i8, i8)], square: Square, blockers: Bitboard) -> Bitboard {
     let mut moves = Bitboard::EMPTY_BOARD;
     for &(df, dr) in slider_deltas {
-        let mut ray = tile;
+        let mut ray = square;
         while !blockers.get(ray) {
             if let Some(shifted) = ray.offset(df, dr) {
                 ray = shifted;
@@ -33,16 +33,16 @@ fn slider_moves(slider_deltas: &[(i8, i8)], tile: Tile, blockers: Bitboard) -> B
 fn make_table(
     table_size: usize,
     slider_deltas: &[(i8, i8)],
-    magics: &[MagicEntry; Tile::COUNT],
+    magics: &[MagicEntry; Square::COUNT],
 ) -> Vec<Bitboard> {
     let mut table = vec![Bitboard::EMPTY_BOARD; table_size];
-    for tile in Tile::iter() {
-        let magic_entry = &magics[tile];
+    for square in Square::iter() {
+        let magic_entry = &magics[square];
         let mask = Bitboard::new(magic_entry.mask);
 
         let mut blockers = Bitboard::EMPTY_BOARD;
         loop {
-            let moves = slider_moves(slider_deltas, tile, blockers);
+            let moves = slider_moves(slider_deltas, square, blockers);
             table[magic_index(magic_entry, blockers)] = moves;
 
             blockers = blockers.carry_rippler(mask);
@@ -65,14 +65,14 @@ fn write_table(name: &str, table: &[Bitboard], out: &mut impl Write) -> std::io:
 
 fn write_magics(
     name: &str,
-    magics: &[MagicEntry; Tile::COUNT],
+    magics: &[MagicEntry; Square::COUNT],
     out: &mut impl Write,
 ) -> std::io::Result<()> {
     write!(
         out,
         "const {}_MAGICS: &[MagicEntry; {}] = &[",
         name,
-        Tile::COUNT
+        Square::COUNT
     )?;
     for entry in magics {
         write!(

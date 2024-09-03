@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use chessie::{print_perft, Bitboard, Color, Game, Move, Position, Tile, FEN_STARTPOS};
+use chessie::{print_perft, Bitboard, Color, Game, Move, Position, Square, FEN_STARTPOS};
 use log::{error, warn};
 use threadpool::ThreadPool;
 
@@ -302,7 +302,7 @@ impl Engine {
 
         let mut args = rest.split_ascii_whitespace();
         let from = if let Some(from) = args.next() {
-            let Ok(from) = Tile::from_str(from) else {
+            let Ok(from) = Square::from_str(from) else {
                 bail!("usage: moves [square] [debug]")
             };
             Some(from)
@@ -377,7 +377,7 @@ impl Engine {
     }
 
     /// Executes the `moves` command, displaying all legal moves available.
-    fn moves(&self, from: Option<Tile>, debug: bool) -> Result<()> {
+    fn moves(&self, from: Option<Square>, debug: bool) -> Result<()> {
         if let Some(from) = from {
             let moves = self
                 .game
@@ -386,7 +386,7 @@ impl Engine {
                 .filter(|mv| mv.from() == from);
             let mut mobility = Bitboard::default();
             for mv in moves {
-                mobility |= Bitboard::from_tile(mv.to());
+                mobility |= Bitboard::from_square(mv.to());
             }
             println!("{mobility}");
         } else {
@@ -469,7 +469,7 @@ pub enum EngineCommand {
     MakeMove(Vec<String>),
 
     /// Show all legal moves from the current position.
-    Moves(Option<Tile>, bool),
+    Moves(Option<Square>, bool),
 
     /// Evaluates the current position.
     Eval(Box<Option<Game>>),

@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{anyhow, bail};
 
-use super::{Color, File, Rank, Tile};
+use super::{Color, File, Rank, Square};
 
 /// A [`Bitboard`] represents the game board as a set of bits.
 /// They are used for various computations, such as fetching valid moves or computing move costs.
@@ -86,21 +86,21 @@ impl Bitboard {
     /// ```
     pub const fn from_index(index: usize) -> Self {
         debug_assert!(index < 64, "Index must be between [0,64)");
-        Self::from_tile(Tile::from_index_unchecked(index))
+        Self::from_square(Square::from_index_unchecked(index))
     }
 
-    /// Constructs a new [`Bitboard`] from the provided [`Tile`].
+    /// Constructs a new [`Bitboard`] from the provided [`Square`].
     ///
     /// The resulting [`Bitboard`] will have only a single bit toggled on.
     ///
     /// # Example
     /// ```
-    /// # use types::{Bitboard, Tile};
-    /// let board = Bitboard::from_tile(Tile::H8);
+    /// # use types::{Bitboard, Square};
+    /// let board = Bitboard::from_square(Square::H8);
     /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
     /// ```
-    pub const fn from_tile(tile: Tile) -> Self {
-        Self(1 << tile.index())
+    pub const fn from_square(square: Square) -> Self {
+        Self(1 << square.index())
     }
 
     /// Constructs a new [`Bitboard`] from the provided [`File`].
@@ -214,37 +214,37 @@ impl Bitboard {
         self.0
     }
 
-    /// Creates a [`Tile`] from this [`Bitboard`] based on the lowest-index bit that is flipped.
+    /// Creates a [`Square`] from this [`Bitboard`] based on the lowest-index bit that is flipped.
     ///
-    /// If this [`Bitboard`] contains more than a single flipped bit, it is converted into a [`Tile`]
+    /// If this [`Bitboard`] contains more than a single flipped bit, it is converted into a [`Square`]
     /// based on the index of the lowest bit that is flipped.
     ///
     /// # Example
     /// ```
-    /// # use types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Square};
     /// let board = Bitboard::from_index(14);
-    /// assert_eq!(board.to_tile_unchecked(), Tile::G2);
+    /// assert_eq!(board.to_square_unchecked(), Square::G2);
     /// ```
-    pub const fn to_tile_unchecked(&self) -> Tile {
-        Tile::from_index_unchecked(self.0.trailing_zeros() as usize)
+    pub const fn to_square_unchecked(&self) -> Square {
+        Square::from_index_unchecked(self.0.trailing_zeros() as usize)
     }
 
-    /// Creates a [`Tile`] from this [`Bitboard`] based on the lowest-index bit that is flipped.
+    /// Creates a [`Square`] from this [`Bitboard`] based on the lowest-index bit that is flipped.
     ///
-    /// If this [`Bitboard`] contains more than a single flipped bit, it is converted into a [`Tile`]
+    /// If this [`Bitboard`] contains more than a single flipped bit, it is converted into a [`Square`]
     /// based on the index of the lowest bit that is flipped.
     ///
     /// # Example
     /// ```
-    /// # use types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Square};
     /// let board = Bitboard::from_index(14);
-    /// assert_eq!(board.to_tile(), Some(Tile::G2));
+    /// assert_eq!(board.to_square(), Some(Square::G2));
     /// let invalid = Bitboard::RANK_1;
-    /// assert_eq!(invalid.to_tile(), None);
+    /// assert_eq!(invalid.to_square(), None);
     /// ```
-    pub const fn to_tile(&self) -> Option<Tile> {
+    pub const fn to_square(&self) -> Option<Square> {
         if self.population() == 1 {
-            Some(self.to_tile_unchecked())
+            Some(self.to_square_unchecked())
         } else {
             None
         }
@@ -334,60 +334,60 @@ impl Bitboard {
     }
      */
 
-    /// Toggles the bit corresponding to the location of the provided [`Tile`] to `1` (on).
+    /// Toggles the bit corresponding to the location of the provided [`Square`] to `1` (on).
     ///
     /// # Example
     /// ```
-    /// # use types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Square};
     /// let mut board = Bitboard::default();
-    /// board.set(Tile::G2);
+    /// board.set(Square::G2);
     /// assert_eq!(board.to_hex_string(), "0x0000000000004000");
     /// ```
-    pub fn set(&mut self, tile: Tile) {
-        self.set_index(tile.index());
+    pub fn set(&mut self, square: Square) {
+        self.set_index(square.index());
     }
 
-    /// Gets the value of the bit corresponding to the location of the provided [`Tile`].
+    /// Gets the value of the bit corresponding to the location of the provided [`Square`].
     ///
     /// # Example
     /// ```
-    /// # use types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Square};
     /// let board = Bitboard::FILE_A;
-    /// assert!(board.get(Tile::A3));
+    /// assert!(board.get(Square::A3));
     /// ```
-    pub const fn get(&self, tile: Tile) -> bool {
-        self.get_index(tile.index())
+    pub const fn get(&self, square: Square) -> bool {
+        self.get_index(square.index())
     }
 
-    /// Toggles the bit corresponding to the location of the provided [`Tile`] to `0` (off).
+    /// Toggles the bit corresponding to the location of the provided [`Square`] to `0` (off).
     ///
     /// # Example
     /// ```
-    /// # use types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Square};
     /// let mut board = Bitboard::RANK_1;
-    /// board.clear(Tile::C1);
+    /// board.clear(Square::C1);
     /// assert_eq!(board.to_hex_string(), "0x00000000000000FB");
     /// ```
-    pub fn clear(&mut self, tile: Tile) {
-        self.clear_index(tile.index())
+    pub fn clear(&mut self, square: Square) {
+        self.clear_index(square.index())
     }
 
-    /// Remove all tiles from `other` in `self`
+    /// Remove all squares from `other` in `self`
     pub fn remove(&mut self, other: &Self) {
         self.0 &= !other.0
     }
 
-    /// Returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Tile`].
-    pub const fn lsb(&self) -> Option<Tile> {
+    /// Returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].
+    pub const fn lsb(&self) -> Option<Square> {
         if self.is_empty() {
             None
         } else {
-            Some(Tile(self.0.trailing_zeros() as u8))
+            Some(Square(self.0.trailing_zeros() as u8))
         }
     }
 
-    /// Pops and returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Tile`].
-    pub fn pop_lsb(&mut self) -> Option<Tile> {
+    /// Pops and returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].
+    pub fn pop_lsb(&mut self) -> Option<Square> {
         let lsb = self.lsb();
         self.clear_lsb();
         lsb
@@ -404,9 +404,9 @@ impl Bitboard {
         Self(self.0.wrapping_sub(mask.0) & mask.0)
     }
 
-    /// Toggles the bit corresponding to the specified [`Tile`].
-    pub fn toggle_tile(&mut self, tile: Tile) {
-        *self ^= Self::from_tile(tile);
+    /// Toggles the bit corresponding to the specified [`Square`].
+    pub fn toggle_square(&mut self, square: Square) {
+        *self ^= Self::from_square(square);
     }
 
     /// Toggles the bit at `index`.
@@ -443,7 +443,7 @@ impl Bitboard {
         *self ^= Self::from_index(index);
     }
 
-    /// Returns a [`BitboardIter`] to iterate over all of the set bits as [`Tile`]s.
+    /// Returns a [`BitboardIter`] to iterate over all of the set bits as [`Square`]s.
     pub const fn iter(&self) -> BitboardIter {
         BitboardIter { bb: *self }
     }
@@ -604,16 +604,16 @@ impl Bitboard {
     }
 
     /*
-    /// Creates a mask of all squares in front of `tile` (according to `color`) that are either directly in front or on the adjacent files.
-    pub fn passed_pawn_mask(tile: Tile, color: Color) -> Self {
+    /// Creates a mask of all squares in front of `square` (according to `color`) that are either directly in front or on the adjacent files.
+    pub fn passed_pawn_mask(square: Square, color: Color) -> Self {
         let rank = match color {
-            Color::White => tile.rank().increase(),
-            Color::Black => tile.rank().decrease(),
+            Color::White => square.rank().increase(),
+            Color::Black => square.rank().decrease(),
         };
 
         let forward_ranks = Self::FULL_BOARD << rank;
 
-        let file = tile.file();
+        let file = square.file();
         let left = Self::from(file.decrease());
         let right = Self::from(file.increase());
         let center = Self::from_file(file);
@@ -757,10 +757,10 @@ impl Shr<Rank> for Bitboard {
     }
 }
 
-impl Index<Tile> for Bitboard {
+impl Index<Square> for Bitboard {
     type Output = bool;
-    /// A [`Bitboard`] can be indexed by a [`Tile`] to yield `true` or `false`, if the bit at that index is set.
-    fn index(&self, index: Tile) -> &Self::Output {
+    /// A [`Bitboard`] can be indexed by a [`Square`] to yield `true` or `false`, if the bit at that index is set.
+    fn index(&self, index: Square) -> &Self::Output {
         if self.get_index(index.index()) {
             &true
         } else {
@@ -798,9 +798,9 @@ where
     }
 }
 
-impl From<Tile> for Bitboard {
-    fn from(value: Tile) -> Self {
-        Self::from_tile(value)
+impl From<Square> for Bitboard {
+    fn from(value: Square) -> Self {
+        Self::from_square(value)
     }
 }
 
@@ -850,8 +850,8 @@ impl fmt::Display for Bitboard {
 
         for rank in Rank::iter().rev() {
             for file in File::iter() {
-                let tile = Tile::new(file, rank);
-                let occupant = if self.get(tile) { 'X' } else { '.' };
+                let square = Square::new(file, rank);
+                let occupant = if self.get(square) { 'X' } else { '.' };
 
                 board += &format!("{occupant} ");
             }
@@ -871,8 +871,8 @@ impl fmt::Debug for Bitboard {
             board += &format!("{rank}| ");
 
             for file in File::iter() {
-                let tile = Tile::new(file, rank);
-                let occupant = if self.get(tile) { 'X' } else { '.' };
+                let square = Square::new(file, rank);
+                let occupant = if self.get(square) { 'X' } else { '.' };
 
                 board += &format!("{occupant} ");
             }
@@ -896,7 +896,7 @@ pub struct BitboardIter {
 }
 
 impl Iterator for BitboardIter {
-    type Item = Tile;
+    type Item = Square;
     fn next(&mut self) -> Option<Self::Item> {
         self.bb.pop_lsb()
     }
@@ -914,7 +914,7 @@ impl ExactSizeIterator for BitboardIter {
 }
 
 impl IntoIterator for Bitboard {
-    type Item = Tile;
+    type Item = Square;
     type IntoIter = BitboardIter;
     fn into_iter(self) -> Self::IntoIter {
         BitboardIter { bb: self }
@@ -922,7 +922,7 @@ impl IntoIterator for Bitboard {
 }
 
 impl IntoIterator for &Bitboard {
-    type Item = Tile;
+    type Item = Square;
     type IntoIter = BitboardIter;
     fn into_iter(self) -> Self::IntoIter {
         BitboardIter { bb: *self }
@@ -930,7 +930,7 @@ impl IntoIterator for &Bitboard {
 }
 
 impl IntoIterator for &mut Bitboard {
-    type Item = Tile;
+    type Item = Square;
     type IntoIter = BitboardIter;
     fn into_iter(self) -> Self::IntoIter {
         BitboardIter { bb: *self }

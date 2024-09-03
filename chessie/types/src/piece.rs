@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{bail, Result};
 
-/// Represents the color of a player, piece, tile, etc. within a chess board.
+/// Represents the color of a player, piece, square, etc. within a chess board.
 ///
 /// In Western chess, White traditionally moves first, and therefore [`Color`] defaults to [`Color::White`].
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]

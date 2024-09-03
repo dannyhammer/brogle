@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use anyhow::{anyhow, Result};
 
-use super::{PieceKind, Position, Rank, Tile};
+use super::{PieceKind, Position, Rank, Square};
 
 /// Represents the different kinds of moves that can be made during a chess game.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
@@ -38,8 +38,8 @@ pub enum MoveKind {
 /// ```text
 ///     0000 000000 000000
 ///      |     |      |
-///      |     |      +- Source tile of the move.
-///      |     +- Target tile of the move.
+///      |     |      +- Source square of the move.
+///      |     +- Target square of the move.
 ///      +- Special flags for promotion, castling, etc.
 /// ```
 ///
@@ -76,18 +76,18 @@ impl Move {
     const FLAG_CAPTURE_PROMO_ROOK: u16 = 14 << Self::FLG_BITS;
     const FLAG_CAPTURE_PROMO_QUEEN: u16 = 15 << Self::FLG_BITS;
 
-    /// Creates a new [`Move`] from the given [`Tile`]s and a [`MoveKind`].
+    /// Creates a new [`Move`] from the given [`Square`]s and a [`MoveKind`].
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, Tile, MoveKind, PieceKind};
-    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
+    /// # use chessie::{Move, Square, MoveKind, PieceKind};
+    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnPushTwo);
     /// assert_eq!(e2e4.to_string(), "e2e4");
     ///
-    /// let e7e8n = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Knight));
+    /// let e7e8n = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Knight));
     /// assert_eq!(e7e8n.to_string(), "e7e8n");
     /// ```
-    pub const fn new(from: Tile, to: Tile, kind: MoveKind) -> Self {
+    pub const fn new(from: Square, to: Square, kind: MoveKind) -> Self {
         let from = from.inner() as u16;
         let to = to.inner() as u16;
         let flag = Self::get_bit_flag(kind);
@@ -122,29 +122,29 @@ impl Move {
         }
     }
 
-    /// Creates a new [`Move`] from the given [`Tile`]s that does not promote a piece.
+    /// Creates a new [`Move`] from the given [`Square`]s that does not promote a piece.
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, Tile};
-    /// let e2e3 = Move::new_quiet(Tile::E2, Tile::E3);
+    /// # use chessie::{Move, Square};
+    /// let e2e3 = Move::new_quiet(Square::E2, Square::E3);
     /// assert_eq!(e2e3.to_string(), "e2e3");
     /// ```
-    pub const fn new_quiet(from: Tile, to: Tile) -> Self {
+    pub const fn new_quiet(from: Square, to: Square) -> Self {
         Self::new(from, to, MoveKind::Quiet)
     }
 
     /*
-    /// Creates a new [`Move`] from the given [`Tile`]s, automatically figuring out its [`MoveKind`] from the position provided.
+    /// Creates a new [`Move`] from the given [`Square`]s, automatically figuring out its [`MoveKind`] from the position provided.
     ///
     /// # Example
     /// ```
     /// # use chessie::prelude::*;
     /// let startpos = Position::default();
-    /// let e2e4 = Move::new_from_position(Tile::E2, Tile::E4, &startpos);
+    /// let e2e4 = Move::new_from_position(Square::E2, Square::E4, &startpos);
     /// assert_eq!(e2e4.kind(), MoveKind::PawnPushTwo);
     /// ```
-    pub fn new_from_position(from: Tile, to: Tile, position: &Position) -> Self {
+    pub fn new_from_position(from: Square, to: Square, position: &Position) -> Self {
         // By default, set the kind to a capture of quiet, depending on whether there was a piece at the destination.
         let mut kind = if position.has(to) {
             MoveKind::Capture
@@ -161,7 +161,7 @@ impl Move {
             }
             PieceKind::King => {
                 // Kings can castle
-                if to == Tile::
+                if to == Square::
             }
             _ => {} // All other pieces can only capture or move quietly
         }
@@ -170,7 +170,7 @@ impl Move {
     }
      */
 
-    /// Creates an "illegal" [`Move`], representing moving a piece to and from the same [`Tile`].
+    /// Creates an "illegal" [`Move`], representing moving a piece to and from the same [`Square`].
     ///
     /// # Example
     /// ```
@@ -182,38 +182,38 @@ impl Move {
         Self(0)
     }
 
-    /// Fetches the source (or "from") part of this [`Move`], as a [`Tile`].
+    /// Fetches the source (or "from") part of this [`Move`], as a [`Square`].
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, Tile, MoveKind};
-    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
+    /// # use chessie::{Move, Square, MoveKind};
+    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnPushTwo);
     /// let from = e2e4.from();
-    /// assert_eq!(from, Tile::E2);
+    /// assert_eq!(from, Square::E2);
     /// ```
-    pub const fn from(&self) -> Tile {
-        Tile::from_bits_unchecked((self.0 & Self::SRC_MASK) as u8)
+    pub const fn from(&self) -> Square {
+        Square::from_bits_unchecked((self.0 & Self::SRC_MASK) as u8)
     }
 
-    /// Fetches the destination (or "to") part of this [`Move`], as a [`Tile`].
+    /// Fetches the destination (or "to") part of this [`Move`], as a [`Square`].
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, Tile, MoveKind};
-    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
+    /// # use chessie::{Move, Square, MoveKind};
+    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnPushTwo);
     /// let to = e2e4.to();
-    /// assert_eq!(to, Tile::E4);
+    /// assert_eq!(to, Square::E4);
     /// ```
-    pub const fn to(&self) -> Tile {
-        Tile::from_bits_unchecked(((self.0 & Self::DST_MASK) >> Self::DST_BITS) as u8)
+    pub const fn to(&self) -> Square {
+        Square::from_bits_unchecked(((self.0 & Self::DST_MASK) >> Self::DST_BITS) as u8)
     }
 
     /// Fetches the [`MoveKind`] part of this [`Move`].
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, MoveKind, PieceKind, Tile};
-    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
+    /// # use chessie::{Move, MoveKind, PieceKind, Square};
+    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8q.kind(), MoveKind::Promote(PieceKind::Queen));
     /// ```
     pub const fn kind(&self) -> MoveKind {
@@ -241,14 +241,14 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, MoveKind, PieceKind, Tile};
-    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
+    /// # use chessie::{Move, MoveKind, PieceKind, Square};
+    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Queen));
     /// let (from, to, kind) = e7e8q.parts();
-    /// assert_eq!(from, Tile::E7);
-    /// assert_eq!(to, Tile::E8);
+    /// assert_eq!(from, Square::E7);
+    /// assert_eq!(to, Square::E8);
     /// assert_eq!(kind, MoveKind::Promote(PieceKind::Queen));
     /// ```
-    pub const fn parts(&self) -> (Tile, Tile, MoveKind) {
+    pub const fn parts(&self) -> (Square, Square, MoveKind) {
         (self.from(), self.to(), self.kind())
     }
 
@@ -256,7 +256,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, Tile, MoveKind, PieceKind, Position, FEN_KIWIPETE};
+    /// # use chessie::{Move, Square, MoveKind, PieceKind, Position, FEN_KIWIPETE};
     /// let position = Position::from_fen(FEN_KIWIPETE).unwrap();
     /// let e5f7 = Move::from_uci(&position, "e5f7").unwrap();
     /// assert_eq!(e5f7.is_capture(), true);
@@ -289,8 +289,8 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, Tile, MoveKind};
-    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
+    /// # use chessie::{Move, Square, MoveKind};
+    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnPushTwo);
     /// assert_eq!(e2e4.is_pawn_double_push(), true);
     /// ```
     pub const fn is_pawn_double_push(&self) -> bool {
@@ -301,11 +301,11 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, MoveKind, PieceKind, Tile};
-    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
+    /// # use chessie::{Move, MoveKind, PieceKind, Square};
+    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8q.is_promotion(), true);
     ///
-    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::PromoCapt(PieceKind::Queen));
+    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::PromoCapt(PieceKind::Queen));
     /// assert_eq!(e7e8q.is_promotion(), true);
     /// ```
     pub const fn is_promotion(&self) -> bool {
@@ -318,7 +318,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, Tile, MoveKind, PieceKind, Position};
+    /// # use chessie::{Move, Square, MoveKind, PieceKind, Position};
     /// // An sample test position for discovering promotion bugs.
     /// let position = Position::from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
     /// let b7c8b = Move::from_uci(&position, "b7c8b").unwrap();
@@ -351,7 +351,7 @@ impl Move {
             return false;
         };
 
-        let is_ok = Tile::from_uci(from).is_ok() && Tile::from_uci(to).is_ok();
+        let is_ok = Square::from_uci(from).is_ok() && Square::from_uci(to).is_ok();
 
         if let Some(promote) = input.get(4..5) {
             is_ok && PieceKind::from_str(promote).is_ok()
@@ -365,24 +365,24 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, Tile, MoveKind, PieceKind, Position};
+    /// # use chessie::{Move, Square, MoveKind, PieceKind, Position};
     /// // A sample test position for discovering promotion bugs.
     /// let position = Position::from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
     /// let b7c8b = Move::from_uci(&position, "b7c8b");
     /// assert!(b7c8b.is_ok());
-    /// assert_eq!(b7c8b.unwrap(), Move::new(Tile::B7, Tile::C8, MoveKind::PromoCapt(PieceKind::Bishop)));
+    /// assert_eq!(b7c8b.unwrap(), Move::new(Square::B7, Square::C8, MoveKind::PromoCapt(PieceKind::Bishop)));
     /// ```
     pub fn from_uci(position: &Position, uci: &str) -> Result<Self> {
         // Extract the to/from squares
         let from = uci
             .get(0..2)
-            .ok_or(anyhow!("Move str must contain a `from` tile. Got {uci:?}"))?;
+            .ok_or(anyhow!("Move str must contain a `from` square. Got {uci:?}"))?;
         let to = uci
             .get(2..4)
-            .ok_or(anyhow!("Move str must contain a `to` tile. Got {uci:?}"))?;
+            .ok_or(anyhow!("Move str must contain a `to` square. Got {uci:?}"))?;
 
-        let from = Tile::from_uci(from)?;
-        let to = Tile::from_uci(to)?;
+        let from = Square::from_uci(from)?;
+        let to = Square::from_uci(to)?;
 
         // Extract information about the piece being moved
         let piece = position.board().piece_at(from).ok_or(anyhow!(
@@ -402,7 +402,7 @@ impl Move {
                 }
             } else if position.board().has(to) {
                 MoveKind::Capture
-            } else if Some(to) == position.ep_tile() && piece.is_pawn() {
+            } else if Some(to) == position.ep_square() && piece.is_pawn() {
                 MoveKind::EnPassantCapture
             } else if from.rank() == Rank::second(color) && to.rank() == Rank::fourth(color) {
                 MoveKind::PawnPushTwo
@@ -435,8 +435,8 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use chessie::{Move, Tile, MoveKind, PieceKind};
-    /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
+    /// # use chessie::{Move, Square, MoveKind, PieceKind};
+    /// let e7e8Q = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8Q.to_uci(), "e7e8q");
     /// ```
     pub fn to_uci(&self) -> String {
@@ -478,7 +478,7 @@ mod test {
 
     #[test]
     fn test_move_is_capture() {
-        let (from, to) = (Tile::A1, Tile::H8);
+        let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_capture());
         assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_capture());
         assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_capture());
@@ -491,7 +491,7 @@ mod test {
 
     #[test]
     fn test_move_is_en_passant() {
-        let (from, to) = (Tile::A1, Tile::H8);
+        let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_en_passant());
         assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_en_passant());
         assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_en_passant());
@@ -504,7 +504,7 @@ mod test {
 
     #[test]
     fn test_move_is_short_castle() {
-        let (from, to) = (Tile::A1, Tile::H8);
+        let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_short_castle());
         assert!(Move::new(from, to, MoveKind::KingsideCastle).is_short_castle());
         assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_short_castle());
@@ -517,7 +517,7 @@ mod test {
 
     #[test]
     fn test_move_is_long_castle() {
-        let (from, to) = (Tile::A1, Tile::H8);
+        let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_long_castle());
         assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_long_castle());
         assert!(Move::new(from, to, MoveKind::QueensideCastle).is_long_castle());
@@ -530,7 +530,7 @@ mod test {
 
     #[test]
     fn test_move_is_castle() {
-        let (from, to) = (Tile::A1, Tile::H8);
+        let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_castle());
         assert!(Move::new(from, to, MoveKind::KingsideCastle).is_castle());
         assert!(Move::new(from, to, MoveKind::QueensideCastle).is_castle());
@@ -543,7 +543,7 @@ mod test {
 
     #[test]
     fn test_move_is_pawn_double_push() {
-        let (from, to) = (Tile::A1, Tile::H8);
+        let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_pawn_double_push());
         assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_pawn_double_push());
         assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_pawn_double_push());
@@ -556,7 +556,7 @@ mod test {
 
     #[test]
     fn test_move_is_promotion() {
-        let (from, to) = (Tile::A1, Tile::H8);
+        let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_promotion());
         assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_promotion());
         assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_promotion());

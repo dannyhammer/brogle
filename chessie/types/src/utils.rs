@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::{Bitboard, Color, Rank, Tile};
+use super::{Bitboard, Color, Rank, Square};
 
 /// FEN string for the starting position of chess.
 pub const FEN_STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -83,10 +83,10 @@ pub fn generate_ray_table_datfiles<P: AsRef<Path>>(outdir: P) -> std::io::Result
     Ok(())
 }
 
-fn generate_ray_between_inclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
-    let mut rays = [[Bitboard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
+fn generate_ray_between_inclusive_table() -> [[Bitboard; Square::COUNT]; Square::COUNT] {
+    let mut rays = [[Bitboard::EMPTY_BOARD; Square::COUNT]; Square::COUNT];
 
-    for from in Tile::iter() {
+    for from in Square::iter() {
         for (df, dr) in QUEEN_DELTAS {
             let mut ray = from.bitboard(); // Include `from`
             let mut to = from;
@@ -101,10 +101,10 @@ fn generate_ray_between_inclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COU
     rays
 }
 
-fn generate_ray_between_exclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
-    let mut rays = [[Bitboard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
+fn generate_ray_between_exclusive_table() -> [[Bitboard; Square::COUNT]; Square::COUNT] {
+    let mut rays = [[Bitboard::EMPTY_BOARD; Square::COUNT]; Square::COUNT];
 
-    for from in Tile::iter() {
+    for from in Square::iter() {
         for (df, dr) in QUEEN_DELTAS {
             let mut ray = Bitboard::default(); // Do not include `from`
             let mut to = from;
@@ -119,17 +119,17 @@ fn generate_ray_between_exclusive_table() -> [[Bitboard; Tile::COUNT]; Tile::COU
     rays
 }
 
-fn generate_ray_containing_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
-    let mut rays = [[Bitboard::EMPTY_BOARD; Tile::COUNT]; Tile::COUNT];
+fn generate_ray_containing_table() -> [[Bitboard; Square::COUNT]; Square::COUNT] {
+    let mut rays = [[Bitboard::EMPTY_BOARD; Square::COUNT]; Square::COUNT];
 
-    for from in Tile::iter() {
+    for from in Square::iter() {
         let fr = from.rank();
         let ff = from.file();
-        for to in Tile::iter() {
+        for to in Square::iter() {
             let tr = to.rank();
             let tf = to.file();
             if from == to {
-                rays[from][to] = Bitboard::from_tile(from);
+                rays[from][to] = Bitboard::from_square(from);
             } else if fr == tr {
                 rays[from][to] = Bitboard::from_rank(fr);
             } else if ff == tf {
@@ -157,7 +157,7 @@ fn generate_ray_containing_table() -> [[Bitboard; Tile::COUNT]; Tile::COUNT] {
                     }
                     tmp = from;
                     // Second ray goes Southwest
-                    // I'm intentionally not resetting tmp here, so that the tile for `from` gets OR'd in
+                    // I'm intentionally not resetting tmp here, so that the square for `from` gets OR'd in
                     while let Some(shifted) = tmp.offset(-1, -1) {
                         rays[from][to] |= shifted.bitboard();
                         tmp = shifted;
@@ -228,14 +228,14 @@ pub fn generate_piece_attack_datfiles<P: AsRef<Path>>(outdir: P) -> std::io::Res
 ///
 /// Pawns, by default, may push forward by one, except when pushing from their starting rank (rank 2 for White, rank 7 for Black), in which case they may push forward by two.
 fn generate_pawn_pushes(color: Color) -> [Bitboard; 64] {
-    let mut boards = [Bitboard::default(); Tile::COUNT];
-    for tile in Tile::iter() {
-        let bb = Bitboard::from_tile(tile);
+    let mut boards = [Bitboard::default(); Square::COUNT];
+    for square in Square::iter() {
+        let bb = Bitboard::from_square(square);
 
-        if tile.rank() == Rank::second(color) {
-            boards[tile] = bb.advance_by(color, 1) | bb.advance_by(color, 2);
+        if square.rank() == Rank::second(color) {
+            boards[square] = bb.advance_by(color, 1) | bb.advance_by(color, 2);
         } else {
-            boards[tile] = bb.advance_by(color, 1);
+            boards[square] = bb.advance_by(color, 1);
         }
     }
     boards
@@ -245,11 +245,11 @@ fn generate_pawn_pushes(color: Color) -> [Bitboard; 64] {
 ///
 /// Pawns, by default, may capture diagonally forward by one.
 fn generate_pawn_attacks(color: Color) -> [Bitboard; 64] {
-    let mut boards = [Bitboard::default(); Tile::COUNT];
-    for tile in Tile::iter() {
-        let bb = Bitboard::from_tile(tile);
+    let mut boards = [Bitboard::default(); Square::COUNT];
+    for square in Square::iter() {
+        let bb = Bitboard::from_square(square);
 
-        boards[tile] = bb.advance_by(color, 1).east() | bb.advance_by(color, 1).west();
+        boards[square] = bb.advance_by(color, 1).east() | bb.advance_by(color, 1).west();
     }
     boards
 }
@@ -258,25 +258,25 @@ fn generate_pawn_attacks(color: Color) -> [Bitboard; 64] {
 /// Leapers may "leap" or "jump" to a square a specified distance away.
 ///
 /// In standard chess, the Leapers are the King and Knight.
-fn generate_leaper_mobility(deltas: &[(i8, i8)]) -> [Bitboard; Tile::COUNT] {
-    // Represents all locations this piece can reach from that tile/index.
-    let mut mobility = [Bitboard::default(); Tile::COUNT];
+fn generate_leaper_mobility(deltas: &[(i8, i8)]) -> [Bitboard; Square::COUNT] {
+    // Represents all locations this piece can reach from that square/index.
+    let mut mobility = [Bitboard::default(); Square::COUNT];
 
-    for tile in Tile::iter() {
-        // All reachable locations from `tile`.
-        // This is empty because we cannot "move to" the tile where we are currently.
+    for square in Square::iter() {
+        // All reachable locations from `square`.
+        // This is empty because we cannot "move to" the square where we are currently.
         let mut movement = Bitboard::default();
 
         // Loop over every pair of deltas
         for (df, dr) in deltas {
             // If shifting this location by the delta results in a valid position, add it to the movement mask.
-            if let Some(shifted) = tile.offset(*df, *dr) {
+            if let Some(shifted) = square.offset(*df, *dr) {
                 movement.set(shifted);
             }
         }
 
-        // Store the mobility from this tile.
-        mobility[tile] = movement;
+        // Store the mobility from this square.
+        mobility[square] = movement;
     }
 
     mobility
@@ -286,19 +286,19 @@ fn generate_leaper_mobility(deltas: &[(i8, i8)]) -> [Bitboard; Tile::COUNT] {
 /// Riders may "ride" or "slide" an unlimited number of squares in a direction.
 ///
 /// In standard chess, the Riders are the Rook, Bishop, and Queen.
-fn generate_rider_mobility(deltas: &[(i8, i8)]) -> [Bitboard; Tile::COUNT] {
-    // Represents all locations this piece can reach from that tile/index.
-    let mut mobility = [Bitboard::default(); Tile::COUNT];
+fn generate_rider_mobility(deltas: &[(i8, i8)]) -> [Bitboard; Square::COUNT] {
+    // Represents all locations this piece can reach from that square/index.
+    let mut mobility = [Bitboard::default(); Square::COUNT];
 
-    for tile in Tile::iter() {
-        // All reachable locations from `tile`.
-        // This is empty because we cannot "move to" the tile where we are currently.
+    for square in Square::iter() {
+        // All reachable locations from `square`.
+        // This is empty because we cannot "move to" the square where we are currently.
         let mut movement = Bitboard::default();
 
         // Loop over every pair of deltas
         for (df, dr) in deltas {
             // Create a "ray" that represents movement in this direction.
-            let mut ray = tile;
+            let mut ray = square;
 
             // Shift the ray and append it's movement, until we reach the end of the board.
             while let Some(shifted) = ray.offset(*df, *dr) {
@@ -307,8 +307,8 @@ fn generate_rider_mobility(deltas: &[(i8, i8)]) -> [Bitboard; Tile::COUNT] {
             }
         }
 
-        // Store the mobility from this tile.
-        mobility[tile] = movement;
+        // Store the mobility from this square.
+        mobility[square] = movement;
     }
 
     mobility
@@ -325,28 +325,28 @@ fn generate_knight_mobility() -> [Bitboard; 64] {
 }
 
 /// Generates the default mobility for the Rook.
-fn generate_rook_mobility() -> [Bitboard; Tile::COUNT] {
+fn generate_rook_mobility() -> [Bitboard; Square::COUNT] {
     generate_rider_mobility(&ROOK_DELTAS)
 }
 
 /// Generates the default mobility for the Bishop.
-fn generate_bishop_mobility() -> [Bitboard; Tile::COUNT] {
+fn generate_bishop_mobility() -> [Bitboard; Square::COUNT] {
     generate_rider_mobility(&BISHOP_DELTAS)
 }
 
 /*
 /// Generates the default mobility for the Queen.
-fn generate_queen_mobility() -> [Bitboard; Tile::COUNT] {
+fn generate_queen_mobility() -> [Bitboard; Square::COUNT] {
     generate_rider_mobility(&QUEEN_DELTAS)
 }
 
 /// Generates the default mobility for the Dragon (Queen + Knight).
-fn generate_dragon_mobility() -> [Bitboard; Tile::COUNT] {
+fn generate_dragon_mobility() -> [Bitboard; Square::COUNT] {
     let mut dragon = generate_rider_mobility(&QUEEN_DELTAS);
     let knight = generate_leaper_mobility(&KNIGHT_DELTAS);
 
-    for tile in Tile::iter() {
-        dragon[tile] |= knight[tile];
+    for square in Square::iter() {
+        dragon[square] |= knight[square];
     }
 
     dragon

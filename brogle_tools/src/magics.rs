@@ -1,4 +1,4 @@
-use chessie::Tile;
+use chessie::Square;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct MagicEntry {
@@ -9,7 +9,7 @@ pub(crate) struct MagicEntry {
 }
 
 #[rustfmt::skip]
-pub const ROOK_MAGICS: &[MagicEntry; Tile::COUNT] = &[
+pub const ROOK_MAGICS: &[MagicEntry; Square::COUNT] = &[
   MagicEntry { mask: 0x000101010101017E, magic: 0x0080012080400110, shift: 52, offset: 0 },
   MagicEntry { mask: 0x000202020202027C, magic: 0x0040051000446000, shift: 53, offset: 4096 },
   MagicEntry { mask: 0x000404040404047A, magic: 0x02000A02C0208010, shift: 53, offset: 6144 },
@@ -78,7 +78,7 @@ pub const ROOK_MAGICS: &[MagicEntry; Tile::COUNT] = &[
 pub const ROOK_TABLE_SIZE: usize = 102400;
 
 #[rustfmt::skip]
-pub const BISHOP_MAGICS: &[MagicEntry; Tile::COUNT] = &[
+pub const BISHOP_MAGICS: &[MagicEntry; Square::COUNT] = &[
   MagicEntry { mask: 0x0040201008040200, magic: 0x0840020884068880, shift: 58, offset: 0 },
   MagicEntry { mask: 0x0000402010080400, magic: 0x80201840810042A2, shift: 59, offset: 64 },
   MagicEntry { mask: 0x0000004020100A00, magic: 0x0209084101002100, shift: 59, offset: 96 },

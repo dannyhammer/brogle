@@ -9,7 +9,7 @@ use anyhow::{bail, Context, Result};
 
 use super::{Bitboard, Color};
 
-/// Represents a single tile (or square) on an `8x8` chess board.
+/// Represents a single square on an `8x8` chess board.
 ///
 /// Internally encoded using the following bit pattern:
 /// ```text
@@ -21,7 +21,7 @@ use super::{Bitboard, Color};
 /// ```
 ///
 /// This bit pattern is also known as [Least Significant File Mapping](https://www.chessprogramming.org/Square_Mapping_Considerations#Deduction_on_Files_and_Ranks),
-/// so `tile = file + rank * 8`. The indices of each square on the board is given as follows:
+/// so `square = file + rank * 8`. The indices of each square on the board is given as follows:
 /// ```text
 /// 8| 56 57 58 59 59 61 62 62
 /// 7| 48 49 50 51 52 53 54 55
@@ -36,9 +36,9 @@ use super::{Bitboard, Color};
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 #[repr(transparent)]
-pub struct Tile(pub(crate) u8);
+pub struct Square(pub(crate) u8);
 
-impl Tile {
+impl Square {
     pub const A1: Self = Self::new(File::A, Rank::ONE);
     pub const A2: Self = Self::new(File::A, Rank::TWO);
     pub const A3: Self = Self::new(File::A, Rank::THREE);
@@ -122,49 +122,49 @@ impl Tile {
     const FILE_MASK: u8 = 0b0000_0111;
     const RANK_MASK: u8 = 0b0011_1000;
 
-    /// Returns an iterator over all available tiles.
+    /// Returns an iterator over all available squares.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// let mut iter = Tile::iter();
+    /// # use types::Square;
+    /// let mut iter = Square::iter();
     /// assert_eq!(iter.len(), 64);
-    /// assert_eq!(iter.next().unwrap(), Tile::A1);
-    /// assert_eq!(iter.last().unwrap(), Tile::H8);
+    /// assert_eq!(iter.next().unwrap(), Square::A1);
+    /// assert_eq!(iter.last().unwrap(), Square::H8);
     /// ```
     pub fn iter() -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator<Item = Self> {
         (Self::MIN..=Self::MAX).map(Self)
     }
 
-    /// Creates a new [`Tile`] from the provided [`File`] and [`Rank`].
+    /// Creates a new [`Square`] from the provided [`File`] and [`Rank`].
     ///
     /// # Example
     /// ```
-    /// # use types::{Tile, File, Rank};
-    /// let c4 = Tile::new(File::C, Rank::FOUR);
-    /// assert_eq!(c4, Tile::C4);
+    /// # use types::{Square, File, Rank};
+    /// let c4 = Square::new(File::C, Rank::FOUR);
+    /// assert_eq!(c4, Square::C4);
     /// ```
     pub const fn new(file: File, rank: Rank) -> Self {
         // least-significant file mapping
         Self(file.0 ^ rank.0 << 3)
     }
 
-    /// Creates a new [`Tile`] from the provided index value.
+    /// Creates a new [`Square`] from the provided index value.
     ///
     /// The provided `index` must be `[0, 63]` or else an error is returned.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// let c4 = Tile::from_index(26);
+    /// # use types::Square;
+    /// let c4 = Square::from_index(26);
     /// assert!(c4.is_ok());
-    /// assert_eq!(c4.unwrap(), Tile::C4);
+    /// assert_eq!(c4.unwrap(), Square::C4);
     /// ```
     pub fn from_index(index: usize) -> Result<Self> {
         Self::from_bits(index as u8)
     }
 
-    /// Creates a new [`Tile`] from the provided index value, without error checking.
+    /// Creates a new [`Square`] from the provided index value, without error checking.
     ///
     /// # Panics
     ///
@@ -172,30 +172,30 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// let c4 = Tile::from_index_unchecked(26);
-    /// assert_eq!(c4, Tile::C4);
+    /// # use types::Square;
+    /// let c4 = Square::from_index_unchecked(26);
+    /// assert_eq!(c4, Square::C4);
     /// ```
     pub const fn from_index_unchecked(index: usize) -> Self {
         debug_assert!(index < 64, "Index must be between [0,64)");
         Self(index as u8)
     }
 
-    /// Creates a new [`Tile`] from the provided `u8` value.
+    /// Creates a new [`Square`] from the provided `u8` value.
     ///
     /// The provided `bits` must be `[0, 63]` or else an error is returned.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// let c4 = Tile::from_bits(26);
+    /// # use types::Square;
+    /// let c4 = Square::from_bits(26);
     /// assert!(c4.is_ok());
-    /// assert_eq!(c4.unwrap(), Tile::C4);
+    /// assert_eq!(c4.unwrap(), Square::C4);
     /// ```
     pub fn from_bits(bits: u8) -> Result<Self> {
         if bits > Self::MAX {
             bail!(
-                "Invalid bits for Tile: Must be between [{}, {}]. Got {bits}",
+                "Invalid bits for Square: Must be between [{}, {}]. Got {bits}",
                 Self::MIN,
                 Self::MAX
             );
@@ -203,69 +203,69 @@ impl Tile {
         Ok(Self(bits))
     }
 
-    /// Creates a new [`Tile`] from the provided `u8` value, without error checking.
+    /// Creates a new [`Square`] from the provided `u8` value, without error checking.
     ///
     /// The provided `bits` must be `[0, 63]` or else an error is returned.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// let c4 = Tile::from_bits_unchecked(26);
-    /// assert_eq!(c4, Tile::C4);
+    /// # use types::Square;
+    /// let c4 = Square::from_bits_unchecked(26);
+    /// assert_eq!(c4, Square::C4);
     /// ```
     pub const fn from_bits_unchecked(bits: u8) -> Self {
         Self(bits)
     }
 
-    /// Flips this [`Tile`], as if the board was rotated 180 degrees.
+    /// Flips this [`Square`], as if the board was rotated 180 degrees.
     ///
-    /// This is equivalent to calling [`Tile::flipped_rank`] and [`Tile::flipped_file`]
+    /// This is equivalent to calling [`Square::flipped_rank`] and [`Square::flipped_file`]
     /// subsequently, but faster.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::A1.flipped(), Tile::H8);
-    /// assert_eq!(Tile::C4.flipped(), Tile::F5);
+    /// # use types::Square;
+    /// assert_eq!(Square::A1.flipped(), Square::H8);
+    /// assert_eq!(Square::C4.flipped(), Square::F5);
     /// ```
     pub const fn flipped(self) -> Self {
         Self(Self::MAX - self.0)
     }
 
-    /// Flips the [`File`] of this [`Tile`].
+    /// Flips the [`File`] of this [`Square`].
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::A1.flipped_file(), Tile::H1);
-    /// assert_eq!(Tile::C4.flipped_file(), Tile::F4);
+    /// # use types::Square;
+    /// assert_eq!(Square::A1.flipped_file(), Square::H1);
+    /// assert_eq!(Square::C4.flipped_file(), Square::F4);
     /// ```
     pub const fn flipped_file(self) -> Self {
         Self(self.0 ^ Self::FILE_MASK)
     }
 
-    /// Flips the [`Rank`] of this [`Tile`].
+    /// Flips the [`Rank`] of this [`Square`].
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::A1.flipped_rank(), Tile::A8);
-    /// assert_eq!(Tile::C4.flipped_rank(), Tile::C5);
+    /// # use types::Square;
+    /// assert_eq!(Square::A1.flipped_rank(), Square::A8);
+    /// assert_eq!(Square::C4.flipped_rank(), Square::C5);
     /// ```
     pub const fn flipped_rank(self) -> Self {
         Self(self.0 ^ Self::RANK_MASK)
     }
 
-    /// If `color` is Black, flips this [`Tile`].
+    /// If `color` is Black, flips this [`Square`].
     /// If `color` is White, does nothing.
     ///
-    /// See [`Tile::flipped`] for more.
+    /// See [`Square::flipped`] for more.
     ///
     /// # Example
     /// ```
-    /// # use types::{Color, Tile};
-    /// assert_eq!(Tile::C4.relative_to(Color::White), Tile::C4);
-    /// assert_eq!(Tile::C4.relative_to(Color::Black), Tile::F5);
+    /// # use types::{Color, Square};
+    /// assert_eq!(Square::C4.relative_to(Color::White), Square::C4);
+    /// assert_eq!(Square::C4.relative_to(Color::Black), Square::F5);
     /// ```
     pub const fn relative_to(self, color: Color) -> Self {
         match color {
@@ -274,16 +274,16 @@ impl Tile {
         }
     }
 
-    /// If `color` is Black, flips the [`Rank`] of this [`Tile`].
+    /// If `color` is Black, flips the [`Rank`] of this [`Square`].
     /// If `color` is White, does nothing.
     ///
-    /// See [`Tile::flipped_rank`] for more.
+    /// See [`Square::flipped_rank`] for more.
     ///
     /// # Example
     /// ```
-    /// # use types::{Color, Tile};
-    /// assert_eq!(Tile::E1.rank_relative_to(Color::White), Tile::E1);
-    /// assert_eq!(Tile::E1.rank_relative_to(Color::Black), Tile::E8);
+    /// # use types::{Color, Square};
+    /// assert_eq!(Square::E1.rank_relative_to(Color::White), Square::E1);
+    /// assert_eq!(Square::E1.rank_relative_to(Color::Black), Square::E8);
     /// ```
     pub const fn rank_relative_to(self, color: Color) -> Self {
         match color {
@@ -292,16 +292,16 @@ impl Tile {
         }
     }
 
-    /// If `color` is Black, flips the [`File`] of this [`Tile`].
+    /// If `color` is Black, flips the [`File`] of this [`Square`].
     /// If `color` is White, does nothing.
     ///
-    /// See [`Tile::flipped_file`] for more.
+    /// See [`Square::flipped_file`] for more.
     ///
     /// # Example
     /// ```
-    /// # use types::{Color, Tile};
-    /// assert_eq!(Tile::A1.file_relative_to(Color::White), Tile::A1);
-    /// assert_eq!(Tile::A1.file_relative_to(Color::Black), Tile::H1);
+    /// # use types::{Color, Square};
+    /// assert_eq!(Square::A1.file_relative_to(Color::White), Square::A1);
+    /// assert_eq!(Square::A1.file_relative_to(Color::Black), Square::H1);
     /// ```
     pub const fn file_relative_to(self, color: Color) -> Self {
         match color {
@@ -310,106 +310,106 @@ impl Tile {
         }
     }
 
-    /// Iterating over [`Tile`]s increases their internal counter by 1.
+    /// Iterating over [`Square`]s increases their internal counter by 1.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::A1.next(), Some(Tile::B1));
-    /// assert_eq!(Tile::H3.next(), Some(Tile::A4));
-    /// assert_eq!(Tile::H8.next(), None);
+    /// # use types::Square;
+    /// assert_eq!(Square::A1.next(), Some(Square::B1));
+    /// assert_eq!(Square::H3.next(), Some(Square::A4));
+    /// assert_eq!(Square::H8.next(), None);
     /// ```
     pub fn next(self) -> Option<Self> {
         (self.0 < Self::MAX).then(|| Self::from_bits_unchecked(self.0 + 1))
     }
 
-    /// Iterating backwards over [`Tile`]s decreases their internal counter by 1.
+    /// Iterating backwards over [`Square`]s decreases their internal counter by 1.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::A1.prev(), None);
-    /// assert_eq!(Tile::A4.prev(), Some(Tile::H3));
-    /// assert_eq!(Tile::H8.prev(), Some(Tile::G8));
+    /// # use types::Square;
+    /// assert_eq!(Square::A1.prev(), None);
+    /// assert_eq!(Square::A4.prev(), Some(Square::H3));
+    /// assert_eq!(Square::H8.prev(), Some(Square::G8));
     /// ```
     pub fn prev(self) -> Option<Self> {
         (self.0 > Self::MIN).then(|| Self::from_bits_unchecked(self.0 - 1))
     }
 
-    /// Fetches the inner index value of the [`Tile`], which represented as a [`u8`].
+    /// Fetches the inner index value of the [`Square`], which represented as a [`u8`].
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::C4.inner(), 26);
+    /// # use types::Square;
+    /// assert_eq!(Square::C4.inner(), 26);
     /// ```
     pub const fn inner(&self) -> u8 {
         self.0
     }
 
-    /// Fetches the [`File`] of this [`Tile`].
+    /// Fetches the [`File`] of this [`Square`].
     ///
     /// # Example
     /// ```
-    /// # use types::{Tile, File};
-    /// assert_eq!(Tile::C4.file(), File::C);
+    /// # use types::{Square, File};
+    /// assert_eq!(Square::C4.file(), File::C);
     /// ```
     pub const fn file(&self) -> File {
         File(self.0 & Self::FILE_MASK) // Same as % 8
     }
 
-    /// Fetches the [`Rank`] of this [`Tile`].
+    /// Fetches the [`Rank`] of this [`Square`].
     ///
     /// # Example
     /// ```
-    /// # use types::{Tile, Rank};
-    /// assert_eq!(Tile::C4.rank(), Rank::FOUR);
+    /// # use types::{Square, Rank};
+    /// assert_eq!(Square::C4.rank(), Rank::FOUR);
     /// ```
     pub const fn rank(&self) -> Rank {
         Rank(self.0 >> 3) // Same as / 8
     }
 
-    /// Fetches the [`File`] and [`Rank`] of this [`Tile`].
+    /// Fetches the [`File`] and [`Rank`] of this [`Square`].
     ///
     /// # Example
     /// ```
-    /// # use types::{Tile, File, Rank};
-    /// assert_eq!(Tile::C4.parts(), (File::C, Rank::FOUR));
+    /// # use types::{Square, File, Rank};
+    /// assert_eq!(Square::C4.parts(), (File::C, Rank::FOUR));
     /// ```
     pub const fn parts(&self) -> (File, Rank) {
         (self.file(), self.rank())
     }
 
-    /// Fetches the inner index value of the [`Tile`], casted to a [`usize`].
+    /// Fetches the inner index value of the [`Square`], casted to a [`usize`].
     ///
-    /// Useful when using a [`Tile`] to index into things.
+    /// Useful when using a [`Square`] to index into things.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::C4.index(), 26);
+    /// # use types::Square;
+    /// assert_eq!(Square::C4.index(), 26);
     /// ```
     pub const fn index(&self) -> usize {
         self.inner() as usize
     }
 
-    /// Returns `true` if this [`Tile`] is a light square.
+    /// Returns `true` if this [`Square`] is a light square.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert!(Tile::C4.is_light());
+    /// # use types::Square;
+    /// assert!(Square::C4.is_light());
     /// ```
     pub const fn is_light(&self) -> bool {
         (self.file().0 + self.rank().0) % 2 != 0
     }
 
-    /// Returns `true` if this [`Tile`] is a dark square.
+    /// Returns `true` if this [`Square`] is a dark square.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert!(Tile::C5.is_dark());
+    /// # use types::Square;
+    /// assert!(Square::C5.is_dark());
     /// ```
     pub const fn is_dark(&self) -> bool {
         !self.is_light()
@@ -419,13 +419,13 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::C5.is_diagonal_to(Tile::A3), true);
-    /// assert_eq!(Tile::H1.is_diagonal_to(Tile::A8), true);
-    /// assert_eq!(Tile::F7.is_diagonal_to(Tile::F7), true);
-    /// assert_eq!(Tile::A1.is_diagonal_to(Tile::B3), false);
-    /// assert_eq!(Tile::A4.is_diagonal_to(Tile::H3), false);
-    /// assert_eq!(Tile::A4.is_diagonal_to(Tile::H4), false);
+    /// # use types::Square;
+    /// assert_eq!(Square::C5.is_diagonal_to(Square::A3), true);
+    /// assert_eq!(Square::H1.is_diagonal_to(Square::A8), true);
+    /// assert_eq!(Square::F7.is_diagonal_to(Square::F7), true);
+    /// assert_eq!(Square::A1.is_diagonal_to(Square::B3), false);
+    /// assert_eq!(Square::A4.is_diagonal_to(Square::H3), false);
+    /// assert_eq!(Square::A4.is_diagonal_to(Square::H4), false);
     /// ```
     pub const fn is_diagonal_to(&self, other: Self) -> bool {
         if self.0 == other.0 {
@@ -437,13 +437,13 @@ impl Tile {
             && self.file().0 != other.file().0 // Not on same file
     }
 
-    /// Returns the [`Color`] of this [`Tile`].
+    /// Returns the [`Color`] of this [`Square`].
     ///
     /// # Example
     /// ```
-    /// # use types::{Color, Tile};
-    /// assert_eq!(Tile::C5.color(), Color::Black);
-    /// assert_eq!(Tile::C4.color(), Color::White);
+    /// # use types::{Color, Square};
+    /// assert_eq!(Square::C5.color(), Color::Black);
+    /// assert_eq!(Square::C4.color(), Color::White);
     /// ```
     pub const fn color(&self) -> Color {
         if self.is_light() {
@@ -453,22 +453,22 @@ impl Tile {
         }
     }
 
-    /// Creates a [`Tile`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    /// Creates a [`Square`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// let c4 = Tile::from_uci("c4");
+    /// # use types::Square;
+    /// let c4 = Square::from_uci("c4");
     /// assert!(c4.is_ok());
-    /// assert_eq!(c4.unwrap(), Tile::C4);
+    /// assert_eq!(c4.unwrap(), Square::C4);
     ///
-    /// let err = Tile::from_uci("z0");
+    /// let err = Square::from_uci("z0");
     /// assert!(err.is_err());
     /// ```
-    pub fn from_uci(tile: &str) -> Result<Self> {
-        let bytes = tile.as_bytes();
-        if tile.len() != 2 {
-            bail!("Invalid Tile string: String must contain exactly 2 characters. Got {tile}")
+    pub fn from_uci(square: &str) -> Result<Self> {
+        let bytes = square.as_bytes();
+        if square.len() != 2 {
+            bail!("Invalid Square string: String must contain exactly 2 characters. Got {square}")
         }
         let file = File::from_char(bytes[0] as char)?;
         let rank = Rank::from_char(bytes[1] as char)?;
@@ -476,31 +476,31 @@ impl Tile {
         Ok(Self::new(file, rank))
     }
 
-    /// Converts this [`Tile`] to a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
+    /// Converts this [`Square`] to a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!("c4", Tile::C4.to_uci());
+    /// # use types::Square;
+    /// assert_eq!("c4", Square::C4.to_uci());
     /// ```
     pub fn to_uci(self) -> String {
         format!("{}{}", self.file(), self.rank())
     }
 
-    /// Alias for [`Bitboard::from_tile`].
+    /// Alias for [`Bitboard::from_square`].
     pub const fn bitboard(&self) -> Bitboard {
-        Bitboard::from_tile(*self)
+        Bitboard::from_square(*self)
     }
 
     /// Computes the distance between `self` and `other`.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::C4.distance_to(Tile::C1), 3);
-    /// assert_eq!(Tile::A1.distance_to(Tile::A8), 7);
-    /// assert_eq!(Tile::D6.distance_to(Tile::D6), 0);
-    /// assert_eq!(Tile::E2.distance_to(Tile::C6), 6);
+    /// # use types::Square;
+    /// assert_eq!(Square::C4.distance_to(Square::C1), 3);
+    /// assert_eq!(Square::A1.distance_to(Square::A8), 7);
+    /// assert_eq!(Square::D6.distance_to(Square::D6), 0);
+    /// assert_eq!(Square::E2.distance_to(Square::C6), 6);
     /// ```
     pub const fn distance_to(&self, other: Self) -> u8 {
         self.file().0.abs_diff(other.file().0) + self.rank().0.abs_diff(other.rank().0)
@@ -508,14 +508,14 @@ impl Tile {
 
     /// Computes the distance between `self` and the center of the board.
     ///
-    /// The center tiles are E4, E5, D4, and D5.
+    /// The center squares are E4, E5, D4, and D5.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::D5.distance_from_center(), 0);
-    /// assert_eq!(Tile::E4.distance_from_center(), 0);
-    /// assert_eq!(Tile::A1.distance_from_center(), 6);
+    /// # use types::Square;
+    /// assert_eq!(Square::D5.distance_from_center(), 0);
+    /// assert_eq!(Square::E4.distance_from_center(), 0);
+    /// assert_eq!(Square::A1.distance_from_center(), 6);
     /// ```
     pub fn distance_from_center(&self) -> u8 {
         self.distance_to(Self::E4)
@@ -523,16 +523,16 @@ impl Tile {
             .min(self.distance_to(Self::D4).min(self.distance_to(Self::D5)))
     }
 
-    /// Attempt to offset this [`Tile`] by the file and rank offsets.
+    /// Attempt to offset this [`Square`] by the file and rank offsets.
     ///
     /// If `self + offset` would exceed the bounds of this [`File`], then `None` is returned.
     ///
     /// # Example
     /// ```
-    /// # use types::Tile;
-    /// assert_eq!(Tile::C4.offset(1, 1), Some(Tile::D5));
-    /// assert_eq!(Tile::C4.offset(-1, -1), Some(Tile::B3));
-    /// assert_eq!(Tile::A1.offset(-1, -1), None);
+    /// # use types::Square;
+    /// assert_eq!(Square::C4.offset(1, 1), Some(Square::D5));
+    /// assert_eq!(Square::C4.offset(-1, -1), Some(Square::B3));
+    /// assert_eq!(Square::A1.offset(-1, -1), None);
     /// ```
     pub fn offset(&self, file_delta: i8, rank_delta: i8) -> Option<Self> {
         let file = self.file().offset(file_delta)?;
@@ -541,70 +541,70 @@ impl Tile {
         Some(Self::new(file, rank))
     }
 
-    /// Increments (if `color` is [`Color::White`]) or decrements (if `color` is [`Color::Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
+    /// Increments (if `color` is [`Color::White`]) or decrements (if `color` is [`Color::Black`]) the [`Rank`] of this [`Square`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
     /// # Example
     /// ```
-    /// # use types::{Tile, Color};
-    /// assert_eq!(Tile::C4.forward_by(Color::White, 1), Some(Tile::C5));
-    /// assert_eq!(Tile::C4.forward_by(Color::Black, 1), Some(Tile::C3));
+    /// # use types::{Square, Color};
+    /// assert_eq!(Square::C4.forward_by(Color::White, 1), Some(Square::C5));
+    /// assert_eq!(Square::C4.forward_by(Color::Black, 1), Some(Square::C3));
     /// ```
     pub fn forward_by(&self, color: Color, n: u8) -> Option<Self> {
         self.offset(0, n as i8 * color.negation_multiplier())
     }
 
-    /// Decrements (if `color` is [`Color::White`]) or increments (if `color` is [`Color::Black`]) the [`Rank`] of this [`Tile`] by `n`, if possible.
+    /// Decrements (if `color` is [`Color::White`]) or increments (if `color` is [`Color::Black`]) the [`Rank`] of this [`Square`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
     /// # Example
     /// ```
-    /// # use types::{Tile, Color};
-    /// assert_eq!(Tile::C4.backward_by(Color::White, 1), Some(Tile::C3));
-    /// assert_eq!(Tile::C4.backward_by(Color::Black, 1), Some(Tile::C5));
+    /// # use types::{Square, Color};
+    /// assert_eq!(Square::C4.backward_by(Color::White, 1), Some(Square::C3));
+    /// assert_eq!(Square::C4.backward_by(Color::Black, 1), Some(Square::C5));
     /// ```
     pub fn backward_by(&self, color: Color, n: u8) -> Option<Self> {
         self.offset(0, n as i8 * color.opponent().negation_multiplier())
     }
 
-    /// Increments (if `color` is [`Color::White`]) or decrements (if `color` is [`Color::Black`]) the [`File`] of this [`Tile`] by `n`, if possible.
+    /// Increments (if `color` is [`Color::White`]) or decrements (if `color` is [`Color::Black`]) the [`File`] of this [`Square`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
     /// # Example
     /// ```
-    /// # use types::{Tile, Color};
-    /// assert_eq!(Tile::C4.right_by(Color::White, 1), Some(Tile::D4));
-    /// assert_eq!(Tile::C4.right_by(Color::Black, 1), Some(Tile::B4));
+    /// # use types::{Square, Color};
+    /// assert_eq!(Square::C4.right_by(Color::White, 1), Some(Square::D4));
+    /// assert_eq!(Square::C4.right_by(Color::Black, 1), Some(Square::B4));
     /// ```
     pub fn right_by(&self, color: Color, n: u8) -> Option<Self> {
         self.offset(n as i8 * color.negation_multiplier(), 0)
     }
 
-    /// Decrements (if `color` is [`Color::White`]) or increments (if `color` is [`Color::Black`]) the [`File`] of this [`Tile`] by `n`, if possible.
+    /// Decrements (if `color` is [`Color::White`]) or increments (if `color` is [`Color::Black`]) the [`File`] of this [`Square`] by `n`, if possible.
     ///
     /// Returns [`None`] if it is already at the edge of the board.
     ///
     /// # Example
     /// ```
-    /// # use types::{Tile, Color};
-    /// assert_eq!(Tile::C4.left_by(Color::White, 1), Some(Tile::B4));
-    /// assert_eq!(Tile::C4.left_by(Color::Black, 1), Some(Tile::D4));
+    /// # use types::{Square, Color};
+    /// assert_eq!(Square::C4.left_by(Color::White, 1), Some(Square::B4));
+    /// assert_eq!(Square::C4.left_by(Color::Black, 1), Some(Square::D4));
     /// ```
     pub fn left_by(&self, color: Color, n: u8) -> Option<Self> {
         self.offset(n as i8 * color.opponent().negation_multiplier(), 0)
     }
 }
 
-impl<T: AsRef<str>> PartialEq<T> for Tile {
+impl<T: AsRef<str>> PartialEq<T> for Square {
     fn eq(&self, other: &T) -> bool {
         self.to_string().eq(other.as_ref())
     }
 }
 
-impl FromStr for Tile {
+impl FromStr for Square {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -612,126 +612,126 @@ impl FromStr for Tile {
     }
 }
 
-impl TryFrom<&str> for Tile {
+impl TryFrom<&str> for Square {
     type Error = anyhow::Error;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Self::from_uci(value)
     }
 }
 
-impl TryFrom<String> for Tile {
+impl TryFrom<String> for Square {
     type Error = anyhow::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::from_uci(&value)
     }
 }
 
-impl TryFrom<usize> for Tile {
+impl TryFrom<usize> for Square {
     type Error = anyhow::Error;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         Self::from_index(value)
     }
 }
 
-impl TryFrom<u8> for Tile {
+impl TryFrom<u8> for Square {
     type Error = anyhow::Error;
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Self::from_bits(value)
     }
 }
 
-impl TryFrom<i32> for Tile {
+impl TryFrom<i32> for Square {
     type Error = anyhow::Error;
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         Self::from_bits(value as u8)
     }
 }
 
-impl Add<Rank> for Tile {
+impl Add<Rank> for Square {
     type Output = Self;
     fn add(self, rhs: Rank) -> Self::Output {
         Self::new(self.file(), self.rank() + rhs)
     }
 }
 
-impl Add<File> for Tile {
+impl Add<File> for Square {
     type Output = Self;
     fn add(self, rhs: File) -> Self::Output {
         Self::new(self.file() + rhs, self.rank())
     }
 }
 
-impl Sub<Rank> for Tile {
+impl Sub<Rank> for Square {
     type Output = Self;
     fn sub(self, rhs: Rank) -> Self::Output {
         Self::new(self.file(), self.rank() - rhs)
     }
 }
 
-impl Sub<File> for Tile {
+impl Sub<File> for Square {
     type Output = Self;
     fn sub(self, rhs: File) -> Self::Output {
         Self::new(self.file() - rhs, self.rank())
     }
 }
 
-impl AddAssign<Rank> for Tile {
+impl AddAssign<Rank> for Square {
     fn add_assign(&mut self, rhs: Rank) {
         *self = *self + rhs;
     }
 }
 
-impl SubAssign<Rank> for Tile {
+impl SubAssign<Rank> for Square {
     fn sub_assign(&mut self, rhs: Rank) {
         *self = *self - rhs;
     }
 }
 
-impl AddAssign<File> for Tile {
+impl AddAssign<File> for Square {
     fn add_assign(&mut self, rhs: File) {
         *self = *self + rhs;
     }
 }
 
-impl SubAssign<File> for Tile {
+impl SubAssign<File> for Square {
     fn sub_assign(&mut self, rhs: File) {
         *self = *self - rhs;
     }
 }
 
-impl<T> Index<Tile> for [T; Tile::COUNT] {
+impl<T> Index<Square> for [T; Square::COUNT] {
     type Output = T;
-    fn index(&self, index: Tile) -> &Self::Output {
+    fn index(&self, index: Square) -> &Self::Output {
         &self[index.index()]
     }
 }
 
-impl<T> IndexMut<Tile> for [T; Tile::COUNT] {
-    fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
+impl<T> IndexMut<Square> for [T; Square::COUNT] {
+    fn index_mut(&mut self, index: Square) -> &mut Self::Output {
         &mut self[index.index()]
     }
 }
 
-impl<T> Index<Tile> for [[T; File::COUNT]; Rank::COUNT] {
+impl<T> Index<Square> for [[T; File::COUNT]; Rank::COUNT] {
     type Output = T;
-    fn index(&self, index: Tile) -> &Self::Output {
+    fn index(&self, index: Square) -> &Self::Output {
         &self[index.file()][index.rank()]
     }
 }
 
-impl<T> IndexMut<Tile> for [[T; File::COUNT]; Rank::COUNT] {
-    fn index_mut(&mut self, index: Tile) -> &mut Self::Output {
+impl<T> IndexMut<Square> for [[T; File::COUNT]; Rank::COUNT] {
+    fn index_mut(&mut self, index: Square) -> &mut Self::Output {
         &mut self[index.file()][index.rank()]
     }
 }
 
-impl fmt::Display for Tile {
+impl fmt::Display for Square {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_uci())
     }
 }
 
-impl fmt::Debug for Tile {
+impl fmt::Debug for Square {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} ({})", self.to_uci(), self.0)
     }
@@ -1022,8 +1022,8 @@ impl TryFrom<char> for Rank {
     }
 }
 
-impl From<Tile> for Rank {
-    fn from(value: Tile) -> Self {
+impl From<Square> for Rank {
+    fn from(value: Square) -> Self {
         value.rank()
     }
 }
@@ -1055,9 +1055,9 @@ impl SubAssign<char> for Rank {
 }
 
 impl Mul<File> for Rank {
-    type Output = Tile;
+    type Output = Square;
     fn mul(self, file: File) -> Self::Output {
-        Tile::new(file, self)
+        Square::new(file, self)
     }
 }
 
@@ -1246,8 +1246,8 @@ impl TryFrom<char> for File {
     }
 }
 
-impl From<Tile> for File {
-    fn from(value: Tile) -> Self {
+impl From<Square> for File {
+    fn from(value: Square) -> Self {
         value.file()
     }
 }
@@ -1279,9 +1279,9 @@ impl SubAssign<char> for File {
 }
 
 impl Mul<Rank> for File {
-    type Output = Tile;
+    type Output = Square;
     fn mul(self, rank: Rank) -> Self::Output {
-        Tile::new(self, rank)
+        Square::new(self, rank)
     }
 }
 
@@ -1321,22 +1321,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tiles() {
+    fn test_squares() {
         // Test the four corners
-        let a1 = Tile::new(File(0), Rank(0));
+        let a1 = Square::new(File(0), Rank(0));
         assert_eq!(a1.to_string(), "a1");
 
-        let h1 = Tile::new(File(7), Rank(0));
+        let h1 = Square::new(File(7), Rank(0));
         assert_eq!(h1.to_string(), "h1");
 
-        let a8 = Tile::new(File(0), Rank(7));
+        let a8 = Square::new(File(0), Rank(7));
         assert_eq!(a8.to_string(), "a8");
 
-        let h8 = Tile::new(File(7), Rank(7));
+        let h8 = Square::new(File(7), Rank(7));
         assert_eq!(h8.to_string(), "h8");
 
         // And some arbitrary location near the middle
-        let d4 = Tile::new(File(3), Rank(3));
+        let d4 = Square::new(File(3), Rank(3));
         assert_eq!(d4.to_string(), "d4")
     }
 
@@ -1356,25 +1356,25 @@ mod tests {
         assert!(Rank::try_from('9').is_err());
         assert!(File::try_from('z').is_err());
 
-        // Now test tiles as a whole
-        assert_eq!(Tile::try_from("a1").unwrap(), Tile::A1);
-        assert_eq!(Tile::try_from(0).unwrap(), Tile::A1);
-        assert_eq!(Tile::try_from("h8").unwrap(), Tile::H8);
-        assert_eq!(Tile::try_from(63).unwrap(), Tile::H8);
-        assert_eq!(Tile::try_from("d4").unwrap(), Tile::D4);
+        // Now test squares as a whole
+        assert_eq!(Square::try_from("a1").unwrap(), Square::A1);
+        assert_eq!(Square::try_from(0).unwrap(), Square::A1);
+        assert_eq!(Square::try_from("h8").unwrap(), Square::H8);
+        assert_eq!(Square::try_from(63).unwrap(), Square::H8);
+        assert_eq!(Square::try_from("d4").unwrap(), Square::D4);
 
-        assert!(Tile::try_from("a").is_err());
-        assert!(Tile::try_from("1").is_err());
-        assert!(Tile::try_from("").is_err());
-        assert!(Tile::try_from(-1).is_err());
-        assert!(Tile::try_from(64).is_err());
+        assert!(Square::try_from("a").is_err());
+        assert!(Square::try_from("1").is_err());
+        assert!(Square::try_from("").is_err());
+        assert!(Square::try_from(-1).is_err());
+        assert!(Square::try_from(64).is_err());
     }
 
     #[test]
     fn test_math() {
-        assert_eq!(File::A * Rank::ONE, Tile::A1);
-        assert_eq!(Rank::ONE * File::A, Tile::A1);
-        assert_eq!(Rank::FOUR * File::G, Tile::G4);
+        assert_eq!(File::A * Rank::ONE, Square::A1);
+        assert_eq!(Rank::ONE * File::A, Square::A1);
+        assert_eq!(Rank::FOUR * File::G, Square::G4);
 
         assert_eq!(Rank::EIGHT - 1, Rank::SEVEN);
         assert_eq!(Rank::FOUR + 2, Rank::SIX);
@@ -1386,11 +1386,11 @@ mod tests {
     #[test]
     fn test_indexing() {
         let mut board = [0; 64];
-        board[Tile::D5] = u8::MAX;
+        board[Square::D5] = u8::MAX;
         assert_eq!(board[35], u8::MAX);
 
         let mut board = [[0; 8]; 8];
-        board[Tile::D5] = u8::MAX;
+        board[Square::D5] = u8::MAX;
         assert_eq!(board[File::D][Rank::FIVE], u8::MAX);
     }
 }
