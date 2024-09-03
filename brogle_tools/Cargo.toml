@@ -32,7 +32,7 @@ path = "src/perft_bench.rs"
 
 [dependencies]
 brogle = { path = "../brogle" }
-brogle_core = { path = "../brogle_core" }
+chessie = { path = "../chessie" }
 egui-macroquad = "0.15.0"
 macroquad = "0.4.8"
 chess = "3.2.0"

@@ -1,4 +1,4 @@
-use brogle_core::{perft, Position};
+use chessie::{perft, Position};
 
 fn test_perft_fen_nodes(depth: usize, fen: &str, expected: u64) {
     let mut position = Position::from_fen(fen).unwrap();

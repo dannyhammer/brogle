@@ -1,4 +1,4 @@
-use brogle_core::Tile;
+use chessie::Tile;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct MagicEntry {

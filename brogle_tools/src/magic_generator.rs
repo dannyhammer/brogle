@@ -3,7 +3,7 @@ use std::io::prelude::*;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
-use brogle_core::{Bitboard, Tile};
+use chessie::{Bitboard, Tile};
 mod magics;
 use crate::magics::*;
 

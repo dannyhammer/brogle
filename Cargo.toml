@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "brogle",
-    "brogle_core",
-    "brogle_core/brogle_types",
+    "chessie",
     "brogle_tools",
 ]

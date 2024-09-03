@@ -10,7 +10,7 @@ pub mod tile;
 pub mod utils;
 
 pub use bitboard::*;
-pub use magicgen::*;
+// pub use magicgen::*;
 pub use piece::*;
 pub use tile::*;
 pub use utils::*;
@@ -18,7 +18,7 @@ pub use utils::*;
 /// Re-exports all the things you'll need.
 pub mod prelude {
     pub use crate::bitboard::*;
-    pub use crate::magicgen::*;
+    // pub use crate::magicgen::*;
     pub use crate::piece::*;
     pub use crate::tile::*;
     pub use crate::utils::*;

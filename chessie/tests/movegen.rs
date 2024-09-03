@@ -1,4 +1,4 @@
-use brogle_core::{Move, MoveGenerator, Position};
+use chessie::{Move, MoveGenerator, Position};
 
 // Sets up a game from the provided FEN
 fn setup_game(fen: &str) -> Position {

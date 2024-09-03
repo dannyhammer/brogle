@@ -4,7 +4,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::{bail, Result};
-use brogle_core::{Game, Move, PieceKind, ZobristKey};
+use chessie::{Game, Move, PieceKind, ZobristKey};
 
 use super::{NodeType, Score, TTable, TTableEntry};
 use crate::{value_of, Evaluator};

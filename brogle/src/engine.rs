@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use brogle_core::{print_perft, Bitboard, Color, Game, Move, Position, Tile, FEN_STARTPOS};
+use chessie::{print_perft, Bitboard, Color, Game, Move, Position, Tile, FEN_STARTPOS};
 use log::{error, warn};
 use threadpool::ThreadPool;
 

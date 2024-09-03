@@ -3,7 +3,7 @@ use std::ops::Deref;
 use arrayvec::ArrayVec;
 
 use super::{
-    Bitboard, ChessBoard, Color, Move, MoveKind, Piece, PieceKind, Position, Rank, Tile,
+    Bitboard, Board, Color, Move, MoveKind, Piece, PieceKind, Position, Rank, Tile,
     MAX_NUM_MOVES,
 };
 
@@ -546,7 +546,7 @@ impl MoveGenerator {
     /// Computes a [`Bitboard`] of all the pieces that attack the provided [`Tile`].
     const fn compute_attacks_to(
         &self,
-        board: &ChessBoard,
+        board: &Board,
         tile: Tile,
         attacker_color: Color,
     ) -> Bitboard {
@@ -568,7 +568,7 @@ impl MoveGenerator {
 
     fn compute_pinmasks_for(
         &self,
-        board: &ChessBoard,
+        board: &Board,
         tile: Tile,
         color: Color,
     ) -> (Bitboard, Bitboard) {

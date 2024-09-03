@@ -50,9 +50,3 @@ impl XoShiRo {
         (result, s)
     }
 }
-
-impl Default for XoShiRo {
-    fn default() -> Self {
-        Self::new()
-    }
-}

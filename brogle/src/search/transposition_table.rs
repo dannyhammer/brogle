@@ -1,4 +1,4 @@
-use brogle_core::{Move, ZobristKey};
+use chessie::{Move, ZobristKey};
 
 use crate::search::Score;
 
@@ -151,7 +151,7 @@ impl Default for TTable {
 #[cfg(test)]
 mod test {
     use super::*;
-    use brogle_core::*;
+    use chessie::*;
 
     #[test]
     fn test_ttable() {

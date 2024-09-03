@@ -1,6 +1,6 @@
 use std::env;
 
-use brogle_types::{generate_piece_attack_datfiles, generate_ray_table_datfiles};
+use types::{generate_piece_attack_datfiles, generate_ray_table_datfiles};
 
 fn main() {
     // Re-run the build script if it was changed

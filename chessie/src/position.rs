@@ -47,7 +47,7 @@ impl Game {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Game, Move};
+    /// # use chessie::{Game, Move};
     /// let mut game = Game::default();
     /// game.make_move(Move::from_uci(&game, "b1a3").unwrap());
     /// assert_eq!(game.is_repetition(), false);
@@ -164,7 +164,7 @@ impl CastlingRights {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::CastlingRights;
+    /// # use chessie::CastlingRights;
     /// let all = CastlingRights::from_uci("KQkq").unwrap();
     /// assert_eq!(all.index(), 15);
     /// let none = CastlingRights::from_uci("").unwrap();
@@ -227,7 +227,7 @@ impl fmt::Display for CastlingRights {
 #[derive(Clone, PartialEq, Eq)]
 pub struct Position {
     /// Bitboard representation of the game board.
-    board: ChessBoard,
+    board: Board,
 
     /// Side to move.
     current_player: Color,
@@ -262,12 +262,12 @@ impl Position {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Position;
+    /// # use chessie::Position;
     /// let state = Position::new();
     /// assert_eq!(state.to_fen(), "8/8/8/8/8/8/8/8 w - - 0 1");
     /// ```
     pub fn new() -> Self {
-        let board = ChessBoard::new();
+        let board = Board::new();
         let castling_rights = CastlingRights::new();
         let current_player = Color::White;
         let ep_tile = None;
@@ -292,7 +292,7 @@ impl Position {
         let placements = split.next().ok_or(anyhow!(
             "Invalid FEN string: FEN string must have piece placements."
         ))?;
-        pos.board = ChessBoard::from_fen(placements)?;
+        pos.board = Board::from_fen(placements)?;
 
         let active_color = split.next().unwrap_or("w");
         pos.current_player = Color::from_str(active_color)?;
@@ -329,7 +329,7 @@ impl Position {
 
     /// Generates a FEN string from this [`Position`].
     pub fn to_fen(&self) -> String {
-        let placements = self.board().fen();
+        let placements = self.board().to_fen();
         let active_color = self.current_player();
         let castling = self.castling_rights.to_uci();
 
@@ -393,13 +393,13 @@ impl Position {
         self.current_player = self.current_player.opponent();
     }
 
-    /// Fetches this position's [`ChessBoard`]
-    pub const fn board(&self) -> &ChessBoard {
+    /// Fetches this position's [`Board`]
+    pub const fn board(&self) -> &Board {
         &self.board
     }
 
-    /// Mutably fetches this position's [`ChessBoard`]
-    pub fn board_mut(&mut self) -> &mut ChessBoard {
+    /// Mutably fetches this position's [`Board`]
+    pub fn board_mut(&mut self) -> &mut Board {
         &mut self.board
     }
 
@@ -623,7 +623,7 @@ impl FromStr for Position {
 }
 
 impl Deref for Position {
-    type Target = ChessBoard;
+    type Target = Board;
     fn deref(&self) -> &Self::Target {
         self.board()
     }
@@ -690,11 +690,11 @@ impl fmt::Debug for Position {
 
 /// Represents all pieces and their locations on a chess board.
 ///
-/// Has no knowledge of castling rights, en passant, or move counters.
+/// Has no knowledge of castling rights, en passant, or move counters. If you need those, see [`Position`].
 ///
 /// Internally uses a collection of [`Bitboard`]s to keep track of piece/color locations.
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct ChessBoard {
+pub struct Board {
     /// All tiles occupied by a specific color
     colors: [Bitboard; Color::COUNT],
 
@@ -702,14 +702,14 @@ pub struct ChessBoard {
     pieces: [Bitboard; PieceKind::COUNT],
 }
 
-impl ChessBoard {
-    /// Creates a new, empty [`ChessBoard`] containing no pieces.
+impl Board {
+    /// Creates a new, empty [`Board`] containing no pieces.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::ChessBoard;
-    /// let board = ChessBoard::new();
-    /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
+    /// # use chessie::Board;
+    /// let board = Board::new();
+    /// assert_eq!(board.to_fen(), "8/8/8/8/8/8/8/8");
     /// ```
     pub const fn new() -> Self {
         Self {
@@ -718,43 +718,7 @@ impl ChessBoard {
         }
     }
 
-    /// Places the supplied [`Piece`] at the provided [`Tile`], returning modified `self`.
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::{ChessBoard, Piece, PieceKind, Color, Tile};
-    /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
-    /// let board = ChessBoard::new().with_piece(white_knight, Tile::C4);
-    /// assert_eq!(board.fen(), "8/8/8/8/2N5/8/8/8");
-    /// ```
-    pub fn with_piece(mut self, piece: Piece, tile: Tile) -> Self {
-        self.place(piece, tile);
-        self
-    }
-
-    /// Places the supplied [`Piece`]s at the provided [`Tile`]s, returning modified `self`.
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::{ChessBoard, Piece, PieceKind, Color, Tile};
-    /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
-    /// let black_rook = Piece::new(Color::Black, PieceKind::Rook);
-    /// let board = ChessBoard::new().with_pieces([white_knight, black_rook], [Tile::C4, Tile::H7]);
-    /// assert_eq!(board.fen(), "8/7r/8/8/2N5/8/8/8");
-    /// ```
-    pub fn with_pieces(
-        mut self,
-        pieces: impl IntoIterator<Item = Piece>,
-        tiles: impl IntoIterator<Item = Tile>,
-    ) -> Self {
-        for (piece, tile) in pieces.into_iter().zip(tiles) {
-            self = self.with_piece(piece, tile);
-        }
-
-        self
-    }
-
-    /// Constructs a [`ChessBoard`] from the provided FEN string, ignoring castling/ep/move counters.
+    /// Constructs a [`Board`] from the provided FEN string, ignoring castling/ep/move counters.
     pub fn from_fen(fen: &str) -> Result<Self> {
         let mut board = Self::new();
 
@@ -782,7 +746,7 @@ impl ChessBoard {
                     // Firstly, create a tile and set the "Occupied" board at this location.
                     let tile = Tile::new(File::new_unchecked(file), Rank::new_unchecked(rank));
 
-                    board = board.with_piece(piece, tile);
+                    board.place(piece, tile);
 
                     file += 1;
 
@@ -806,27 +770,26 @@ impl ChessBoard {
         Ok(board)
     }
 
-    /// Returns an instance of this [`ChessBoard`] that has all bits specified by `mask` cleared.
-    pub const fn without(&self, mask: Bitboard) -> Self {
-        let not_mask = mask.not();
+    /// Returns an instance of this [`Board`] that has all bits specified by `mask` cleared.
+    pub fn without(&self, mask: Bitboard) -> Self {
+        let not_mask = !mask;
+
         let mut colors = self.colors;
-        colors[0] = colors[0].and(not_mask);
-        colors[1] = colors[1].and(not_mask);
+        for color in Color::all() {
+            colors[color] = colors[color] & not_mask;
+        }
 
         let mut pieces = self.pieces;
-        pieces[0] = pieces[0].and(not_mask);
-        pieces[1] = pieces[1].and(not_mask);
-        pieces[2] = pieces[2].and(not_mask);
-        pieces[3] = pieces[3].and(not_mask);
-        pieces[4] = pieces[4].and(not_mask);
-        pieces[5] = pieces[5].and(not_mask);
+        for kind in PieceKind::all() {
+            pieces[kind] = pieces[kind] & not_mask;
+        }
 
         Self { colors, pieces }
     }
 
-    /// Returns an instance of this [`ChessBoard`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
+    /// Returns an instance of this [`Board`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
     ///
-    /// If `mask` contains only 1 tile, use [`ChessBoard::with_piece`] instead, as it is likely to be faster.
+    /// If `mask` contains only 1 tile, use [`Board::with_piece`] instead, as it is likely to be faster.
     pub const fn with(&self, mask: Bitboard, piece: Piece) -> Self {
         let (color, kind) = piece.parts();
 
@@ -843,8 +806,8 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, Tile};
-    /// let board = ChessBoard::default();
+    /// # use chessie::{Board, Tile};
+    /// let board = Board::default();
     /// assert_eq!(board.has(Tile::B1), true);
     /// ```
     pub fn has(&self, tile: Tile) -> bool {
@@ -855,11 +818,11 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, Piece, PieceKind, Color, Tile};
+    /// # use chessie::{Board, Piece, PieceKind, Color, Tile};
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
-    /// let mut board = ChessBoard::new();
+    /// let mut board = Board::new();
     /// board.place(white_knight, Tile::C4);
-    /// assert_eq!(board.fen(), "8/8/8/8/2N5/8/8/8");
+    /// assert_eq!(board.to_fen(), "8/8/8/8/2N5/8/8/8");
     /// ```
     pub fn place(&mut self, piece: Piece, tile: Tile) {
         self[piece.color()].set(tile);
@@ -870,10 +833,10 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, Tile};
-    /// let mut board = ChessBoard::from_fen("k7/8/8/8/2N5/8/8/7K").unwrap();
+    /// # use chessie::{Board, Tile};
+    /// let mut board = Board::from_fen("k7/8/8/8/2N5/8/8/7K").unwrap();
     /// board.clear(Tile::C4);
-    /// assert_eq!(board.fen(), "k7/8/8/8/8/8/8/7K");
+    /// assert_eq!(board.to_fen(), "k7/8/8/8/8/8/8/7K");
     /// ```
     pub fn clear(&mut self, tile: Tile) {
         if let Some(piece) = self.piece_at(tile) {
@@ -886,11 +849,11 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, Piece, PieceKind, Color, Tile};
-    /// let mut board = ChessBoard::from_fen("k7/8/8/8/2N5/8/8/7K").unwrap();
+    /// # use chessie::{Board, Piece, PieceKind, Color, Tile};
+    /// let mut board = Board::from_fen("k7/8/8/8/2N5/8/8/7K").unwrap();
     /// let white_knight = Piece::new(Color::White, PieceKind::Knight);
     /// let taken = board.take(Tile::C4);
-    /// assert_eq!(board.fen(), "k7/8/8/8/8/8/8/7K");
+    /// assert_eq!(board.to_fen(), "k7/8/8/8/8/8/8/7K");
     /// assert_eq!(taken, Some(white_knight));
     /// ```
     pub fn take(&mut self, tile: Tile) -> Option<Piece> {
@@ -904,10 +867,10 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::ChessBoard;
-    /// let mut board = ChessBoard::default();
+    /// # use chessie::Board;
+    /// let mut board = Board::default();
     /// board.clear_all();
-    /// assert_eq!(board.fen(), "8/8/8/8/8/8/8/8");
+    /// assert_eq!(board.to_fen(), "8/8/8/8/8/8/8/8");
     /// ```
     pub fn clear_all(&mut self) {
         *self = Self::new();
@@ -917,8 +880,8 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, Color, Tile};
-    /// let board = ChessBoard::default();
+    /// # use chessie::{Board, Color, Tile};
+    /// let board = Board::default();
     /// assert_eq!(board.color_at(Tile::A2), Some(Color::White));
     /// assert_eq!(board.color_at(Tile::E8), Some(Color::Black));
     /// assert!(board.color_at(Tile::E4).is_none());
@@ -940,8 +903,8 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, PieceKind, Tile};
-    /// let mut board = ChessBoard::default();
+    /// # use chessie::{Board, PieceKind, Tile};
+    /// let mut board = Board::default();
     /// assert_eq!(board.kind_at(Tile::A2), Some(PieceKind::Pawn));
     /// assert!(board.kind_at(Tile::E4).is_none());
     /// ```
@@ -962,8 +925,8 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, PieceKind, Color, Tile};
-    /// let mut board = ChessBoard::default();
+    /// # use chessie::{Board, PieceKind, Color, Tile};
+    /// let mut board = Board::default();
     /// assert_eq!(board.piece_at(Tile::A2).unwrap().kind(), PieceKind::Pawn);
     /// assert_eq!(board.piece_at(Tile::A2).unwrap().color(), Color::White);
     /// assert!(board.piece_at(Tile::E4).is_none());
@@ -980,8 +943,8 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, PieceKind, Bitboard};
-    /// let board = ChessBoard::default();
+    /// # use chessie::{Board, PieceKind, Bitboard};
+    /// let board = Board::default();
     /// let pawns = board.kind(PieceKind::Pawn);
     /// assert_eq!(pawns, Bitboard::RANK_2 | Bitboard::RANK_7);
     /// ```
@@ -995,8 +958,8 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, Color, Piece, Bitboard};
-    /// let board = ChessBoard::default();
+    /// # use chessie::{Board, Color, Piece, Bitboard};
+    /// let board = Board::default();
     /// let white_pieces = board.color(Color::White);
     /// assert_eq!(white_pieces, Bitboard::RANK_1 | Bitboard::RANK_2);
     /// ```
@@ -1020,8 +983,8 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{ChessBoard, PieceKind, Color, Piece, Bitboard};
-    /// let board = ChessBoard::default();
+    /// # use chessie::{Board, PieceKind, Color, Piece, Bitboard};
+    /// let board = Board::default();
     /// let white_pawn = Piece::new(Color::White, PieceKind::Pawn);
     /// let white_pawns = board.piece(white_pawn);
     /// assert_eq!(white_pawns, Bitboard::RANK_2);
@@ -1051,10 +1014,10 @@ impl ChessBoard {
             .map(|tile| (tile, self.piece_at(tile).unwrap()))
     }
 
-    /// Analogous to [`ChessBoard::piece`] with a [`Piece`]'s individual components.
+    /// Analogous to [`Board::piece`] with a [`Piece`]'s individual components.
     ///
     /// If you have a [`PieceKind`] and a [`Color`] already, this is likely to be *slightly*
-    /// faster that constructing a [`Piece`] and calling [`ChessBoard::piece`].
+    /// faster that constructing a [`Piece`] and calling [`Board::piece`].
     pub const fn piece_parts(&self, color: Color, kind: PieceKind) -> Bitboard {
         self.color(color).and(self.kind(kind))
     }
@@ -1093,8 +1056,8 @@ impl ChessBoard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Bitboard, ChessBoard, Color};
-    /// let board = ChessBoard::default();
+    /// # use chessie::{Bitboard, Board, Color};
+    /// let board = Board::default();
     /// let not_white = board.enemy_or_empty(Color::White);
     /// assert_eq!(not_white.to_hex_string(), "0xFFFFFFFFFFFF0000");
     /// ```
@@ -1102,7 +1065,7 @@ impl ChessBoard {
         self.color(color).not()
     }
 
-    /// Creates a [`BoardIter`] to iterate over all occupied [`Tile`]s in this [`ChessBoard`].
+    /// Creates a [`BoardIter`] to iterate over all occupied [`Tile`]s in this [`Board`].
     pub const fn iter(&self) -> BoardIter<'_> {
         BoardIter {
             board: self,
@@ -1110,8 +1073,8 @@ impl ChessBoard {
         }
     }
 
-    /// Generates a [FEN](https://www.chess.com/terms/fen-chess) string of this [`ChessBoard`].
-    pub fn fen(&self) -> String {
+    /// Generates a [FEN](https://www.chess.com/terms/fen-chess) string of this [`Board`].
+    pub fn to_fen(&self) -> String {
         let mut placements: [String; 8] = Default::default();
 
         for rank in Rank::iter() {
@@ -1138,14 +1101,14 @@ impl ChessBoard {
     }
 }
 
-impl Default for ChessBoard {
+impl Default for Board {
     fn default() -> Self {
         // Safe unwrap because the FEN for startpos is always valid
         Self::from_fen(FEN_STARTPOS).unwrap()
     }
 }
 
-impl fmt::Display for ChessBoard {
+impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Allocate just enough capacity
         let mut board = String::with_capacity(198);
@@ -1180,7 +1143,7 @@ impl fmt::Display for ChessBoard {
     }
 }
 
-impl From<[Option<Piece>; 64]> for ChessBoard {
+impl From<[Option<Piece>; 64]> for Board {
     fn from(value: [Option<Piece>; 64]) -> Self {
         let mut board = Self::new();
 
@@ -1194,33 +1157,33 @@ impl From<[Option<Piece>; 64]> for ChessBoard {
     }
 }
 
-impl Index<PieceKind> for ChessBoard {
+impl Index<PieceKind> for Board {
     type Output = Bitboard;
     fn index(&self, index: PieceKind) -> &Self::Output {
         &self.pieces[index]
     }
 }
 
-impl IndexMut<PieceKind> for ChessBoard {
+impl IndexMut<PieceKind> for Board {
     fn index_mut(&mut self, index: PieceKind) -> &mut Self::Output {
         &mut self.pieces[index]
     }
 }
 
-impl Index<Color> for ChessBoard {
+impl Index<Color> for Board {
     type Output = Bitboard;
     fn index(&self, index: Color) -> &Self::Output {
         &self.colors[index]
     }
 }
 
-impl IndexMut<Color> for ChessBoard {
+impl IndexMut<Color> for Board {
     fn index_mut(&mut self, index: Color) -> &mut Self::Output {
         &mut self.colors[index]
     }
 }
 
-impl fmt::Debug for ChessBoard {
+impl fmt::Debug for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let format = |to_fmt: &[(Bitboard, &str)]| {
             let strings = to_fmt
@@ -1274,7 +1237,7 @@ impl fmt::Debug for ChessBoard {
 }
 
 pub struct BoardIter<'a> {
-    board: &'a ChessBoard,
+    board: &'a Board,
     occupancy: Bitboard,
 }
 
