@@ -1,5 +1,5 @@
 [package]
-name = "brogle_core"
+name = "chessie"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"
@@ -9,7 +9,7 @@ build = "build.rs"
 [dependencies]
 anyhow = "1.0.86"
 arrayvec = "0.7.4"
-brogle_types = { path = "./brogle_types" }
+types = { path = "types" }
 
 [build-dependencies]
-brogle_types = { path = "./brogle_types" }
+types = { path = "types" }

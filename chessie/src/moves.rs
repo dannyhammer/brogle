@@ -60,7 +60,7 @@ impl Move {
     /// Start index of flag bits.
     const FLG_BITS: u16 = 12;
 
-    /// Flags fetched from [here](https://www.chessprogramming.org/Encoding_Moves#From-To_Based)
+    /// Flags fetched from [chess programming wiki](https://www.chessprogramming.org/Encoding_Moves#From-To_Based)
     const FLAG_QUIET: u16 = 0 << Self::FLG_BITS;
     const FLAG_PAWN_DOUBLE: u16 = 1 << Self::FLG_BITS;
     const FLAG_CASTLE_SHORT: u16 = 2 << Self::FLG_BITS;
@@ -80,7 +80,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Move, Tile, MoveKind, PieceKind};
+    /// # use chessie::{Move, Tile, MoveKind, PieceKind};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
     /// assert_eq!(e2e4.to_string(), "e2e4");
     ///
@@ -93,85 +93,6 @@ impl Move {
         let flag = Self::get_bit_flag(kind);
 
         Self(flag | to << Self::DST_BITS | from)
-    }
-
-    /// Creates a new [`Move`] from the given [`Tile`]s that does not promote a piece.
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::{Move, Tile};
-    /// let e2e3 = Move::new_quiet(Tile::E2, Tile::E3);
-    /// assert_eq!(e2e3.to_string(), "e2e3");
-    /// ```
-    pub const fn new_quiet(from: Tile, to: Tile) -> Self {
-        Self::new(from, to, MoveKind::Quiet)
-    }
-
-    /// Creates an "illegal" [`Move`], representing moving a piece to and from the same [`Tile`].
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::Move;
-    /// let illegal = Move::illegal();
-    /// assert_eq!(illegal.to_string(), "a1a1");
-    /// ```
-    pub const fn illegal() -> Self {
-        Self(0)
-    }
-
-    /// Fetches the source (or "from") part of this [`Move`], as a [`Tile`].
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::{Move, Tile, MoveKind};
-    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
-    /// let from = e2e4.from();
-    /// assert_eq!(from, Tile::E2);
-    /// ```
-    pub const fn from(&self) -> Tile {
-        Tile::from_bits_unchecked((self.0 & Self::SRC_MASK) as u8)
-    }
-
-    /// Fetches the destination (or "to") part of this [`Move`], as a [`Tile`].
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::{Move, Tile, MoveKind};
-    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
-    /// let to = e2e4.to();
-    /// assert_eq!(to, Tile::E4);
-    /// ```
-    pub const fn to(&self) -> Tile {
-        Tile::from_bits_unchecked(((self.0 & Self::DST_MASK) >> Self::DST_BITS) as u8)
-    }
-
-    /// Fetches the [`MoveKind`] part of this [`Move`].
-    ///
-    /// # Example
-    /// ```
-    /// # use brogle_core::{Move, MoveKind, PieceKind, Tile};
-    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
-    /// assert_eq!(e7e8q.kind(), MoveKind::Promote(PieceKind::Queen));
-    /// ```
-    pub const fn kind(&self) -> MoveKind {
-        let bits = self.0 & Self::FLG_MASK;
-        match bits {
-            Self::FLAG_QUIET => MoveKind::Quiet,
-            Self::FLAG_PAWN_DOUBLE => MoveKind::PawnPushTwo,
-            Self::FLAG_CASTLE_SHORT => MoveKind::KingsideCastle,
-            Self::FLAG_CASTLE_LONG => MoveKind::QueensideCastle,
-            Self::FLAG_CAPTURE => MoveKind::Capture,
-            Self::FLAG_EP_CAPTURE => MoveKind::EnPassantCapture,
-            Self::FLAG_PROMO_QUEEN => MoveKind::Promote(PieceKind::Queen),
-            Self::FLAG_PROMO_KNIGHT => MoveKind::Promote(PieceKind::Knight),
-            Self::FLAG_PROMO_ROOK => MoveKind::Promote(PieceKind::Rook),
-            Self::FLAG_PROMO_BISHOP => MoveKind::Promote(PieceKind::Bishop),
-            Self::FLAG_CAPTURE_PROMO_QUEEN => MoveKind::PromoCapt(PieceKind::Queen),
-            Self::FLAG_CAPTURE_PROMO_KNIGHT => MoveKind::PromoCapt(PieceKind::Knight),
-            Self::FLAG_CAPTURE_PROMO_ROOK => MoveKind::PromoCapt(PieceKind::Rook),
-            Self::FLAG_CAPTURE_PROMO_BISHOP => MoveKind::PromoCapt(PieceKind::Bishop),
-            _ => unimplemented!(),
-        }
     }
 
     /// Internal function to convert a [`MoveKind`] into a bit flag to encode this move internally.
@@ -201,11 +122,126 @@ impl Move {
         }
     }
 
+    /// Creates a new [`Move`] from the given [`Tile`]s that does not promote a piece.
+    ///
+    /// # Example
+    /// ```
+    /// # use chessie::{Move, Tile};
+    /// let e2e3 = Move::new_quiet(Tile::E2, Tile::E3);
+    /// assert_eq!(e2e3.to_string(), "e2e3");
+    /// ```
+    pub const fn new_quiet(from: Tile, to: Tile) -> Self {
+        Self::new(from, to, MoveKind::Quiet)
+    }
+
+    /*
+    /// Creates a new [`Move`] from the given [`Tile`]s, automatically figuring out its [`MoveKind`] from the position provided.
+    ///
+    /// # Example
+    /// ```
+    /// # use chessie::prelude::*;
+    /// let startpos = Position::default();
+    /// let e2e4 = Move::new_from_position(Tile::E2, Tile::E4, &startpos);
+    /// assert_eq!(e2e4.kind(), MoveKind::PawnPushTwo);
+    /// ```
+    pub fn new_from_position(from: Tile, to: Tile, position: &Position) -> Self {
+        // By default, set the kind to a capture of quiet, depending on whether there was a piece at the destination.
+        let mut kind = if position.has(to) {
+            MoveKind::Capture
+        } else {
+            MoveKind::Quiet
+        };
+
+        let piece = position.piece_at(from).unwrap();
+        let color = piece.color();
+
+        match piece.kind() {
+            PieceKind::Pawn => {
+                // Pawns can either push, double push, capture, en passant, or promote
+            }
+            PieceKind::King => {
+                // Kings can castle
+                if to == Tile::
+            }
+            _ => {} // All other pieces can only capture or move quietly
+        }
+
+        Self::new(from, to, kind)
+    }
+     */
+
+    /// Creates an "illegal" [`Move`], representing moving a piece to and from the same [`Tile`].
+    ///
+    /// # Example
+    /// ```
+    /// # use chessie::Move;
+    /// let illegal = Move::illegal();
+    /// assert_eq!(illegal.to_string(), "a1a1");
+    /// ```
+    pub const fn illegal() -> Self {
+        Self(0)
+    }
+
+    /// Fetches the source (or "from") part of this [`Move`], as a [`Tile`].
+    ///
+    /// # Example
+    /// ```
+    /// # use chessie::{Move, Tile, MoveKind};
+    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
+    /// let from = e2e4.from();
+    /// assert_eq!(from, Tile::E2);
+    /// ```
+    pub const fn from(&self) -> Tile {
+        Tile::from_bits_unchecked((self.0 & Self::SRC_MASK) as u8)
+    }
+
+    /// Fetches the destination (or "to") part of this [`Move`], as a [`Tile`].
+    ///
+    /// # Example
+    /// ```
+    /// # use chessie::{Move, Tile, MoveKind};
+    /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
+    /// let to = e2e4.to();
+    /// assert_eq!(to, Tile::E4);
+    /// ```
+    pub const fn to(&self) -> Tile {
+        Tile::from_bits_unchecked(((self.0 & Self::DST_MASK) >> Self::DST_BITS) as u8)
+    }
+
+    /// Fetches the [`MoveKind`] part of this [`Move`].
+    ///
+    /// # Example
+    /// ```
+    /// # use chessie::{Move, MoveKind, PieceKind, Tile};
+    /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
+    /// assert_eq!(e7e8q.kind(), MoveKind::Promote(PieceKind::Queen));
+    /// ```
+    pub const fn kind(&self) -> MoveKind {
+        let bits = self.0 & Self::FLG_MASK;
+        match bits {
+            Self::FLAG_QUIET => MoveKind::Quiet,
+            Self::FLAG_PAWN_DOUBLE => MoveKind::PawnPushTwo,
+            Self::FLAG_CASTLE_SHORT => MoveKind::KingsideCastle,
+            Self::FLAG_CASTLE_LONG => MoveKind::QueensideCastle,
+            Self::FLAG_CAPTURE => MoveKind::Capture,
+            Self::FLAG_EP_CAPTURE => MoveKind::EnPassantCapture,
+            Self::FLAG_PROMO_QUEEN => MoveKind::Promote(PieceKind::Queen),
+            Self::FLAG_PROMO_KNIGHT => MoveKind::Promote(PieceKind::Knight),
+            Self::FLAG_PROMO_ROOK => MoveKind::Promote(PieceKind::Rook),
+            Self::FLAG_PROMO_BISHOP => MoveKind::Promote(PieceKind::Bishop),
+            Self::FLAG_CAPTURE_PROMO_QUEEN => MoveKind::PromoCapt(PieceKind::Queen),
+            Self::FLAG_CAPTURE_PROMO_KNIGHT => MoveKind::PromoCapt(PieceKind::Knight),
+            Self::FLAG_CAPTURE_PROMO_ROOK => MoveKind::PromoCapt(PieceKind::Rook),
+            Self::FLAG_CAPTURE_PROMO_BISHOP => MoveKind::PromoCapt(PieceKind::Bishop),
+            _ => unimplemented!(),
+        }
+    }
+
     /// Fetches the parts of this [`Move`] in a tuple of `(from, to, kind)`.
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Move, MoveKind, PieceKind, Tile};
+    /// # use chessie::{Move, MoveKind, PieceKind, Tile};
     /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
     /// let (from, to, kind) = e7e8q.parts();
     /// assert_eq!(from, Tile::E7);
@@ -220,7 +256,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Move, Tile, MoveKind, PieceKind, Position, FEN_KIWIPETE};
+    /// # use chessie::{Move, Tile, MoveKind, PieceKind, Position, FEN_KIWIPETE};
     /// let position = Position::from_fen(FEN_KIWIPETE).unwrap();
     /// let e5f7 = Move::from_uci(&position, "e5f7").unwrap();
     /// assert_eq!(e5f7.is_capture(), true);
@@ -253,7 +289,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Move, Tile, MoveKind};
+    /// # use chessie::{Move, Tile, MoveKind};
     /// let e2e4 = Move::new(Tile::E2, Tile::E4, MoveKind::PawnPushTwo);
     /// assert_eq!(e2e4.is_pawn_double_push(), true);
     /// ```
@@ -265,7 +301,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Move, MoveKind, PieceKind, Tile};
+    /// # use chessie::{Move, MoveKind, PieceKind, Tile};
     /// let e7e8q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8q.is_promotion(), true);
     ///
@@ -282,7 +318,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Move, Tile, MoveKind, PieceKind, Position};
+    /// # use chessie::{Move, Tile, MoveKind, PieceKind, Position};
     /// // An sample test position for discovering promotion bugs.
     /// let position = Position::from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
     /// let b7c8b = Move::from_uci(&position, "b7c8b").unwrap();
@@ -302,7 +338,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::Move;
+    /// # use chessie::Move;
     /// assert_eq!(Move::is_uci("b7c8b"), true);
     /// assert_eq!(Move::is_uci("a1a1"), true);
     /// assert_eq!(Move::is_uci("xj9"), false);
@@ -329,7 +365,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Move, Tile, MoveKind, PieceKind, Position};
+    /// # use chessie::{Move, Tile, MoveKind, PieceKind, Position};
     /// // A sample test position for discovering promotion bugs.
     /// let position = Position::from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
     /// let b7c8b = Move::from_uci(&position, "b7c8b");
@@ -399,7 +435,7 @@ impl Move {
     ///
     /// # Example
     /// ```
-    /// # use brogle_core::{Move, Tile, MoveKind, PieceKind};
+    /// # use chessie::{Move, Tile, MoveKind, PieceKind};
     /// let e7e8Q = Move::new(Tile::E7, Tile::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8Q.to_uci(), "e7e8q");
     /// ```

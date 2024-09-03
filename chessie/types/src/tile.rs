@@ -125,7 +125,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// let mut iter = Tile::iter();
     /// assert_eq!(iter.len(), 64);
     /// assert_eq!(iter.next().unwrap(), Tile::A1);
@@ -139,7 +139,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Tile, File, Rank};
+    /// # use types::{Tile, File, Rank};
     /// let c4 = Tile::new(File::C, Rank::FOUR);
     /// assert_eq!(c4, Tile::C4);
     /// ```
@@ -154,7 +154,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// let c4 = Tile::from_index(26);
     /// assert!(c4.is_ok());
     /// assert_eq!(c4.unwrap(), Tile::C4);
@@ -171,7 +171,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// let c4 = Tile::from_index_unchecked(26);
     /// assert_eq!(c4, Tile::C4);
     /// ```
@@ -186,7 +186,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// let c4 = Tile::from_bits(26);
     /// assert!(c4.is_ok());
     /// assert_eq!(c4.unwrap(), Tile::C4);
@@ -208,7 +208,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// let c4 = Tile::from_bits_unchecked(26);
     /// assert_eq!(c4, Tile::C4);
     /// ```
@@ -223,7 +223,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::A1.flipped(), Tile::H8);
     /// assert_eq!(Tile::C4.flipped(), Tile::F5);
     /// ```
@@ -235,7 +235,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::A1.flipped_file(), Tile::H1);
     /// assert_eq!(Tile::C4.flipped_file(), Tile::F4);
     /// ```
@@ -247,7 +247,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::A1.flipped_rank(), Tile::A8);
     /// assert_eq!(Tile::C4.flipped_rank(), Tile::C5);
     /// ```
@@ -262,7 +262,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Color, Tile};
+    /// # use types::{Color, Tile};
     /// assert_eq!(Tile::C4.relative_to(Color::White), Tile::C4);
     /// assert_eq!(Tile::C4.relative_to(Color::Black), Tile::F5);
     /// ```
@@ -280,7 +280,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Color, Tile};
+    /// # use types::{Color, Tile};
     /// assert_eq!(Tile::E1.rank_relative_to(Color::White), Tile::E1);
     /// assert_eq!(Tile::E1.rank_relative_to(Color::Black), Tile::E8);
     /// ```
@@ -298,7 +298,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Color, Tile};
+    /// # use types::{Color, Tile};
     /// assert_eq!(Tile::A1.file_relative_to(Color::White), Tile::A1);
     /// assert_eq!(Tile::A1.file_relative_to(Color::Black), Tile::H1);
     /// ```
@@ -313,7 +313,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::A1.next(), Some(Tile::B1));
     /// assert_eq!(Tile::H3.next(), Some(Tile::A4));
     /// assert_eq!(Tile::H8.next(), None);
@@ -326,7 +326,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::A1.prev(), None);
     /// assert_eq!(Tile::A4.prev(), Some(Tile::H3));
     /// assert_eq!(Tile::H8.prev(), Some(Tile::G8));
@@ -339,7 +339,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::C4.inner(), 26);
     /// ```
     pub const fn inner(&self) -> u8 {
@@ -350,7 +350,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Tile, File};
+    /// # use types::{Tile, File};
     /// assert_eq!(Tile::C4.file(), File::C);
     /// ```
     pub const fn file(&self) -> File {
@@ -361,7 +361,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Tile, Rank};
+    /// # use types::{Tile, Rank};
     /// assert_eq!(Tile::C4.rank(), Rank::FOUR);
     /// ```
     pub const fn rank(&self) -> Rank {
@@ -372,7 +372,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Tile, File, Rank};
+    /// # use types::{Tile, File, Rank};
     /// assert_eq!(Tile::C4.parts(), (File::C, Rank::FOUR));
     /// ```
     pub const fn parts(&self) -> (File, Rank) {
@@ -385,7 +385,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::C4.index(), 26);
     /// ```
     pub const fn index(&self) -> usize {
@@ -396,7 +396,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert!(Tile::C4.is_light());
     /// ```
     pub const fn is_light(&self) -> bool {
@@ -407,7 +407,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert!(Tile::C5.is_dark());
     /// ```
     pub const fn is_dark(&self) -> bool {
@@ -418,7 +418,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::C5.is_diagonal_to(Tile::A3), true);
     /// assert_eq!(Tile::H1.is_diagonal_to(Tile::A8), true);
     /// assert_eq!(Tile::F7.is_diagonal_to(Tile::F7), true);
@@ -440,7 +440,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Color, Tile};
+    /// # use types::{Color, Tile};
     /// assert_eq!(Tile::C5.color(), Color::Black);
     /// assert_eq!(Tile::C4.color(), Color::White);
     /// ```
@@ -456,7 +456,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// let c4 = Tile::from_uci("c4");
     /// assert!(c4.is_ok());
     /// assert_eq!(c4.unwrap(), Tile::C4);
@@ -479,7 +479,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!("c4", Tile::C4.to_uci());
     /// ```
     pub fn to_uci(self) -> String {
@@ -495,7 +495,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::C4.distance_to(Tile::C1), 3);
     /// assert_eq!(Tile::A1.distance_to(Tile::A8), 7);
     /// assert_eq!(Tile::D6.distance_to(Tile::D6), 0);
@@ -511,7 +511,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::D5.distance_from_center(), 0);
     /// assert_eq!(Tile::E4.distance_from_center(), 0);
     /// assert_eq!(Tile::A1.distance_from_center(), 6);
@@ -528,7 +528,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Tile;
+    /// # use types::Tile;
     /// assert_eq!(Tile::C4.offset(1, 1), Some(Tile::D5));
     /// assert_eq!(Tile::C4.offset(-1, -1), Some(Tile::B3));
     /// assert_eq!(Tile::A1.offset(-1, -1), None);
@@ -546,7 +546,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Tile, Color};
+    /// # use types::{Tile, Color};
     /// assert_eq!(Tile::C4.forward_by(Color::White, 1), Some(Tile::C5));
     /// assert_eq!(Tile::C4.forward_by(Color::Black, 1), Some(Tile::C3));
     /// ```
@@ -560,7 +560,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Tile, Color};
+    /// # use types::{Tile, Color};
     /// assert_eq!(Tile::C4.backward_by(Color::White, 1), Some(Tile::C3));
     /// assert_eq!(Tile::C4.backward_by(Color::Black, 1), Some(Tile::C5));
     /// ```
@@ -574,7 +574,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Tile, Color};
+    /// # use types::{Tile, Color};
     /// assert_eq!(Tile::C4.right_by(Color::White, 1), Some(Tile::D4));
     /// assert_eq!(Tile::C4.right_by(Color::Black, 1), Some(Tile::B4));
     /// ```
@@ -588,7 +588,7 @@ impl Tile {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Tile, Color};
+    /// # use types::{Tile, Color};
     /// assert_eq!(Tile::C4.left_by(Color::White, 1), Some(Tile::B4));
     /// assert_eq!(Tile::C4.left_by(Color::Black, 1), Some(Tile::D4));
     /// ```
@@ -772,7 +772,7 @@ impl Rank {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Rank;
+    /// # use types::Rank;
     /// let mut iter = Rank::iter();
     /// assert_eq!(iter.len(), 8);
     /// assert_eq!(iter.next().unwrap(), Rank::ONE);
@@ -895,7 +895,7 @@ impl Rank {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Rank;
+    /// # use types::Rank;
     /// assert_eq!(Rank::FOUR.offset(1), Some(Rank::FIVE));
     /// assert_eq!(Rank::FOUR.offset(-1), Some(Rank::THREE));
     /// assert_eq!(Rank::ONE.offset(-1), None);
@@ -1126,7 +1126,7 @@ impl File {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::File;
+    /// # use types::File;
     /// let mut iter = File::iter();
     /// assert_eq!(iter.len(), 8);
     /// assert_eq!(iter.next().unwrap(), File::A);
@@ -1213,7 +1213,7 @@ impl File {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::File;
+    /// # use types::File;
     /// assert_eq!(File::C.offset(1), Some(File::D));
     /// assert_eq!(File::C.offset(-1), Some(File::B));
     /// assert_eq!(File::A.offset(-1), None);

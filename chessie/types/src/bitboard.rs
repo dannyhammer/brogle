@@ -66,7 +66,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// let board = Bitboard::new(255);
     /// assert_eq!(board.to_hex_string(), "0x00000000000000FF");
     /// ```
@@ -80,7 +80,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// let board = Bitboard::from_index(63);
     /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
     /// ```
@@ -95,7 +95,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Tile};
     /// let board = Bitboard::from_tile(Tile::H8);
     /// assert_eq!(board.to_hex_string(), "0x8000000000000000");
     /// ```
@@ -109,7 +109,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, File};
+    /// # use types::{Bitboard, File};
     /// let board = Bitboard::from_file(File::F);
     /// assert_eq!(board.to_hex_string(), "0x2020202020202020");
     /// ```
@@ -123,7 +123,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Rank};
+    /// # use types::{Bitboard, Rank};
     /// let board = Bitboard::from_rank(Rank::SEVEN);
     /// assert_eq!(board.to_hex_string(), "0x00FF000000000000");
     /// ```
@@ -135,7 +135,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     ///
     /// assert_eq!(Bitboard::from_bool(true), Bitboard::FULL_BOARD);
     /// assert_eq!(Bitboard::from_bool(false), Bitboard::EMPTY_BOARD);
@@ -148,7 +148,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Color};
+    /// # use types::{Bitboard, Color};
     ///
     /// assert_eq!(Bitboard::first_rank(Color::White), Bitboard::RANK_1);
     /// assert_eq!(Bitboard::first_rank(Color::Black), Bitboard::RANK_8);
@@ -161,7 +161,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Color};
+    /// # use types::{Bitboard, Color};
     ///
     /// assert_eq!(Bitboard::second_rank(Color::White), Bitboard::RANK_2);
     /// assert_eq!(Bitboard::second_rank(Color::Black), Bitboard::RANK_7);
@@ -174,7 +174,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Color};
+    /// # use types::{Bitboard, Color};
     ///
     /// assert_eq!(Bitboard::third_rank(Color::White), Bitboard::RANK_3);
     /// assert_eq!(Bitboard::third_rank(Color::Black), Bitboard::RANK_6);
@@ -187,7 +187,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Color};
+    /// # use types::{Bitboard, Color};
     ///
     /// assert_eq!(Bitboard::seventh_rank(Color::White), Bitboard::RANK_7);
     /// assert_eq!(Bitboard::seventh_rank(Color::Black), Bitboard::RANK_2);
@@ -200,7 +200,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Color};
+    /// # use types::{Bitboard, Color};
     ///
     /// assert_eq!(Bitboard::eighth_rank(Color::White), Bitboard::RANK_8);
     /// assert_eq!(Bitboard::eighth_rank(Color::Black), Bitboard::RANK_1);
@@ -221,7 +221,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Tile};
     /// let board = Bitboard::from_index(14);
     /// assert_eq!(board.to_tile_unchecked(), Tile::G2);
     /// ```
@@ -236,7 +236,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Tile};
     /// let board = Bitboard::from_index(14);
     /// assert_eq!(board.to_tile(), Some(Tile::G2));
     /// let invalid = Bitboard::RANK_1;
@@ -254,7 +254,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Rank};
+    /// # use types::{Bitboard, Rank};
     /// let board = Bitboard::from_rank(Rank::SEVEN);
     /// assert_eq!(board.to_hex_string(), "0x00FF000000000000");
     ///
@@ -272,7 +272,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Color, Bitboard};
+    /// # use types::{Color, Bitboard};
     /// assert_eq!(Bitboard::RANK_2.relative_to(Color::White), Bitboard::RANK_2);
     /// assert_eq!(Bitboard::RANK_2.relative_to(Color::Black), Bitboard::RANK_7);
     /// ```
@@ -287,7 +287,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// let board = Bitboard::new(0x0);
     /// assert!(board.is_empty());
     /// ```
@@ -299,7 +299,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// let board = Bitboard::CORNERS;
     /// assert!(board.is_nonempty());
     /// ```
@@ -311,7 +311,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// let rank_1 = Bitboard::RANK_1;
     /// let rank_5 = Bitboard::RANK_5;
     /// let file_a = Bitboard::FILE_A;
@@ -338,7 +338,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Tile};
     /// let mut board = Bitboard::default();
     /// board.set(Tile::G2);
     /// assert_eq!(board.to_hex_string(), "0x0000000000004000");
@@ -351,7 +351,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Tile};
     /// let board = Bitboard::FILE_A;
     /// assert!(board.get(Tile::A3));
     /// ```
@@ -363,7 +363,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Tile};
+    /// # use types::{Bitboard, Tile};
     /// let mut board = Bitboard::RANK_1;
     /// board.clear(Tile::C1);
     /// assert_eq!(board.to_hex_string(), "0x00000000000000FB");
@@ -454,7 +454,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// let board = Bitboard::RANK_1;
     /// assert_eq!(board.population(), 8);
     /// ```
@@ -470,7 +470,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Color};
+    /// # use types::{Bitboard, Color};
     /// let rank4 = Bitboard::RANK_4;
     /// assert_eq!(rank4.advance_by(Color::White, 1), Bitboard::RANK_5);
     /// assert_eq!(rank4.advance_by(Color::Black, 1), Bitboard::RANK_3);
@@ -491,7 +491,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::{Bitboard, Color};
+    /// # use types::{Bitboard, Color};
     /// let rank4 = Bitboard::RANK_4;
     /// assert_eq!(rank4.retreat_by(Color::White, 1), Bitboard::RANK_3);
     /// assert_eq!(rank4.retreat_by(Color::Black, 1), Bitboard::RANK_5);
@@ -510,7 +510,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// assert_eq!(Bitboard::RANK_4.north(), Bitboard::RANK_5);
     /// assert_eq!(Bitboard::RANK_8.north(), Bitboard::EMPTY_BOARD);
     /// ```
@@ -525,7 +525,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// assert_eq!(Bitboard::RANK_4.south(), Bitboard::RANK_3);
     /// assert_eq!(Bitboard::RANK_1.south(), Bitboard::EMPTY_BOARD);
     /// ```
@@ -539,7 +539,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// assert_eq!(Bitboard::FILE_C.east(), Bitboard::FILE_D);
     /// assert_eq!(Bitboard::FILE_H.east(), Bitboard::EMPTY_BOARD);
     /// ```
@@ -554,7 +554,7 @@ impl Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// assert_eq!(Bitboard::FILE_C.west(), Bitboard::FILE_B);
     /// assert_eq!(Bitboard::FILE_A.west(), Bitboard::EMPTY_BOARD);
     /// ```
@@ -666,7 +666,7 @@ impl FromStr for Bitboard {
     ///
     /// # Example
     /// ```
-    /// # use brogle_types::Bitboard;
+    /// # use types::Bitboard;
     /// use std::str::FromStr;
     /// let board1 = Bitboard::from_str("0x00FF000000000000").unwrap();
     /// let board2 = Bitboard::from_str("00FF000000000000").unwrap();

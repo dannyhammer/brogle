@@ -2,10 +2,10 @@ use std::time::Instant;
 
 use colored::*;
 
-use brogle_core::{perft, Position};
+use chessie::{perft, Position};
 
 fn main() {
-    let contents = std::fs::read_to_string("brogle_core/tests/standard.epd").unwrap();
+    let contents = std::fs::read_to_string("chessie/tests/standard.epd").unwrap();
 
     let lines = contents.lines().collect::<Vec<&str>>();
     let len = lines.len();

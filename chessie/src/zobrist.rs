@@ -1,9 +1,8 @@
 use std::fmt;
 
-use brogle_types::PieceKind;
-
 use super::{
-    CastlingRights, ChessBoard, Color, Piece, Position, Rank, Tile, XoShiRo, NUM_CASTLING_RIGHTS,
+    Board, CastlingRights, Color, Piece, PieceKind, Position, Rank, Tile, XoShiRo,
+    NUM_CASTLING_RIGHTS,
 };
 
 /// Stores Zobrist hash keys, for hashing [`Position`]s.
@@ -28,7 +27,7 @@ impl ZobristKey {
 
     /// Generates a [`ZobristKey`] from the provided components of a [`Position`].
     pub fn from_parts(
-        board: &ChessBoard,
+        board: &Board,
         ep_tile: Option<Tile>,
         castling_rights: &CastlingRights,
         color: Color,

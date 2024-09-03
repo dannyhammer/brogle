@@ -1,6 +1,6 @@
 use std::fmt;
 
-use brogle_core::{Color, File, Piece, PieceKind, Rank, Tile};
+use chessie::{Color, File, Piece, PieceKind, Rank, Tile};
 
 #[rustfmt::skip]
 const PAWNS: Psq = Psq::new_flipped_by_rank([

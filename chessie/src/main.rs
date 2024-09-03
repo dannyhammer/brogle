@@ -1,6 +1,6 @@
-use brogle_core::*;
+use chessie::*;
 
-/// All contents of this file should be ignored. I just use this `main` to test small things in `brogle_core`.
+/// All contents of this file should be ignored. I just use this `main` to test small things in `chessie`.
 fn main() {
     let mut game = Game::default();
     println!("pos: {}\nkey: {}", game.position(), game.key());

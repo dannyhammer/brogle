@@ -8,7 +8,7 @@ authors = ["Bill Cipher", "Dipper Pines"]
 
 [dependencies]
 log = "0.4.19"
-brogle_core = { path = "../brogle_core" }
+chessie = { path = "../chessie" }
 anyhow = "1.0.86"
 arrayvec = "0.7.4"
 env_logger = "0.11.5"

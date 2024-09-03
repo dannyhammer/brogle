@@ -1,4 +1,4 @@
-use brogle_core::{ChessBoard, Color, Game, PieceKind};
+use chessie::{Board, Color, Game, PieceKind};
 
 use super::piece_square_tables::psq_eval;
 use crate::search::Score;
@@ -66,7 +66,7 @@ impl<'a> Evaluator<'a> {
 /// If positive, `color` has more material.
 /// If negative, `color.opponent()` has more material.
 /// If zero, both sides have equal material.
-pub const fn material_difference(board: &ChessBoard, color: Color) -> i32 {
+pub const fn material_difference(board: &Board, color: Color) -> i32 {
     let friendly = count_material(board, color);
     let enemy = count_material(board, color.opponent());
 
@@ -90,7 +90,7 @@ pub const fn value_of(kind: PieceKind) -> i32 {
 /// Counts the material value of all pieces of the specified color.
 ///
 /// Does NOT count the material of the King, as it cannot be removed from the board.
-const fn count_material(board: &ChessBoard, color: Color) -> i32 {
+const fn count_material(board: &Board, color: Color) -> i32 {
     let mut score = 0;
 
     score += count_material_of(board, color, PieceKind::Pawn);
@@ -103,14 +103,14 @@ const fn count_material(board: &ChessBoard, color: Color) -> i32 {
 }
 
 /// Counts the material value of the specified piece kind/color on the board.
-const fn count_material_of(board: &ChessBoard, color: Color, kind: PieceKind) -> i32 {
+const fn count_material_of(board: &Board, color: Color, kind: PieceKind) -> i32 {
     let pieces = board.piece_parts(color, kind);
 
     (pieces.population() as i32) * value_of(kind)
 }
 
 /// Computes the value of the remaining material for `color`.
-const fn material_remaining(board: &ChessBoard, color: Color) -> i32 {
+const fn material_remaining(board: &Board, color: Color) -> i32 {
     INITIAL_MATERIAL_VALUE - count_material(board, color)
 }
 
@@ -119,11 +119,11 @@ const fn material_remaining(board: &ChessBoard, color: Color) -> i32 {
 /// Lower numbers are closer to the beginning of the game. Higher numbers are closer to the end of the game.
 ///
 /// The King is ignored when performing this calculation.
-pub fn endgame_weight_percentage(board: &ChessBoard, color: Color) -> f32 {
+pub fn endgame_weight_percentage(board: &Board, color: Color) -> f32 {
     (material_remaining(board, color) as f32) / (INITIAL_MATERIAL_VALUE as f32)
 }
 
 /// Same as [`endgame_weight_percentage`], but returns an `i32` in the range `[0, 100]`
-pub const fn endgame_weight(board: &ChessBoard, color: Color) -> i32 {
+pub const fn endgame_weight(board: &Board, color: Color) -> i32 {
     (material_remaining(board, color) * 100 / INITIAL_MATERIAL_VALUE * 100) / 100
 }
