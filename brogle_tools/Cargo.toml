@@ -18,10 +18,6 @@ name = "perftree_script"
 path = "src/perftree_script.rs"
 
 [[bin]]
-name = "magic_generator"
-path = "src/magic_generator.rs"
-
-[[bin]]
 name = "arena"
 path = "src/arena/main.rs"
 

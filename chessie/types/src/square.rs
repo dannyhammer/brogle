@@ -393,6 +393,21 @@ impl Square {
         self.inner() as usize
     }
 
+    /// Returns the [`Color`] of this [`Square`].
+    ///
+    /// This will return [`Color::White`] if the square is a "light" square
+    /// and [`Color::Black`] if the square is a "dark" square.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::{Color, Square};
+    /// assert_eq!(Square::C4.color(), Color::White);
+    /// assert_eq!(Square::C5.color(), Color::Black);
+    /// ```
+    pub const fn color(&self) -> Color {
+        Color::from_bool(self.is_dark())
+    }
+
     /// Returns `true` if this [`Square`] is a light square.
     ///
     /// # Example
@@ -401,7 +416,7 @@ impl Square {
     /// assert!(Square::C4.is_light());
     /// ```
     pub const fn is_light(&self) -> bool {
-        (self.file().0 + self.rank().0) % 2 != 0
+        (Bitboard::DARK_SQUARES.0 & self.0 as u64) != 0
     }
 
     /// Returns `true` if this [`Square`] is a dark square.
@@ -435,22 +450,6 @@ impl Square {
         (self.0 % 9 == other.0 % 9 || self.0 % 7 == other.0 % 7) // On same diag
             && self.rank().0 != other.rank().0 // Not on same rank
             && self.file().0 != other.file().0 // Not on same file
-    }
-
-    /// Returns the [`Color`] of this [`Square`].
-    ///
-    /// # Example
-    /// ```
-    /// # use types::{Color, Square};
-    /// assert_eq!(Square::C5.color(), Color::Black);
-    /// assert_eq!(Square::C4.color(), Color::White);
-    /// ```
-    pub const fn color(&self) -> Color {
-        if self.is_light() {
-            Color::White
-        } else {
-            Color::Black
-        }
     }
 
     /// Creates a [`Square`] from a string, according to the [Universal Chess Interface](https://en.wikipedia.org//wiki/Universal_Chess_Interface) notation.

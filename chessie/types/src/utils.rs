@@ -2,6 +2,9 @@ use std::path::Path;
 
 use super::{Bitboard, Color, Rank, Square};
 
+use anyhow::{bail, Result};
+use rand::random;
+
 /// FEN string for the starting position of chess.
 pub const FEN_STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -352,3 +355,206 @@ fn generate_dragon_mobility() -> [Bitboard; Square::COUNT] {
     dragon
 }
  */
+
+/// Generate magics for the Bishop and Rook and store them in `<outdir>/rook_magics.rs` and `<outdir>/bishop_magics.rs`.
+pub fn generate_magics<P: AsRef<Path>>(outdir: P) -> std::io::Result<()> {
+    let rook_magics = find_and_write_magics(&ROOK_DELTAS, "ROOK");
+    let rook_magic_path = Path::new(outdir.as_ref()).join("rook_magics.rs");
+    std::fs::write(rook_magic_path, rook_magics)?;
+
+    let bishop_magics = find_and_write_magics(&BISHOP_DELTAS, "BISHOP");
+    let bishop_magic_path = Path::new(outdir.as_ref()).join("bishop_magics.rs");
+    std::fs::write(bishop_magic_path, bishop_magics)?;
+
+    Ok(())
+}
+
+/// Find all magics for the provided piece and format them as a `String` to be written to a file.
+fn find_and_write_magics(deltas: &[(i8, i8)], piece_name: &str) -> String {
+    let mut s = format!(
+        "pub const {piece_name}_MAGICS: &[MagicBitboardData; {}] = &[\n",
+        Square::COUNT
+    );
+
+    let mut table_size = 0;
+
+    for square in Square::iter() {
+        let index_bits = compute_blockers(deltas, square).population();
+        let (entry, table) = find_magic(deltas, square, index_bits);
+
+        s += format!(
+            "  MagicBitboardData {{ blockers: 0x{:016X}, magic: 0x{:016X}, shift: {}, offset: {} }},\n",
+            entry.blockers, entry.magic, entry.shift, table_size
+        )
+        .as_str();
+
+        table_size += table.len();
+    }
+
+    s += "];\n";
+    s += format!("pub const {piece_name}_TABLE_SIZE: usize = {table_size};").as_str();
+
+    s
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct MagicBitboardData {
+    blockers: Bitboard,
+    magic: u64,
+    shift: u8,
+}
+
+/// Obtain the appropriate index into a magic bitboard table for the given blocker bitboard.
+fn magic_index(data: &MagicBitboardData, blockers: Bitboard) -> usize {
+    let blockers = blockers & data.blockers;
+    let hash = blockers.inner().wrapping_mul(data.magic);
+    (hash >> data.shift) as usize
+}
+
+/// Computes a [`Bitboard`] of containing all possible blocker squares for a sliding
+/// piece (whose movement is defined by `deltas`) at `square`.
+///
+/// This is the same as computing the default movement for a sliding piece at `square`
+/// and XOR'ing to remove the squares on the edges of the board.
+fn compute_blockers(deltas: &[(i8, i8)], square: Square) -> Bitboard {
+    let mut blockers = Bitboard::EMPTY_BOARD;
+
+    // Loop over the directions this piece can move
+    for (df, dr) in deltas {
+        // Start with the present square
+        let mut ray = square;
+        // If we can continue moving in this direction, add it to the blockers bitboard
+        // The order here matters- we don't care about the edges of the board.
+        while let Some(shifted) = ray.offset(*df, *dr) {
+            blockers |= ray.bitboard();
+            ray = shifted;
+        }
+    }
+
+    // The starting square cannot be a blocker
+    blockers ^ square.bitboard()
+}
+
+/// Computes a [`Bitboard`] of containing all squares that can be attacked by a
+/// sliding piece (whose movement is defined by `deltas`) at `square`, taking into
+/// account occupied squares through `blockers`.
+///
+/// The computed [`Bitboard`] will allow the slider at `square` to move to the first
+/// blocked square in `blockers`, so filtering out friendly pieces should be handled
+/// elsewhere.
+fn compute_blocked_attacks(deltas: &[(i8, i8)], square: Square, blockers: Bitboard) -> Bitboard {
+    let mut attacks = Bitboard::EMPTY_BOARD;
+
+    // Loop over the directions this piece can move
+    for (df, dr) in deltas {
+        let mut ray = square;
+
+        // Loop until we encounter the first occupied square
+        while !blockers.get(ray) {
+            // If we have not moved off the edge of the board, add this square to the attack bitboard
+            if let Some(shifted) = ray.offset(*df, *dr) {
+                ray = shifted;
+                attacks |= ray.bitboard();
+            } else {
+                // If we HAVE moved off the edge of the board, we can exit the loop and check the next delta
+                break;
+            }
+        }
+    }
+
+    attacks
+}
+
+/// Finds a valid magic for `square`.
+fn find_magic(
+    deltas: &[(i8, i8)],
+    square: Square,
+    index_bits: u8,
+) -> (MagicBitboardData, Vec<Bitboard>) {
+    let blockers = compute_blockers(deltas, square);
+    let shift = 64 - index_bits;
+
+    loop {
+        // Only a few bits are needed, so generate a random number with only a few bits set
+        let magic = random::<u64>() & random::<u64>() & random::<u64>();
+
+        let magic_data = MagicBitboardData {
+            blockers,
+            magic,
+            shift,
+        };
+
+        if let Ok(table) = try_magic(deltas, square, &magic_data) {
+            return (magic_data, table);
+        }
+    }
+}
+
+/// Attempts to use the provided magic to generate valid movegen for all possible blockers.
+fn try_magic(
+    deltas: &[(i8, i8)],
+    square: Square,
+    magic_data: &MagicBitboardData,
+) -> Result<Vec<Bitboard>> {
+    let index_bits = 64 - magic_data.shift;
+    let mut table = vec![Bitboard::EMPTY_BOARD; 1 << index_bits];
+
+    // We need to check if the table will be valid for every possible configuration of blockers
+    for blockers in magic_data.blockers.subsets() {
+        let attacks = compute_blocked_attacks(deltas, square, blockers);
+        let entry = &mut table[magic_index(&magic_data, blockers)];
+
+        // If the entry is empty, we can fill it
+        if entry.is_empty() {
+            *entry = attacks;
+        } else if *entry != attacks {
+            // Two entries map to the same slot; hash collision
+            bail!("Hash collision between {entry} and {attacks}");
+        }
+    }
+
+    Ok(table)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ROOK_DELTAS;
+
+    #[test]
+    fn test_compute_blockers_bitboard() {
+        let rook_e4_blockers = compute_blockers(&ROOK_DELTAS, Square::E4);
+        assert_eq!(
+            rook_e4_blockers.to_string(),
+            ". . . . . . . . 
+. . . . X . . . 
+. . . . X . . . 
+. . . . X . . . 
+. X X X . X X . 
+. . . . X . . . 
+. . . . X . . . 
+. . . . . . . . 
+"
+        );
+    }
+
+    #[test]
+    fn test_compute_moves_bitboard() {
+        // Rook at E4.
+        // Blockers at E1, C4, F4, E7.
+        let blockers = Bitboard(4503600231350288);
+        let moves = compute_blocked_attacks(&ROOK_DELTAS, Square::E4, blockers);
+        assert_eq!(
+            moves.to_string(),
+            ". . . . . . . . 
+. . . . X . . . 
+. . . . X . . . 
+. . . . X . . . 
+. . X X . X . . 
+. . . . X . . . 
+. . . . X . . . 
+. . . . X . . . 
+"
+        );
+    }
+}

@@ -7,8 +7,8 @@ use std::{
 use anyhow::{anyhow, bail, Result};
 
 use super::{
-    Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind, Rank, Square, ZobristKey,
-    FEN_STARTPOS, NUM_CASTLING_RIGHTS,
+    Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind, Rank, Square,
+    ZobristKey, FEN_STARTPOS, NUM_CASTLING_RIGHTS,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -221,7 +221,7 @@ impl fmt::Display for CastlingRights {
     }
 }
 
-/// Represents the current state of the game, including move counters
+/// Represents the current state of the game, including move counters.
 ///
 /// Analogous to a FEN string.
 #[derive(Clone, PartialEq, Eq)]
@@ -728,7 +728,6 @@ impl Board {
         } else {
             fen
         };
-        let mut has_both_kings = [false, false];
 
         // Check if the placements string is the correct length
         if placements.matches('/').count() != 7 {
@@ -749,10 +748,6 @@ impl Board {
                     board.place(piece, square);
 
                     file += 1;
-
-                    if piece.is_king() {
-                        has_both_kings[piece.color()] = true;
-                    }
                 } else {
                     // If the next char was not a piece, increment our File counter, checking for errors along the way
                     let Some(empty) = piece_char.to_digit(10) else {
@@ -763,15 +758,26 @@ impl Board {
             }
         }
 
-        if !(has_both_kings[Color::White] && has_both_kings[Color::Black]) {
-            bail!("Invalid FEN string: A FEN must have valid placements for both Kings.");
-        }
-
         Ok(board)
     }
 
+    /// Returns an instance of this [`Board`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
+    ///
+    /// If `mask` contains only 1 square, use [`Board::with_piece`] instead, as it is likely to be faster.
+    pub const fn with(self, mask: Bitboard, piece: Piece) -> Self {
+        let (color, kind) = piece.parts();
+
+        let mut colors = self.colors;
+        colors[color.index()] = colors[color.index()].or(mask);
+
+        let mut pieces = self.pieces;
+        pieces[kind.index()] = pieces[kind.index()].or(mask);
+
+        Self { colors, pieces }
+    }
+
     /// Returns an instance of this [`Board`] that has all bits specified by `mask` cleared.
-    pub fn without(&self, mask: Bitboard) -> Self {
+    pub fn without(self, mask: Bitboard) -> Self {
         let not_mask = !mask;
 
         let mut colors = self.colors;
@@ -783,21 +789,6 @@ impl Board {
         for kind in PieceKind::all() {
             pieces[kind] = pieces[kind] & not_mask;
         }
-
-        Self { colors, pieces }
-    }
-
-    /// Returns an instance of this [`Board`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
-    ///
-    /// If `mask` contains only 1 square, use [`Board::with_piece`] instead, as it is likely to be faster.
-    pub const fn with(&self, mask: Bitboard, piece: Piece) -> Self {
-        let (color, kind) = piece.parts();
-
-        let mut colors = self.colors;
-        colors[color.index()] = colors[color.index()].or(mask);
-
-        let mut pieces = self.pieces;
-        pieces[kind.index()] = pieces[kind.index()].or(mask);
 
         Self { colors, pieces }
     }

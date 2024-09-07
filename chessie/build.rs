@@ -15,5 +15,5 @@ fn main() {
     generate_piece_attack_datfiles(&outdir).unwrap();
 
     // TODO: Generate magics
-    // Issue link: https://github.com/dannyhammer/brogle/issues/11
+    // generate_magics(&outdir).unwrap();
 }

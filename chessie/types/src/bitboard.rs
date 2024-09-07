@@ -398,12 +398,6 @@ impl Bitboard {
         self.0 &= self.0.wrapping_sub(1);
     }
 
-    /// Performs a [Carry-Rippler](https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set).
-    /// Useful for iterating over the subsets of this [`Bitboard`].
-    pub const fn carry_rippler(self, mask: Self) -> Self {
-        Self(self.0.wrapping_sub(mask.0) & mask.0)
-    }
-
     /// Toggles the bit corresponding to the specified [`Square`].
     pub fn toggle_square(&mut self, square: Square) {
         *self ^= Self::from_square(square);
@@ -445,7 +439,16 @@ impl Bitboard {
 
     /// Returns a [`BitboardIter`] to iterate over all of the set bits as [`Square`]s.
     pub const fn iter(&self) -> BitboardIter {
-        BitboardIter { bb: *self }
+        BitboardIter { bitboard: *self }
+    }
+
+    /// Returns a [`BitboardSubsetIter`] to iterate over all of the subsets of this bitboard.
+    pub const fn subsets(&self) -> BitboardSubsetIter {
+        BitboardSubsetIter {
+            bitboard: *self,
+            subset: Self::EMPTY_BOARD,
+            remaining: 2usize.pow(self.population() as u32),
+        }
     }
 
     /// Yields the total number of `1`s in this [`Bitboard`].
@@ -892,24 +895,24 @@ impl fmt::Debug for Bitboard {
 }
 
 pub struct BitboardIter {
-    bb: Bitboard,
+    bitboard: Bitboard,
 }
 
 impl Iterator for BitboardIter {
     type Item = Square;
     fn next(&mut self) -> Option<Self::Item> {
-        self.bb.pop_lsb()
+        self.bitboard.pop_lsb()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = self.bb.population() as usize;
+        let size = self.bitboard.population() as usize;
         (size, Some(size))
     }
 }
 
 impl ExactSizeIterator for BitboardIter {
     fn len(&self) -> usize {
-        self.bb.population() as usize
+        self.bitboard.population() as usize
     }
 }
 
@@ -917,7 +920,7 @@ impl IntoIterator for Bitboard {
     type Item = Square;
     type IntoIter = BitboardIter;
     fn into_iter(self) -> Self::IntoIter {
-        BitboardIter { bb: self }
+        BitboardIter { bitboard: self }
     }
 }
 
@@ -925,7 +928,7 @@ impl IntoIterator for &Bitboard {
     type Item = Square;
     type IntoIter = BitboardIter;
     fn into_iter(self) -> Self::IntoIter {
-        BitboardIter { bb: *self }
+        BitboardIter { bitboard: *self }
     }
 }
 
@@ -933,7 +936,52 @@ impl IntoIterator for &mut Bitboard {
     type Item = Square;
     type IntoIter = BitboardIter;
     fn into_iter(self) -> Self::IntoIter {
-        BitboardIter { bb: *self }
+        BitboardIter { bitboard: *self }
+    }
+}
+
+/// An iterator over all possible subsets of a [`Bitboard`].
+///
+/// See [`Bitboard::subsets`].
+///
+/// This is primarily used in magic bitboard generation, but may also be useful for other purposes, so it is made public.
+pub struct BitboardSubsetIter {
+    /// The original bitboard whose subsets to iterate over.
+    bitboard: Bitboard,
+
+    /// The current subset, which will be the result of `.next()`.
+    subset: Bitboard,
+
+    /// How many subsets we have left to iterate.
+    remaining: usize,
+}
+
+impl Iterator for BitboardSubsetIter {
+    type Item = Bitboard;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            None
+        } else {
+            // By saving and returning the original subset, we make the iterator return
+            // an empty set as the first element and the full subset as the last.
+            let subset = self.subset;
+
+            // Performs a Carry-Rippler operation: https://www.chessprogramming.org/Traversing_Subsets_of_a_Set#All_Subsets_of_any_Set
+            self.subset.0 = self.subset.0.wrapping_sub(self.bitboard.0) & self.bitboard.0;
+            self.remaining -= 1;
+
+            Some(subset)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl ExactSizeIterator for BitboardSubsetIter {
+    fn len(&self) -> usize {
+        self.remaining
     }
 }
 

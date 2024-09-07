@@ -3,11 +3,11 @@ use std::ops::Deref;
 use arrayvec::ArrayVec;
 
 use super::{
-    Bitboard, Board, Color, Move, MoveKind, Piece, PieceKind, Position, Rank, Square,
-    MAX_NUM_MOVES,
+    Bitboard, Board, Color, Move, MoveKind, Piece, PieceKind, Position, Rank, Square, MAX_NUM_MOVES,
 };
 
-include!("blobs/magics.rs"); // TODO: Make these into blobs
+include!("magics.rs");
+// include!(concat!(env!("OUT_DIR"), "/rook_magics.rs"));
 
 /*
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -186,7 +186,8 @@ impl MoveGenerator {
             // In single-check, so something must capture or block the check, or the king must leave check
             1 => {
                 // Need to OR so that the attacking piece appears in the checkmask (Knights)
-                ray_between_inclusive(king_square, self.checkers.to_square_unchecked()) | self.checkers
+                ray_between_inclusive(king_square, self.checkers.to_square_unchecked())
+                    | self.checkers
             }
 
             // In double-check, so only the King can move. Move him somewhere not attacked.
@@ -464,26 +465,27 @@ impl MoveGenerator {
             // A king can move anywhere that isn't attacked by the enemy
             let enemy_attacks = self.attacks_by_color(color.opponent());
 
-            let castling_availability = |side: [Option<Square>; Color::COUNT], dst_square: Square| {
-                // Check if we can castle at all on this side
-                if let Some(rook_square) = side[color] {
-                    // No squares between the King and his destination may be under attack
-                    let must_be_safe = ray_between_inclusive(from, dst_square);
-                    let is_safe = (must_be_safe & enemy_attacks).is_empty();
+            let castling_availability =
+                |side: [Option<Square>; Color::COUNT], dst_square: Square| {
+                    // Check if we can castle at all on this side
+                    if let Some(rook_square) = side[color] {
+                        // No squares between the King and his destination may be under attack
+                        let must_be_safe = ray_between_inclusive(from, dst_square);
+                        let is_safe = (must_be_safe & enemy_attacks).is_empty();
 
-                    // All squares between the King and Rook must be empty
-                    let must_be_clear = ray_between_exclusive(from, rook_square);
-                    let is_clear = (must_be_clear & blockers).is_empty();
+                        // All squares between the King and Rook must be empty
+                        let must_be_clear = ray_between_exclusive(from, rook_square);
+                        let is_clear = (must_be_clear & blockers).is_empty();
 
-                    if is_safe && is_clear {
-                        Bitboard::from_square(dst_square)
+                        if is_safe && is_clear {
+                            Bitboard::from_square(dst_square)
+                        } else {
+                            Bitboard::EMPTY_BOARD
+                        }
                     } else {
                         Bitboard::EMPTY_BOARD
                     }
-                } else {
-                    Bitboard::EMPTY_BOARD
-                }
-            };
+                };
 
             let kingside = castling_availability(
                 self.position().castling_rights().kingside,
@@ -707,6 +709,13 @@ struct MagicEntry {
     offset: u32,
 }
 
+const fn magic_index(entry: &MagicEntry, blockers: Bitboard) -> usize {
+    let blockers = blockers.inner() & entry.mask;
+    let hash = blockers.wrapping_mul(entry.magic);
+    let index = (hash >> entry.shift) as usize;
+    entry.offset as usize + index
+}
+
 pub fn pseudo_legal_movement_for(piece: &Piece, square: Square, blockers: Bitboard) -> Bitboard {
     MOVE_HELPERS[piece.kind().index()](square, blockers, piece.color())
 }
@@ -743,13 +752,6 @@ const fn queen_move_helper(square: Square, blockers: Bitboard, _: Color) -> Bitb
 
 const fn king_move_helper(square: Square, _: Bitboard, _: Color) -> Bitboard {
     king_attacks(square)
-}
-
-const fn magic_index(entry: &MagicEntry, blockers: Bitboard) -> usize {
-    let blockers = blockers.inner() & entry.mask;
-    let hash = blockers.wrapping_mul(entry.magic);
-    let index = (hash >> entry.shift) as usize;
-    entry.offset as usize + index
 }
 
 /// Fetches a [`Bitboard`] with all of the bits along the ray between `from` and `to` (inclusive) set to `1`.
