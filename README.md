@@ -10,9 +10,8 @@ Once the code reaches a state that I am content with, I will release a version 1
 The [engine](brogle/) is where the source code for Brogle actually lives.
 Inside you can find the components for UCI-compatibility, search, evaluation, and more.
 
-The [core library](brogle_core/) is a home-rolled implementation of all the rules of chess.
+The [core library](chessie/) is a home-rolled implementation of all the rules of chess.
 I intend to separate this into it's own repository later and publish it on [crates.io](https://crates.io).
-Why? Because I want to.
 
 The [tools](brogle_tools/) crate is a collection of tools I used during the development of this engine.
 These are mostly meant for me, so don't judge me if they're poorly-written or outdated.
@@ -24,18 +23,25 @@ These are mostly meant for me, so don't judge me if they're poorly-written or ou
 -   Search
 
     -   [Negamax](https://www.chessprogramming.org/Negamax) with [alpha-beta pruning](https://www.chessprogramming.org/Alpha-Beta)
-    -   [Iterative Deepening](https://www.chessprogramming.org/Iterative_Deepening) with [MVV-LVA](https://www.chessprogramming.org/MVV-LVA) [move ordering](https://www.chessprogramming.org/Move_Ordering)
+    -   [Principal Variation Search](https://www.chessprogramming.org/Principal_Variation_Search)
+    -   [Iterative Deepening](https://www.chessprogramming.org/Iterative_Deepening)
+    -   [MVV-LVA](https://www.chessprogramming.org/MVV-LVA) [move ordering](https://www.chessprogramming.org/Move_Ordering)
     -   [Quiescence Search](https://www.chessprogramming.org/Quiescence_Search)
+    -   [Transposition Table](https://www.chessprogramming.org/Transposition_Table) for move ordering and basic pruning
 
 -   Evaluation
     -   [HCE](https://www.chessprogramming.org/Evaluation) (hand-crated evaluation)
     -   Basic [material](https://www.chessprogramming.org/Material) difference evaluation
+    -   [Piece-Square tables](https://www.chessprogramming.org/Piece-Square_Tables) with valued copied from the [Simplified Evaluation Function](https://www.chessprogramming.org/Simplified_Evaluation_Function)
 
 More features to be implemented as I find time!
 
-##
+## Building and Running
 
-### Acknowledgements:
+This project is written in Rust. Since I (presently) don't have any precompiled binaries, you need to build from source with [Cargo](https://doc.rust-lang.org/cargo/).
+Once you've downloaded the code, a simple `cargo run --release --bin brogle` will launch the engine.
+
+## Acknowledgements:
 
 Special thanks to all
 
