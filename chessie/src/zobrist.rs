@@ -1,7 +1,7 @@
 use std::fmt;
 
 use super::{
-    Board, CastlingRights, Color, Piece, PieceKind, Position, Rank, Tile, XoShiRo,
+    Board, CastlingRights, Color, Piece, PieceKind, Position, Rank, Square, XoShiRo,
     NUM_CASTLING_RIGHTS,
 };
 
@@ -19,7 +19,7 @@ impl ZobristKey {
     pub fn new(position: &Position) -> Self {
         Self::from_parts(
             position.board(),
-            position.ep_tile(),
+            position.ep_square(),
             position.castling_rights(),
             position.current_player(),
         )
@@ -28,19 +28,19 @@ impl ZobristKey {
     /// Generates a [`ZobristKey`] from the provided components of a [`Position`].
     pub fn from_parts(
         board: &Board,
-        ep_tile: Option<Tile>,
+        ep_square: Option<Square>,
         castling_rights: &CastlingRights,
         color: Color,
     ) -> Self {
         let mut key = Self::default();
 
         // Hash all pieces on the board
-        for (tile, piece) in board.all() {
-            key.hash_piece(tile, piece);
+        for (square, piece) in board.all() {
+            key.hash_piece(square, piece);
         }
 
         // Hash the en passant square, if it exists
-        key.hash_optional_ep_tile(ep_tile);
+        key.hash_optional_ep_square(ep_square);
 
         // Hash the castling rights
         key.hash_castling_rights(castling_rights);
@@ -63,20 +63,20 @@ impl ZobristKey {
         self.0 ^= hash_key;
     }
 
-    /// Adds/removes the hash for the provided `piece`/`tile` combo to this [`ZobristKey`].
-    pub fn hash_piece(&mut self, tile: Tile, piece: Piece) {
-        self.hash(ZOBRIST_TABLE.piece_keys[tile][piece]);
+    /// Adds/removes the hash for the provided `piece`/`square` combo to this [`ZobristKey`].
+    pub fn hash_piece(&mut self, square: Square, piece: Piece) {
+        self.hash(ZOBRIST_TABLE.piece_keys[square][piece]);
     }
 
-    /// Adds/removes the hash for the provided `ep_tile` to this [`ZobristKey`].
-    pub fn hash_ep_tile(&mut self, ep_tile: Tile) {
-        self.hash(ZOBRIST_TABLE.ep_keys[ep_tile]);
+    /// Adds/removes the hash for the provided `ep_square` to this [`ZobristKey`].
+    pub fn hash_ep_square(&mut self, ep_square: Square) {
+        self.hash(ZOBRIST_TABLE.ep_keys[ep_square]);
     }
 
-    /// Adds/removes the hash for the provided `ep_tile` to this [`ZobristKey`].
-    pub fn hash_optional_ep_tile(&mut self, ep_tile: Option<Tile>) {
-        // This works because all tiles where EP isn't possible (including Tile::default) have a hash value of 0
-        self.hash_ep_tile(ep_tile.unwrap_or_default());
+    /// Adds/removes the hash for the provided `ep_square` to this [`ZobristKey`].
+    pub fn hash_optional_ep_square(&mut self, ep_square: Option<Square>) {
+        // This works because all squares where EP isn't possible (including Square::default) have a hash value of 0
+        self.hash_ep_square(ep_square.unwrap_or_default());
     }
 
     /// Adds/removes the hash for the provided `castling_rights` to this [`ZobristKey`].
@@ -99,11 +99,11 @@ impl fmt::Display for ZobristKey {
 /// Encapsulates the logic of Zobrist hashing.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 struct ZobristHashTable {
-    /// One unique key for every possible piece and every possible tile.
-    piece_keys: [[u64; PieceKind::COUNT]; Tile::COUNT],
+    /// One unique key for every possible piece and every possible square.
+    piece_keys: [[u64; PieceKind::COUNT]; Square::COUNT],
 
-    /// One unique key for every tile where en passant is possible.
-    ep_keys: [u64; Tile::COUNT],
+    /// One unique key for every square where en passant is possible.
+    ep_keys: [u64; Square::COUNT],
 
     /// One key for every possible combination of castling rights.
     castling_keys: [u64; NUM_CASTLING_RIGHTS],
@@ -117,16 +117,16 @@ impl ZobristHashTable {
     ///
     /// This is only done once, at compilation, and is stored in the global `ZOBRIST_TABLE` constant.
     const fn new() -> Self {
-        let mut piece_keys = [[0; PieceKind::COUNT]; Tile::COUNT];
+        let mut piece_keys = [[0; PieceKind::COUNT]; Square::COUNT];
         let mut color_key = [0; Color::COUNT];
-        let mut ep_keys = [0; Tile::COUNT];
+        let mut ep_keys = [0; Square::COUNT];
         let mut castling_keys = [0; NUM_CASTLING_RIGHTS];
 
         let mut prng = XoShiRo::new();
 
         // Initialize keys for pieces and EP
         let mut i = 0;
-        while i < Tile::COUNT {
+        while i < Square::COUNT {
             let mut j = 0;
             // Initialize keys for pieces
             while j < PieceKind::COUNT {
@@ -137,7 +137,7 @@ impl ZobristHashTable {
             }
 
             // Initialize keys for en passant squares
-            let rank = Tile::from_index_unchecked(i).rank();
+            let rank = Square::from_index_unchecked(i).rank();
             if rank.is(&Rank::THREE) || rank.is(&Rank::SIX) {
                 // Since en passant can only happen on ranks 3 and 6, we only need to store hash keys for those ranks
                 let key;

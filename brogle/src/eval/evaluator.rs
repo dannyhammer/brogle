@@ -53,8 +53,8 @@ impl<'a> Evaluator<'a> {
         let material = count_material(self.game.board(), color);
         let mut positional = 0;
 
-        for (tile, piece) in self.game.all_for(color) {
-            positional += psq_eval(piece, tile, self.endgame_weight);
+        for (square, piece) in self.game.all_for(color) {
+            positional += psq_eval(piece, square, self.endgame_weight);
         }
 
         Score(material + positional)

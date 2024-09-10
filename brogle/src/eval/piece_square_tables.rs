@@ -1,6 +1,6 @@
 use std::fmt;
 
-use chessie::{Color, File, Piece, PieceKind, Rank, Tile};
+use chessie::{Color, File, Piece, PieceKind, Rank, Square};
 
 #[rustfmt::skip]
 const PAWNS: Psq = Psq::new_flipped_by_rank([
@@ -105,11 +105,11 @@ pub const TEST_PSQ: Psq = Psq::new_flipped_by_rank([
 /// When defining a PSQ, the table as-written in code will apply for White.
 /// That is, the first entry is the value at A8, the second, B8, and so on...
 #[derive(PartialEq, Eq, Debug)]
-pub struct Psq([i32; Tile::COUNT]);
+pub struct Psq([i32; Square::COUNT]);
 
 impl Psq {
     /// Flips `psq` by rank, so that the representation as-written in code will correspond to White's perspective.
-    pub const fn new_flipped_by_rank(psq: [i32; Tile::COUNT]) -> Self {
+    pub const fn new_flipped_by_rank(psq: [i32; Square::COUNT]) -> Self {
         let mut flipped = psq;
 
         let mut i = 0;
@@ -121,21 +121,21 @@ impl Psq {
         Self(flipped)
     }
 
-    /// Get the value of this PSQ at the provided tile.
-    const fn get(&self, tile: Tile) -> i32 {
-        self.0[tile.index()]
+    /// Get the value of this PSQ at the provided square.
+    const fn get(&self, square: Square) -> i32 {
+        self.0[square.index()]
     }
 
-    /// Get the value of this PSQ at the provided tile, relative to `color`.
-    const fn get_relative(&self, tile: Tile, color: Color) -> i32 {
-        self.get(tile.relative_to(color))
+    /// Get the value of this PSQ at the provided square, relative to `color`.
+    const fn get_relative(&self, square: Square, color: Color) -> i32 {
+        self.get(square.relative_to(color))
     }
 
     /// Interpolate a value between this PSQ and another.
     ///
     /// `weight` should be `[0, 100]`.
-    const fn get_weighted(&self, tile: Tile, other: &Self, weight: i32) -> i32 {
-        lerp_i32(self.get(tile), other.get(tile), weight)
+    const fn get_weighted(&self, square: Square, other: &Self, weight: i32) -> i32 {
+        lerp_i32(self.get(square), other.get(square), weight)
     }
 
     /// Interpolate a value between this PSQ and another, relative to `color`.
@@ -143,12 +143,12 @@ impl Psq {
     /// `weight` should be `[0, 100]`.
     const fn get_relative_weighted(
         &self,
-        tile: Tile,
+        square: Square,
         color: Color,
         other: &Self,
         weight: i32,
     ) -> i32 {
-        self.get_weighted(tile.relative_to(color), other, weight)
+        self.get_weighted(square.relative_to(color), other, weight)
     }
 }
 
@@ -160,7 +160,7 @@ impl fmt::Display for Psq {
             write!(f, "{rank}")?;
             write!(f, "| ")?;
             for file in File::iter() {
-                write!(f, "{:3} ", self.get(Tile::new(file, rank)))?;
+                write!(f, "{:3} ", self.get(Square::new(file, rank)))?;
             }
             writeln!(f)?;
         }
@@ -180,18 +180,18 @@ impl fmt::Display for Psq {
     }
 }
 
-/// Fetch the Piece-Square Table value for `piece` at `tile`.
+/// Fetch the Piece-Square Table value for `piece` at `square`.
 ///
 /// Presently, `endgame_weight` is only factored in when computing King values.
-pub fn psq_eval(piece: Piece, tile: Tile, endgame_weight: i32) -> i32 {
+pub fn psq_eval(piece: Piece, square: Square, endgame_weight: i32) -> i32 {
     match piece.kind() {
-        PieceKind::Pawn => PAWNS.get_relative(tile, piece.color()),
-        PieceKind::Knight => KNIGHTS.get_relative(tile, piece.color()),
-        PieceKind::Bishop => BISHOPS.get_relative(tile, piece.color()),
-        PieceKind::Rook => ROOKS.get_relative(tile, piece.color()),
-        PieceKind::Queen => QUEEN.get_relative(tile, piece.color()),
+        PieceKind::Pawn => PAWNS.get_relative(square, piece.color()),
+        PieceKind::Knight => KNIGHTS.get_relative(square, piece.color()),
+        PieceKind::Bishop => BISHOPS.get_relative(square, piece.color()),
+        PieceKind::Rook => ROOKS.get_relative(square, piece.color()),
+        PieceKind::Queen => QUEEN.get_relative(square, piece.color()),
         PieceKind::King => {
-            KING_MG.get_relative_weighted(tile, piece.color(), &KING_EG, endgame_weight)
+            KING_MG.get_relative_weighted(square, piece.color(), &KING_EG, endgame_weight)
         }
     }
 }

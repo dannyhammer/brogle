@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use chessie::{Bitboard, File, Rank, Tile};
+use chessie::{Bitboard, File, Rank, Square};
 
 fn draw_centered_text(text: &str, x: f32, y: f32, font_size: f32, color: Color) {
     let center = get_text_center(text, None, font_size as u16, 1.0, 0.0);
@@ -36,10 +36,10 @@ async fn main() {
     loop {
         // Compute all necessary coordinates and values
         let (center_x, center_y) = (screen_width() / 2., screen_height() / 2.);
-        let tile_size = screen_height().min(screen_width()) / 16.0;
-        let start_x = center_x - (tile_size * 4.0);
-        let start_y = center_y + (tile_size * 3.0);
-        let text_size = tile_size / 2.0;
+        let square_size = screen_height().min(screen_width()) / 16.0;
+        let start_x = center_x - (square_size * 4.0);
+        let start_y = center_y + (square_size * 3.0);
+        let text_size = square_size / 2.0;
         let text_x = center_x;
         let text_y = screen_height() / 12.0;
 
@@ -47,28 +47,28 @@ async fn main() {
         clear_background(GRAY);
 
         // Draw a chessboard
-        for tile in Tile::iter() {
-            let x = start_x + tile.file().index() as f32 * tile_size;
-            let y = start_y - tile.rank().index() as f32 * tile_size;
-            let text_color = if tile.is_light() { BLACK } else { WHITE };
+        for square in Square::iter() {
+            let x = start_x + square.file().index() as f32 * square_size;
+            let y = start_y - square.rank().index() as f32 * square_size;
+            let text_color = if square.is_light() { BLACK } else { WHITE };
 
-            // Select tile color based on whether the tile is selected
-            let color = if tile.is_light() {
-                if board[tile] {
+            // Select square color based on whether the square is selected
+            let color = if square.is_light() {
+                if board[square] {
                     GREEN
                 } else {
                     BEIGE
                 }
-            } else if board[tile] {
+            } else if board[square] {
                 DARKGREEN
             } else {
                 DARKBROWN
             };
 
-            // Draw the tile, then it's label
-            draw_rectangle(x, y, tile_size, tile_size, color);
+            // Draw the square, then it's label
+            draw_rectangle(x, y, square_size, square_size, color);
             draw_text(
-                tile.to_string().as_str(),
+                square.to_string().as_str(),
                 x + text_size / 2.0,
                 y + text_size + text_size / 4.0,
                 text_size,
@@ -76,16 +76,16 @@ async fn main() {
             );
         }
 
-        // If the mouse is clicked, select/deselect the tile clicked
+        // If the mouse is clicked, select/deselect the square clicked
         if is_mouse_button_pressed(MouseButton::Left) {
             let (mouse_x, mouse_y) = mouse_position();
-            let tile_x = ((mouse_x - start_x) / tile_size).floor();
-            let tile_y = ((start_y - mouse_y + tile_size) / tile_size).floor();
+            let square_x = ((mouse_x - start_x) / square_size).floor();
+            let square_y = ((start_y - mouse_y + square_size) / square_size).floor();
 
-            // If a valid tile was clicked, toggle it
-            if let (Ok(file), Ok(rank)) = (File::new(tile_x as u8), Rank::new(tile_y as u8)) {
-                let tile = Tile::new(file, rank);
-                board.toggle_tile(tile);
+            // If a valid square was clicked, toggle it
+            if let (Ok(file), Ok(rank)) = (File::new(square_x as u8), Rank::new(square_y as u8)) {
+                let square = Square::new(file, rank);
+                board.toggle_square(square);
                 println!("\nBitBoard:\n{board}");
             }
         }
