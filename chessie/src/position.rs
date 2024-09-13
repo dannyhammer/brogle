@@ -7,95 +7,9 @@ use std::{
 use anyhow::{anyhow, bail, Result};
 
 use super::{
-    Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind, Rank, Square,
-    ZobristKey, FEN_STARTPOS, NUM_CASTLING_RIGHTS,
+    Bitboard, Color, File, Move, MoveKind, Piece, PieceKind, Rank, Square, ZobristKey,
+    FEN_STARTPOS, NUM_CASTLING_RIGHTS,
 };
-
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct Game {
-    movegen: MoveGenerator,
-    history: Vec<ZobristKey>,
-}
-
-impl Game {
-    /// Creates a new, empty [`Game`].
-    pub fn new() -> Self {
-        Self {
-            movegen: MoveGenerator::new_legal(Position::new()),
-            history: Vec::with_capacity(128),
-        }
-    }
-
-    /// Creates a new [`Game`] from the provided FEN string.
-    pub fn from_fen(fen: &str) -> Result<Self> {
-        Ok(Self {
-            movegen: MoveGenerator::new_legal(Position::from_fen(fen)?),
-            history: Vec::with_capacity(128),
-        })
-    }
-
-    /// Consumes `self` and returns a [`Game`] after having applied the provided [`Move`].
-    pub fn with_move_made(mut self, mv: Move) -> Self {
-        self.make_move(mv);
-        self
-    }
-
-    /// Returns `true` if the game is in a position that is identical to the position it was in before.
-    ///
-    /// This is for checking "two-fold" repetition.
-    ///
-    ///
-    /// # Example
-    /// ```
-    /// # use chessie::{Game, Move};
-    /// let mut game = Game::default();
-    /// game.make_move(Move::from_uci(&game, "b1a3").unwrap());
-    /// assert_eq!(game.is_repetition(), false);
-    /// game.make_move(Move::from_uci(&game, "b8a6").unwrap());
-    /// assert_eq!(game.is_repetition(), false);
-    /// game.make_move(Move::from_uci(&game, "a3b1").unwrap());
-    /// assert_eq!(game.is_repetition(), false);
-    /// game.make_move(Move::from_uci(&game, "a6b8").unwrap());
-    /// assert_eq!(game.is_repetition(), true);
-    /// ```
-    pub fn is_repetition(&self) -> bool {
-        for prev in self.history.iter().rev().skip(1).step_by(2) {
-            if *prev == self.position().key() {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    /// Applies the move, if it is legal to make. If it is not legal, returns an `Err` explaining why.
-    pub fn make_move_checked(&mut self, mv: Move) -> Result<()> {
-        self.check_legality_of(mv)?;
-        self.make_move(mv);
-        Ok(())
-    }
-
-    /// Applies the provided [`Move`]. No enforcement of legality.
-    pub fn make_move(&mut self, mv: Move) {
-        self.history.push(self.position().key());
-        let new_pos = self.position().clone().with_move_made(mv);
-        self.movegen = MoveGenerator::new_legal(new_pos);
-    }
-
-    /// Applies the provided [`Move`]s. No enforcement of legality.
-    pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
-        for mv in moves {
-            self.make_move(mv);
-        }
-    }
-}
-
-impl Deref for Game {
-    type Target = MoveGenerator;
-    fn deref(&self) -> &Self::Target {
-        &self.movegen
-    }
-}
 
 // TODO: Refactor this to be Option<square> instead of bool arrays
 /// Represents the castling rights of both players
@@ -123,12 +37,25 @@ impl CastlingRights {
             queenside[Color::White] = uci.contains('Q').then_some(Square::A1);
             kingside[Color::Black] = uci.contains('k').then_some(Square::H8);
             queenside[Color::Black] = uci.contains('q').then_some(Square::A8);
-        } else {
+        } else if uci.chars().any(|c| File::from_char(c).is_ok()) {
+            eprintln!("Warning: Chess960 FEN detected for castling rights: {uci:?}");
+            eprintln!("Chess960 is not currently supported");
+            /*
             // TODO: Support Chess960
-            // Don't we need the King's square here?
-            // for c in uci.chars() {
-            //     let color = Color::from_bool(c.is_ascii_lowercase());
-            // }
+            for c in uci.chars() {
+                let color = Color::from_bool(c.is_ascii_lowercase());
+                let file = File::from_char(c)?;
+                let rank = Rank::first(color);
+                let rook_square = Square::new(file, rank);
+
+                let king_file = File::E; // TODO: Fetch King's file the rest of the FEN
+                if file > king_file {
+                    kingside[color] = Some(rook_square);
+                } else {
+                    queenside[color] = Some(rook_square);
+                }
+            }
+             */
         }
 
         Ok(Self {
@@ -423,7 +350,7 @@ impl Position {
     ///
     /// If `Ok()`, the move is legal.
     /// If `Err(msg)`, then `msg` will be a reason as to why it's not legal.
-    fn check_legality_of(&self, mv: Move) -> Result<()> {
+    pub fn check_legality_of(&self, mv: Move) -> Result<()> {
         let (from, to, kind) = mv.parts();
 
         // If there's no piece here, illegal move
@@ -763,7 +690,7 @@ impl Board {
 
     /// Returns an instance of this [`Board`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
     ///
-    /// If `mask` contains only 1 square, use [`Board::with_piece`] instead, as it is likely to be faster.
+    /// If `mask` contains only 1 square, use [`Board::with`] instead, as it is likely to be faster.
     pub const fn with(self, mask: Bitboard, piece: Piece) -> Self {
         let (color, kind) = piece.parts();
 

@@ -144,6 +144,27 @@ impl Bitboard {
         Self((value as u64).wrapping_neg() & u64::MAX)
     }
 
+    /// If `value` is `Some`, this converts the inner `T` using the appropriate [`Bitboard::from`] implementation.
+    ///
+    /// If `value` is `None`, this yields an empty bitboard.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::{Bitboard, Square};
+    /// assert_eq!(Bitboard::from_option(Some(Square::A1)), Square::A1.bitboard());
+    /// assert_eq!(Bitboard::from_option::<Square>(None), Bitboard::EMPTY_BOARD);
+    /// ```
+    pub fn from_option<T>(value: Option<T>) -> Self
+    where
+        Self: From<T>,
+    {
+        if let Some(t) = value {
+            Self::from(t)
+        } else {
+            Self::default()
+        }
+    }
+
     /// Returns a [`Bitboard`] of this [`Color`]'s first rank.
     ///
     /// # Example
@@ -378,6 +399,8 @@ impl Bitboard {
     }
 
     /// Returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].
+    ///
+    /// If `self` is empty, this yields `None`,
     pub const fn lsb(&self) -> Option<Square> {
         if self.is_empty() {
             None
@@ -387,6 +410,8 @@ impl Bitboard {
     }
 
     /// Pops and returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].
+    ///
+    /// If `self` is empty, this yields `None`,
     pub fn pop_lsb(&mut self) -> Option<Square> {
         let lsb = self.lsb();
         self.clear_lsb();
@@ -703,27 +728,40 @@ impl FromStr for Bitboard {
 
 macro_rules! impl_bitwise_op {
     // Impl op and op_assign for Self
-    ($op:tt, $op_assign:tt, $func:ident, $func_assign:ident, $op_tok:tt) => {
+    ($op:tt, $op_assign:tt, $func:ident, $func_assign:ident) => {
         impl std::ops::$op for Bitboard {
             type Output = Self;
             fn $func(self, rhs: Self) -> Self::Output {
-                Self(self.0 $op_tok rhs.0)
+                Self(self.0.$func(rhs.0))
             }
         }
 
         impl std::ops::$op_assign for Bitboard {
             fn $func_assign(&mut self, rhs: Self) {
-                *self = *self $op_tok rhs;
+                self.0.$func_assign(rhs.0);
+            }
+        }
+
+        impl std::ops::$op<Square> for Bitboard {
+            type Output = Self;
+            fn $func(self, rhs: Square) -> Self::Output {
+                self.$func(rhs.bitboard())
+            }
+        }
+
+        impl std::ops::$op_assign<Square> for Bitboard {
+            fn $func_assign(&mut self, rhs: Square) {
+                self.$func_assign(rhs.bitboard());
             }
         }
     };
 }
 
-impl_bitwise_op!(BitAnd, BitAndAssign, bitand, bitand_assign, &);
-impl_bitwise_op!(BitOr, BitOrAssign, bitor, bitor_assign, |);
-impl_bitwise_op!(BitXor, BitXorAssign, bitxor, bitxor_assign, ^);
-impl_bitwise_op!(Shl, ShlAssign, shl, shl_assign, <<);
-impl_bitwise_op!(Shr, ShrAssign, shr, shr_assign, >>);
+impl_bitwise_op!(BitAnd, BitAndAssign, bitand, bitand_assign);
+impl_bitwise_op!(BitOr, BitOrAssign, bitor, bitor_assign);
+impl_bitwise_op!(BitXor, BitXorAssign, bitxor, bitxor_assign);
+impl_bitwise_op!(Shl, ShlAssign, shl, shl_assign);
+impl_bitwise_op!(Shr, ShrAssign, shr, shr_assign);
 
 impl Not for Bitboard {
     type Output = Self;
@@ -793,11 +831,7 @@ where
 {
     /// If `value` is `None`, this yields an empty [`Bitboard`].
     fn from(value: Option<T>) -> Self {
-        if let Some(t) = value {
-            Self::from(t)
-        } else {
-            Self::default()
-        }
+        Self::from_option(value)
     }
 }
 
@@ -822,6 +856,12 @@ impl From<Rank> for Bitboard {
 impl From<u64> for Bitboard {
     fn from(value: u64) -> Self {
         Self::new(value)
+    }
+}
+
+impl From<bool> for Bitboard {
+    fn from(value: bool) -> Self {
+        Self::from_bool(value)
     }
 }
 

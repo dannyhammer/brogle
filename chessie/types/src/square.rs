@@ -429,6 +429,66 @@ impl Square {
         !self.is_light()
     }
 
+    /// Returns the number of files away `self` is from `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Square;
+    /// assert_eq!(Square::C5.distance_files(Square::C2), 0);
+    /// assert_eq!(Square::C5.distance_files(Square::B2), 1);
+    /// assert_eq!(Square::A1.distance_files(Square::H1), 7);
+    /// ```
+    pub const fn distance_files(&self, other: Self) -> u8 {
+        self.file().0.abs_diff(other.file().0)
+    }
+
+    /// Returns the number of ranks away `self` is from `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Square;
+    /// assert_eq!(Square::C5.distance_ranks(Square::B5), 0);
+    /// assert_eq!(Square::C5.distance_ranks(Square::C4), 1);
+    /// assert_eq!(Square::A1.distance_ranks(Square::A8), 7);
+    /// ```
+    pub const fn distance_ranks(&self, other: Self) -> u8 {
+        self.rank().0.abs_diff(other.rank().0)
+    }
+
+    /// Returns the number of squares away `self` is from `other` using [Manhattan distance](https://en.wikipedia.org/wiki/Taxicab_geometry).
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Square;
+    /// assert_eq!(Square::C5.distance_manhattan(Square::C5), 0);
+    /// assert_eq!(Square::C5.distance_manhattan(Square::B5), 1);
+    /// assert_eq!(Square::C5.distance_manhattan(Square::B4), 2);
+    /// assert_eq!(Square::A1.distance_manhattan(Square::H8), 14);
+    /// ```
+    pub const fn distance_manhattan(&self, other: Self) -> u8 {
+        self.distance_files(other) + self.distance_ranks(other)
+    }
+
+    /// Returns the number of squares away `self` is from `other` using [Chebyshev distance](https://en.wikipedia.org/wiki/Chebyshev_distance).
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Square;
+    /// assert_eq!(Square::C5.distance_chebyshev(Square::C5), 0);
+    /// assert_eq!(Square::C5.distance_chebyshev(Square::B5), 1);
+    /// assert_eq!(Square::C5.distance_chebyshev(Square::B4), 1);
+    /// assert_eq!(Square::A1.distance_chebyshev(Square::H8), 7);
+    /// ```
+    pub const fn distance_chebyshev(&self, other: Self) -> u8 {
+        let file_dist = self.distance_files(other);
+        let rank_dist = self.distance_ranks(other);
+        if file_dist > rank_dist {
+            file_dist
+        } else {
+            rank_dist
+        }
+    }
+
     /// Returns `true` if `self` and `other` lie on the same diagonal.
     ///
     /// # Example
@@ -1151,7 +1211,13 @@ impl File {
     }
 
     pub fn from_char(file: char) -> Result<Self> {
-        debug_assert!(file.is_ascii(), "File chars must be ASCII!");
+        if !file.is_ascii_alphabetic() {
+            bail!(
+                "Invalid char for File: Must be between [{}, {}]. Got {file}",
+                'a',
+                'h'
+            );
+        }
 
         // Subtract the ASCII value for `a` (or `A`) to zero the number
         let file_int = file as u8 - if file.is_ascii_lowercase() { 'a' } else { 'A' } as u8;

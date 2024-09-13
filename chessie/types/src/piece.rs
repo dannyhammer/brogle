@@ -277,7 +277,9 @@ impl PieceKind {
     /// Number of piece variants.
     pub const COUNT: usize = 6;
 
-    /// An array of all 6 [`PieceKind`]s, starting with Pawn.
+    /// An array of all 6 [`PieceKind`]s.
+    ///
+    /// In the order: `Pawn`, `Knight`, `Bishop`, `Rook`, `Queen`, `King`.
     pub const fn all() -> [Self; Self::COUNT] {
         use PieceKind::*;
         [Pawn, Knight, Bishop, Rook, Queen, King]
