@@ -192,7 +192,7 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
         return res;
     }
 
-    let game = MoveGen::new(&position);
+    let game = MoveGen::new(position);
 
     if depth == 1 {
         res.nodes = game.legal_moves().len() as u64;

@@ -504,7 +504,7 @@ fn try_magic(
     // We need to check if the table will be valid for every possible configuration of blockers
     for blockers in magic_data.blockers.subsets() {
         let attacks = compute_blocked_attacks(deltas, square, blockers);
-        let entry = &mut table[magic_index(&magic_data, blockers)];
+        let entry = &mut table[magic_index(magic_data, blockers)];
 
         // If the entry is empty, we can fill it
         if entry.is_empty() {

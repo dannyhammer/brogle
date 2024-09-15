@@ -9,19 +9,11 @@ use super::{
     Bitboard, Color, Move, MoveKind, MoveList, Piece, PieceKind, Position, Square,
 };
 
-/// Possible promotions for a Pawn.
+/// An iterator over all of the moves for a given chess position.
 ///
-/// These are out-of-order from the ordering of [`PieceKind`]
-/// because you are most likely going to promote to a Queen,
-/// with promotion to a Knight being the next best option.
-/// You are likely to never promote to a Rook or Bishop.
-const PROMOTIONS: [PieceKind; 4] = [
-    PieceKind::Queen,
-    PieceKind::Knight,
-    PieceKind::Rook,
-    PieceKind::Bishop,
-];
-
+/// This structure initially computes board information such as checkers and pinned pieces,
+/// and only generates a new move when the `.next()` method is called while iterating over
+/// this struct.
 #[derive(Clone, PartialEq, Eq)]
 pub struct MoveGen<'a> {
     /// The position for which to generate moves.
@@ -50,7 +42,7 @@ pub struct MoveGen<'a> {
     /// An index into a list of [`PieceKind`] values that a Pawn can promote to.
     ///
     /// This is used to properly enumerate all possible promotions for a Pawn.
-    current_promotion_index: usize,
+    current_promotion_index: u8,
 
     /// All squares whose pieces are attacking the side-to-move's King.
     checkers: Bitboard,
@@ -84,14 +76,18 @@ pub struct MoveGen<'a> {
 
 impl<'a> MoveGen<'a> {
     /// Create a new [`MoveGen`] that will generate all possible legal moves.
+    ///
+    /// This will compute data masks for checkers, pinmasks, etc., but will not
+    /// compute any legal moves. That is accomplished by calling the `.next()`
+    /// on this struct as an iterator.
     pub fn new(position: &'a Position) -> Self {
         let color = position.current_player();
         let king_square = position.king(color).to_square_unchecked();
 
         // Checkmask and pinmasks for legal move generation
         let mut discoverable_checks = Bitboard::EMPTY_BOARD;
-        let checkers = compute_attacks_to(&position, king_square, color.opponent());
-        let (pinmask_ortho, pinmask_diag) = compute_pinmasks_for(&position, king_square, color);
+        let checkers = compute_attacks_to(position, king_square, color.opponent());
+        let (pinmask_ortho, pinmask_diag) = compute_pinmasks_for(position, king_square, color);
 
         // These are the rays containing the King and his Checkers
         // They are used to prevent the King from retreating along a line he is checked on!
@@ -176,10 +172,10 @@ impl<'a> MoveGen<'a> {
     ///
     /// Note that if the position is currently in double check, the provided mask will have no effect,
     /// as only the King is allowed to move during a double check.
-    pub fn only_moves_from(mut self, mask: Bitboard) -> Self {
+    pub fn only_moves_from(mut self, mask: impl Into<Bitboard>) -> Self {
         // If in double check, we cannot generate moves for anything other than the King
         self.from_mask = if self.checkers.population() <= 1 {
-            mask
+            mask.into()
         } else {
             self.king_square.bitboard()
         };
@@ -188,21 +184,75 @@ impl<'a> MoveGen<'a> {
     }
 
     /// Consumes `self`, returning a [`MoveGen`] that only generates moves _to_ the squares in `mask`.
-    pub fn only_moves_to(mut self, mask: Bitboard) -> Self {
-        self.to_mask = mask;
+    pub fn only_moves_to(mut self, mask: impl Into<Bitboard>) -> Self {
+        self.to_mask = mask.into();
         self
     }
 
     /// Consumes `self`, returning a [`MoveGen`] that only generates moves that capture enemy pieces.
     pub fn only_captures(self) -> Self {
         let opponent = self.position.current_player().opponent();
-        let capture_mask = self.position.color(opponent);
-        self.only_moves_to(capture_mask)
+        let mask = self.position.color(opponent);
+        self.only_moves_to(mask)
     }
 
     /// Consumes `self`, returning a list of all legal moves.
     pub fn legal_moves(self) -> MoveList {
+        // let color = self.position.current_player();
+        // let enemy_or_empty = self.position.enemy_or_empty(color);
+
+        // In double-check, so only the King can move. Move him somewhere not attacked.
+        /*
+        if self.checkers.population() > 1 {
+            let enemy_attacks = self.attacks_by_color[color.opponent()];
+            let attacks = self.attacks_by_square[self.king_square];
+            let safe_squares = !(enemy_attacks | self.discoverable_checks);
+
+            // Castling is illegal when in check, so just capture or evade
+            for to in attacks & enemy_or_empty & safe_squares {
+                let kind = if self.position.has(to) {
+                    MoveKind::Capture
+                } else {
+                    MoveKind::Quiet
+                };
+
+                self.moves.push(Move::new(self.king_square, to, kind));
+            }
+
+            return self.moves;
+        }
+         */
+
+        /*
+        for from in self.from_mask {
+            self.current_square = from;
+            let piece = self.position.piece_at(from).unwrap();
+            self.current_mobility = self.generate_legal_mobility_for(piece, from) & self.to_mask;
+            for to in self.current_mobility {
+                let mv = self.serialize_move(from, to);
+                self.moves.push(mv);
+
+                // If a Pawn promotion occurred, we may need to enumerate more promotions
+                if mv.is_promotion() {
+                    // Increase the promotion index
+                    self.current_promotion_index += 1;
+
+                    // If we've exceeded the maximum number of possible promotions, we're done enumerating promotions
+                    if self.current_promotion_index >= PROMOTIONS.len() {
+                        self.current_promotion_index = 0;
+                        self.current_mobility.clear_lsb();
+                    }
+                }
+                // Otherwise, we can just clear the LSB and enumerate the move to the next square
+                else {
+                    self.current_mobility.clear_lsb();
+                }
+            }
+        }
+          */
+
         self.collect()
+        // self.moves
     }
 
     /// Consumes `self`, returning a list of all legal captures.
@@ -218,6 +268,10 @@ impl<'a> MoveGen<'a> {
     /// Mutably fetches a list of all moves generated so far.
     pub fn generated_moves_mut(&mut self) -> &mut MoveList {
         &mut self.moves
+    }
+
+    pub const fn is_in_check(&self) -> bool {
+        self.checkers.population() > 0
     }
 
     /// Generates the next legal move for the current position.
@@ -243,7 +297,7 @@ impl<'a> MoveGen<'a> {
             self.current_promotion_index += 1;
 
             // If we've exceeded the maximum number of possible promotions, we're done enumerating promotions
-            if self.current_promotion_index >= PROMOTIONS.len() {
+            if self.current_promotion_index >= 4 {
                 self.current_promotion_index = 0;
                 self.current_mobility.clear_lsb();
             }
@@ -279,7 +333,13 @@ impl<'a> MoveGen<'a> {
             // If the Pawn reached the back rank, it's a promotion
             else if to.rank() == Rank::eighth(color) {
                 // Fetch the kind of piece to which this Pawn will be promoted
-                let promotion = PROMOTIONS[self.current_promotion_index];
+                let promotion = match self.current_promotion_index {
+                    0 => PieceKind::Queen,
+                    1 => PieceKind::Knight,
+                    2 => PieceKind::Rook,
+                    3 => PieceKind::Bishop,
+                    _ => unreachable!(),
+                };
 
                 // If there was a piece at the destination, it's a promotion and a capture
                 if kind == MoveKind::Capture {
@@ -541,3 +601,16 @@ impl<'a> fmt::Debug for MoveGen<'a> {
         )
     }
 }
+
+/*
+pub struct Moves {
+    piece: Piece,
+    square: Square,
+    mobility: Bitboard,
+}
+
+pub struct MovesIter {
+    moves: Moves,
+    promotion: u8,
+}
+ */

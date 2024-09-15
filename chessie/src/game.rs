@@ -498,12 +498,12 @@ impl Game {
                     MoveKind::Quiet
                 };
 
-                if from == Square::KING_START_SQUARES[color] {
-                    if to == Square::KINGSIDE_CASTLE_SQUARES[color]
+                if from == Square::E1.rank_relative_to(color) {
+                    if to == Square::G1.rank_relative_to(color)
                         && self.position().castling_rights().kingside[color].is_some()
                     {
                         kind = MoveKind::KingsideCastle;
-                    } else if to == Square::QUEENSIDE_CASTLE_SQUARES[color]
+                    } else if to == Square::C1.rank_relative_to(color)
                         && self.position().castling_rights().queenside[color].is_some()
                     {
                         kind = MoveKind::QueensideCastle;

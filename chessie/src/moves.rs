@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use anyhow::{anyhow, Result};
 
-use super::{PieceKind, Position, Rank, Square};
+use super::{Piece, PieceKind, Position, Square};
 
 /// Represents the different kinds of moves that can be made during a chess game.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
@@ -30,6 +30,67 @@ pub enum MoveKind {
 
     /// Involves a Pawn moving onto a square on the opponent's side of the board that is occupied by an opponent's piece, removing it from the board, and promoting this Pawn to something else.
     PromoCapt(PieceKind),
+}
+
+impl MoveKind {
+    /// Determines the appropriate [`MoveKind`] for moving the `piece` at `from` onto `to`, within the provided `position`.
+    ///
+    /// If `promotion` was provided and other parameters specify that this is a pawn moving to the eighth rank,
+    /// this will yield a promotion variant that promotes to the [`PieceKind`] specified by `promotion`.
+    ///
+    /// # Example
+    /// ```
+    /// # use chessie::{Position, MoveKind, Piece, PieceKind, Square};
+    /// let pos = Position::default();
+    /// let kind = MoveKind::new(Piece::WHITE_PAWN, Square::E2, Square::E4, &pos, None);
+    /// assert_eq!(kind, MoveKind::PawnPushTwo);
+    /// ```
+    pub fn new(
+        piece: Piece,
+        from: Square,
+        to: Square,
+        position: &Position,
+        promotion: Option<PieceKind>,
+    ) -> Self {
+        // Extract information about the piece being moved
+        let color = piece.color();
+
+        // By default, it's either a quiet or a capture.
+        let mut kind = if position.has(to) {
+            Self::Capture
+        } else {
+            Self::Quiet
+        };
+
+        // The MoveKind depends on what kind of piece is being moved and where
+        if piece.is_pawn() {
+            // If a promotion was provided, it's a promotion of some kind
+            if let Some(promotion) = promotion {
+                // If this move also captures, it's a capture-promote
+                if kind == Self::Capture {
+                    kind = Self::PromoCapt(promotion);
+                } else {
+                    kind = Self::Promote(promotion);
+                }
+            }
+            // If this pawn is moving to the en passant square, it's en passant
+            else if Some(to) == position.ep_square() {
+                kind = Self::EnPassantCapture;
+            }
+            // If the Pawn is moving two ranks, it's a double push
+            else if from.rank().abs_diff(to.rank()) == 2 {
+                kind = Self::PawnPushTwo;
+            }
+        } else if piece.is_king() && from == Square::E1.rank_relative_to(color) {
+            if to == Square::G1.rank_relative_to(color) {
+                kind = Self::KingsideCastle;
+            } else if to == Square::C1.rank_relative_to(color) {
+                kind = Self::QueensideCastle;
+            }
+        }
+
+        kind
+    }
 }
 
 /// Represents a move made on a chess board, including whether a piece is to be promoted.
@@ -133,42 +194,6 @@ impl Move {
     pub const fn new_quiet(from: Square, to: Square) -> Self {
         Self::new(from, to, MoveKind::Quiet)
     }
-
-    /*
-    /// Creates a new [`Move`] from the given [`Square`]s, automatically figuring out its [`MoveKind`] from the position provided.
-    ///
-    /// # Example
-    /// ```
-    /// # use chessie::prelude::*;
-    /// let startpos = Position::default();
-    /// let e2e4 = Move::new_from_position(Square::E2, Square::E4, &startpos);
-    /// assert_eq!(e2e4.kind(), MoveKind::PawnPushTwo);
-    /// ```
-    pub fn new_from_position(from: Square, to: Square, position: &Position) -> Self {
-        // By default, set the kind to a capture of quiet, depending on whether there was a piece at the destination.
-        let mut kind = if position.has(to) {
-            MoveKind::Capture
-        } else {
-            MoveKind::Quiet
-        };
-
-        let piece = position.piece_at(from).unwrap();
-        let color = piece.color();
-
-        match piece.kind() {
-            PieceKind::Pawn => {
-                // Pawns can either push, double push, capture, en passant, or promote
-            }
-            PieceKind::King => {
-                // Kings can castle
-                if to == Square::
-            }
-            _ => {} // All other pieces can only capture or move quietly
-        }
-
-        Self::new(from, to, kind)
-    }
-     */
 
     /// Creates an "illegal" [`Move`], representing moving a piece to and from the same [`Square`].
     ///
@@ -374,9 +399,9 @@ impl Move {
     /// ```
     pub fn from_uci(position: &Position, uci: &str) -> Result<Self> {
         // Extract the to/from squares
-        let from = uci
-            .get(0..2)
-            .ok_or(anyhow!("Move str must contain a `from` square. Got {uci:?}"))?;
+        let from = uci.get(0..2).ok_or(anyhow!(
+            "Move str must contain a `from` square. Got {uci:?}"
+        ))?;
         let to = uci
             .get(2..4)
             .ok_or(anyhow!("Move str must contain a `to` square. Got {uci:?}"))?;
@@ -388,43 +413,12 @@ impl Move {
         let piece = position.board().piece_at(from).ok_or(anyhow!(
             "No piece found at {from} when parsing {uci:?} on position {position}"
         ))?;
-        let color = piece.color();
+
+        // If there is a promotion char, attempt to convert it to a PieceKind
+        let promotion = uci.get(4..5).map(PieceKind::from_str).transpose()?;
 
         // The MoveKind depends on what kind of piece is being moved and where
-        let kind = if piece.is_pawn() {
-            // Pawns have a lot of special moves they can do...
-            if let Some(promote) = uci.get(4..5) {
-                // If this move also captures, it's a capture-promote
-                if position.board().has(to) {
-                    MoveKind::PromoCapt(PieceKind::from_str(promote)?)
-                } else {
-                    MoveKind::Promote(PieceKind::from_str(promote)?)
-                }
-            } else if position.board().has(to) {
-                MoveKind::Capture
-            } else if Some(to) == position.ep_square() && piece.is_pawn() {
-                MoveKind::EnPassantCapture
-            } else if from.rank() == Rank::second(color) && to.rank() == Rank::fourth(color) {
-                MoveKind::PawnPushTwo
-            } else {
-                MoveKind::Quiet
-            }
-        } else if piece.is_king() {
-            // TODO: Support for castling in Chess960
-            if uci == "e1g1" || uci == "e8g8" {
-                MoveKind::KingsideCastle
-            } else if uci == "e1c1" || uci == "e8c8" {
-                MoveKind::QueensideCastle
-            } else if position.board().has(to) {
-                MoveKind::Capture
-            } else {
-                MoveKind::Quiet
-            }
-        } else if position.board().has(to) {
-            MoveKind::Capture
-        } else {
-            MoveKind::Quiet
-        };
+        let kind = MoveKind::new(piece, from, to, position, promotion);
 
         Ok(Self::new(from, to, kind))
     }
@@ -474,6 +468,7 @@ impl Default for Move {
 
 #[cfg(test)]
 mod test {
+
     use super::*;
 
     #[test]
@@ -565,5 +560,79 @@ mod test {
         assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_promotion());
         assert!(Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_promotion());
         assert!(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)).is_promotion());
+    }
+
+    /// Helper function to assert that the `uci` move is parsed as `expected` on the position created from `fen`.
+    fn test_move_parse(fen: &str, uci: &str, expected: Move) {
+        let pos = fen.parse().unwrap();
+
+        let mv = Move::from_uci(&pos, uci);
+        assert!(mv.is_ok(), "{}", mv.unwrap_err());
+        assert_eq!(mv.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_move_parsing() {
+        // We can test all moves except castling with Pawns
+        let pawn_fen = "2n1k3/1P6/8/5pP1/5n2/2P1P3/P7/4K3 w - f6 0 1";
+
+        // Pawn single push
+        let mv = Move::new(Square::A2, Square::A3, MoveKind::Quiet);
+        test_move_parse(pawn_fen, "a2a3", mv);
+
+        // Pawn double push
+        let mv = Move::new(Square::A2, Square::A4, MoveKind::PawnPushTwo);
+        test_move_parse(pawn_fen, "a2a4", mv);
+
+        // Pawn capture
+        let mv = Move::new(Square::E3, Square::F4, MoveKind::Capture);
+        test_move_parse(pawn_fen, "e3f4", mv);
+
+        // Pawn en passant capture
+        let mv = Move::new(Square::G5, Square::F6, MoveKind::EnPassantCapture);
+        test_move_parse(pawn_fen, "g5f6", mv);
+
+        // Pawn promotion to queen
+        let mv = Move::new(Square::B7, Square::B8, MoveKind::Promote(PieceKind::Queen));
+        test_move_parse(pawn_fen, "b7b8Q", mv);
+
+        // Pawn promotion to Knight
+        let mv = Move::new(Square::B7, Square::B8, MoveKind::Promote(PieceKind::Knight));
+        test_move_parse(pawn_fen, "b7b8n", mv);
+
+        // Pawn capture promotion to queen
+        let mv = Move::new(
+            Square::B7,
+            Square::C8,
+            MoveKind::PromoCapt(PieceKind::Queen),
+        );
+        test_move_parse(pawn_fen, "b7c8q", mv);
+
+        // Pawn capture promotion to Knight
+        let mv = Move::new(
+            Square::B7,
+            Square::C8,
+            MoveKind::PromoCapt(PieceKind::Knight),
+        );
+        test_move_parse(pawn_fen, "b7c8N", mv);
+
+        // Now test castling
+        let king_fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
+
+        // Kingside (short) castling (White)
+        let mv = Move::new(Square::E1, Square::G1, MoveKind::KingsideCastle);
+        test_move_parse(king_fen, "e1g1", mv);
+
+        // Queenside (long) castling (White)
+        let mv = Move::new(Square::E1, Square::C1, MoveKind::QueensideCastle);
+        test_move_parse(king_fen, "e1c1", mv);
+
+        // Kingside (short) castling (Black)
+        let mv = Move::new(Square::E8, Square::G8, MoveKind::KingsideCastle);
+        test_move_parse(king_fen, "e8g8", mv);
+
+        // Queenside (long) castling (Black)
+        let mv = Move::new(Square::E8, Square::C8, MoveKind::QueensideCastle);
+        test_move_parse(king_fen, "e8c8", mv);
     }
 }

@@ -709,12 +709,12 @@ impl Board {
 
         let mut colors = self.colors;
         for color in Color::all() {
-            colors[color] = colors[color] & not_mask;
+            colors[color] &= not_mask;
         }
 
         let mut pieces = self.pieces;
         for kind in PieceKind::all() {
-            pieces[kind] = pieces[kind] & not_mask;
+            pieces[kind] &= not_mask;
         }
 
         Self { colors, pieces }

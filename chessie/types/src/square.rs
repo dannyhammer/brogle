@@ -22,14 +22,14 @@ use super::{Bitboard, Color};
 /// This bit pattern is also known as [Least Significant File Mapping](https://www.chessprogramming.org/Square_Mapping_Considerations#Deduction_on_Files_and_Ranks),
 /// so `square = file + rank * 8`. The indices of each square on the board is given as follows:
 /// ```text
-/// 8| 56 57 58 59 59 61 62 62
+/// 8| 56 57 58 59 59 61 62 63
 /// 7| 48 49 50 51 52 53 54 55
 /// 6| 40 41 42 43 44 45 46 47
 /// 5| 32 33 34 35 36 37 38 39
 /// 4| 24 25 26 27 28 29 30 31
 /// 3| 16 17 18 19 20 21 22 23
-/// 2| 08 09 10 11 12 13 14 15
-/// 1| 00 01 02 03 04 05 06 07
+/// 2|  8  9 10 11 12 13 14 15
+/// 1|  0  1  2  3  4  5  6  7
 ///  +------------------------
 ///    a  b  c  d  e  f  g  h   
 /// ```
@@ -113,10 +113,6 @@ impl Square {
     pub const MIN: u8 = 0;
     pub const MAX: u8 = 63;
     pub const COUNT: usize = 64;
-
-    pub const KING_START_SQUARES: [Self; 2] = [Self::E1, Self::E8];
-    pub const KINGSIDE_CASTLE_SQUARES: [Self; 2] = [Self::G1, Self::G8];
-    pub const QUEENSIDE_CASTLE_SQUARES: [Self; 2] = [Self::C1, Self::C8];
 
     const FILE_MASK: u8 = 0b0000_0111;
     const RANK_MASK: u8 = 0b0011_1000;
@@ -964,15 +960,29 @@ impl Rank {
         (bits <= Self::MAX).then_some(Self::new_unchecked(bits))
     }
 
+    /// Flips this [`Rank`].
     pub const fn flipped(self) -> Self {
         Self(Self::MAX - self.0)
     }
 
+    /// If `color` is White, does nothing.
+    /// If `color` is Black, flips `self`.
     pub const fn relative_to(self, color: Color) -> Self {
         match color {
             Color::White => self,
             Color::Black => self.flipped(),
         }
+    }
+
+    /// Computes the absolute difference between `self` and `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Rank;
+    /// assert_eq!(Rank::SEVEN.abs_diff(Rank::FIVE), 2);
+    /// ```
+    pub const fn abs_diff(&self, other: Self) -> u8 {
+        self.0.abs_diff(other.0)
     }
 }
 
@@ -1291,6 +1301,26 @@ impl File {
     /// Flips this [`File`].
     pub const fn flipped(self) -> Self {
         Self(Self::MAX - self.0)
+    }
+
+    /// If `color` is White, does nothing.
+    /// If `color` is Black, flips `self`.
+    pub const fn relative_to(self, color: Color) -> Self {
+        match color {
+            Color::White => self,
+            Color::Black => self.flipped(),
+        }
+    }
+
+    /// Computes the absolute difference between `self` and `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::File;
+    /// assert_eq!(File::B.abs_diff(File::H), 6);
+    /// ```
+    pub const fn abs_diff(&self, other: Self) -> u8 {
+        self.0.abs_diff(other.0)
     }
 }
 
