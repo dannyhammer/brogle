@@ -398,7 +398,7 @@ impl Engine {
         if let Some(from) = from {
             let moves = self
                 .game
-                .legal_moves()
+                .get_legal_moves()
                 .into_iter()
                 .filter(|mv| mv.from() == from);
             let mut mobility = Bitboard::default();
@@ -409,7 +409,7 @@ impl Engine {
         } else {
             let mut moves = self
                 .game
-                .legal_moves()
+                .get_legal_moves()
                 .into_iter()
                 .map(|m| {
                     if debug {
@@ -620,7 +620,7 @@ impl UciEngine for Engine {
             (movetime, movetime)
         } else {
             // Otherwise, search based on time remaining and increment
-            let (time, inc) = if self.game.current_player().is_white() {
+            let (time, inc) = if self.game.side_to_move().is_white() {
                 (options.w_time, options.w_inc)
             } else {
                 (options.b_time, options.b_inc)
@@ -645,7 +645,7 @@ impl UciEngine for Engine {
         let max_depth = options.depth.unwrap_or(MAX_DEPTH as u32);
 
         // Initialize bestmove to the first move available, if there are any
-        let mut bestmove = game.legal_moves().first().cloned();
+        let mut bestmove = game.get_legal_moves().first().cloned();
 
         POOL.execute(move || {
             let mut ttable = ttable.lock().unwrap();

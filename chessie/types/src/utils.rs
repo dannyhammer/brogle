@@ -71,42 +71,21 @@ pub fn generate_ray_table_datfiles<P: AsRef<Path>>(outdir: P) -> std::io::Result
     // 2D Bitboard array being cast to u8 (8 u8 in a u64)
 
     // Generate the blobs
-    let ray_between_inclusive: [u8; 32_768] =
-        unsafe { std::mem::transmute(generate_ray_between_inclusive_table()) };
     let ray_between_exclusive: [u8; 32_768] =
-        unsafe { std::mem::transmute(generate_ray_between_exclusive_table()) };
+        unsafe { std::mem::transmute(generate_ray_between_table()) };
     let ray_containing: [u8; 32_768] =
         unsafe { std::mem::transmute(generate_ray_containing_table()) };
 
     // Write the blobs
     let path = |name| Path::new(outdir.as_ref()).join(name);
 
-    std::fs::write(path("ray_between_inclusive.dat"), ray_between_inclusive)?;
-    std::fs::write(path("ray_between_exclusive.dat"), ray_between_exclusive)?;
+    std::fs::write(path("ray_between.dat"), ray_between_exclusive)?;
     std::fs::write(path("ray_containing.dat"), ray_containing)?;
 
     Ok(())
 }
 
-fn generate_ray_between_inclusive_table() -> [[Bitboard; Square::COUNT]; Square::COUNT] {
-    let mut rays = [[Bitboard::EMPTY_BOARD; Square::COUNT]; Square::COUNT];
-
-    for from in Square::iter() {
-        for (df, dr) in QUEEN_DELTAS {
-            let mut ray = from.bitboard(); // Include `from`
-            let mut to = from;
-            while let Some(shifted) = to.offset(df, dr) {
-                ray.set(shifted);
-                to = shifted;
-                rays[from][to] = ray;
-            }
-        }
-    }
-
-    rays
-}
-
-fn generate_ray_between_exclusive_table() -> [[Bitboard; Square::COUNT]; Square::COUNT] {
+fn generate_ray_between_table() -> [[Bitboard; Square::COUNT]; Square::COUNT] {
     let mut rays = [[Bitboard::EMPTY_BOARD; Square::COUNT]; Square::COUNT];
 
     for from in Square::iter() {

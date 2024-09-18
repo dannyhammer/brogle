@@ -285,6 +285,14 @@ impl PieceKind {
         [Pawn, Knight, Bishop, Rook, Queen, King]
     }
 
+    /// An array of 5 non-King [`PieceKind`]s.
+    ///
+    /// In the order: `Pawn`, `Knight`, `Bishop`, `Rook`, `Queen`.
+    pub const fn all_except_king() -> [Self; Self::COUNT - 1] {
+        use PieceKind::*;
+        [Pawn, Knight, Bishop, Rook, Queen]
+    }
+
     /// An iterator over all [`PieceKind`]s, starting with Pawn.
     pub fn iter() -> impl Iterator<Item = Self> {
         Self::all().into_iter()

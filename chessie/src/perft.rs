@@ -1,11 +1,12 @@
 use std::{
-    fmt,
-    ops::{Add, AddAssign},
+    // fmt,
+    // ops::{Add, AddAssign},
     time::Instant,
 };
 
-use super::{MoveGen, Position};
+use super::{Game, Position};
 
+/*
 /// A result from a perft function.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct PerftResult {
@@ -133,6 +134,7 @@ impl fmt::Display for PerftResult {
         write!(f, "{result}")
     }
 }
+ */
 
 /// Prints a perft at the specified depth.
 ///
@@ -149,8 +151,8 @@ pub fn print_perft<const PRETTY: bool, const SPLIT: bool>(position: &Position, d
     let now = Instant::now();
     let mut total_nodes = 0;
     if SPLIT {
-        let game = MoveGen::new(position);
-        for mv in game {
+        let game = Game::new(position.clone());
+        for mv in game.iter() {
             let new_pos = position.clone().with_move_made(mv);
 
             let nodes = perft(&new_pos, depth - 1);
@@ -179,6 +181,7 @@ pub fn print_perft<const PRETTY: bool, const SPLIT: bool>(position: &Position, d
     }
 }
 
+/*
 /// Perform a perft at the specified depth, collecting data on captures, castling, promotions, etc.
 pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
     let mut res = PerftResult::default();
@@ -192,7 +195,7 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
         return res;
     }
 
-    let game = MoveGen::new(position);
+    let game = Game::new(position);
 
     if depth == 1 {
         res.nodes = game.legal_moves().len() as u64;
@@ -207,13 +210,14 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
 
     res
 }
+ */
 
 /// Perform a perft at the specified depth, collecting only data about the number of possible states (nodes).
 pub fn perft(position: &Position, depth: usize) -> u64 {
     // Bulk counting; no need to recurse again just to apply a singular move and return 1.
     if depth == 1 {
-        let game = MoveGen::new(position);
-        let moves = game.legal_moves();
+        let game = Game::new(position.clone());
+        let moves = game.get_legal_moves();
         return moves.len() as u64;
     }
 
@@ -223,9 +227,9 @@ pub fn perft(position: &Position, depth: usize) -> u64 {
     }
 
     let mut nodes = 0;
-    let game = MoveGen::new(position);
+    let game = Game::new(position.clone());
 
-    for mv in game {
+    for mv in game.iter() {
         let new_pos = position.clone().with_move_made(mv);
 
         nodes += perft(&new_pos, depth - 1);

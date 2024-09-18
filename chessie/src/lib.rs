@@ -16,8 +16,6 @@ pub mod position;
 ///
 /// Primarily for Zobrist hashing.
 pub mod prng;
-/// Misc utility functions and constants, as well as basic piece movement.
-pub mod utils;
 /// Zobrist keys for hashing chess positions.
 pub mod zobrist;
 
@@ -27,7 +25,6 @@ pub use moves::*;
 pub use perft::*;
 pub use position::*;
 pub use prng::*;
-pub use utils::*;
 pub use zobrist::*;
 
 /// Re-exports all the things you'll need.

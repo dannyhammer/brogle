@@ -156,8 +156,8 @@ pub struct Position {
     /// Bitboard representation of the game board.
     board: Board,
 
-    /// Side to move.
-    current_player: Color,
+    /// The [`Color`] of the current player.
+    side_to_move: Color,
 
     /// Castling rights for each player.
     castling_rights: CastlingRights,
@@ -166,8 +166,8 @@ pub struct Position {
     ep_square: Option<Square>,
 
     /// Used to enforce the fifty-move rule.
-    /// - Is incremented after each move.
-    /// - Is reset after a capture or a pawn moves.
+    /// - Incremented after each move.
+    /// - Reset after a capture or a pawn moves.
     halfmove: usize,
 
     /// Number of moves since the beginning of the game.
@@ -203,7 +203,7 @@ impl Position {
 
         Self {
             board,
-            current_player,
+            side_to_move: current_player,
             castling_rights,
             ep_square,
             halfmove: 0,
@@ -222,7 +222,7 @@ impl Position {
         pos.board = Board::from_fen(placements)?;
 
         let active_color = split.next().unwrap_or("w");
-        pos.current_player = Color::from_str(active_color)?;
+        pos.side_to_move = Color::from_str(active_color)?;
 
         let castling = split.next().unwrap_or("KQkq");
         pos.castling_rights = CastlingRights::from_uci(castling)?;
@@ -257,7 +257,7 @@ impl Position {
     /// Generates a FEN string from this [`Position`].
     pub fn to_fen(&self) -> String {
         let placements = self.board().to_fen();
-        let active_color = self.current_player();
+        let active_color = self.side_to_move();
         let castling = self.castling_rights.to_uci();
 
         let en_passant_target = if let Some(square) = self.ep_square {
@@ -273,8 +273,8 @@ impl Position {
     }
 
     /// Returns the current player as a [`Color`].
-    pub const fn current_player(&self) -> Color {
-        self.current_player
+    pub const fn side_to_move(&self) -> Color {
+        self.side_to_move
     }
 
     /// If en passant can be performed, returns the en passant [`Square`].
@@ -285,7 +285,7 @@ impl Position {
     /// If en passant can be performed, returns the destination of a pawn that would perform en passant.
     pub fn ep_target_square(&self) -> Option<Square> {
         self.ep_square()
-            .map(|ep_square| ep_square.backward_by(self.current_player(), 1).unwrap())
+            .map(|ep_square| ep_square.backward_by(self.side_to_move(), 1).unwrap())
     }
 
     /// Returns the [`CastlingRights`] of the current position.
@@ -317,7 +317,7 @@ impl Position {
 
     /// Toggles the current player from White to Black (or vice versa).
     pub fn toggle_current_player(&mut self) {
-        self.current_player = self.current_player.opponent();
+        self.side_to_move = self.side_to_move.opponent();
     }
 
     /// Fetches this position's [`Board`]
@@ -341,7 +341,7 @@ impl Position {
     /// Fullmove and Halfmove clocks are ignored.
     pub fn is_repetition_of(&self, other: &Self) -> bool {
         self.board() == other.board()
-            && self.current_player() == other.current_player()
+            && self.side_to_move() == other.side_to_move()
             && self.castling_rights() == other.castling_rights()
             && self.ep_square() == other.ep_square()
     }
@@ -359,7 +359,7 @@ impl Position {
         };
 
         // If it's not this piece's color's turn, illegal move
-        if piece.color() != self.current_player() {
+        if piece.color() != self.side_to_move() {
             bail!("Tried to move a piece that wasn't yours");
         }
 
@@ -443,7 +443,7 @@ impl Position {
 
         // Increment move counters
         self.halfmove += 1; // This is reset if a capture occurs or a pawn moves
-        self.fullmove += self.current_player().index();
+        self.fullmove += self.side_to_move().index();
 
         // First, deal with special cases like captures and castling
         if mv.is_capture() {
@@ -538,7 +538,7 @@ impl Position {
         self.toggle_current_player();
 
         // Toggle the hash of the current player
-        self.key.hash_side_to_move(self.current_player());
+        self.key.hash_side_to_move(self.side_to_move());
     }
 }
 
@@ -586,7 +586,7 @@ impl fmt::Debug for Position {
             if rank == Rank::SEVEN {
                 board_str += &format!("           FEN: {}", self.to_fen());
             } else if rank == Rank::SIX {
-                board_str += &format!("          Side: {}", self.current_player());
+                board_str += &format!("          Side: {}", self.side_to_move());
             } else if rank == Rank::FIVE {
                 board_str += &format!("      Castling: {}", self.castling_rights());
             } else if rank == Rank::FOUR {
@@ -911,25 +911,28 @@ impl Board {
         self.piece_parts(piece.color(), piece.kind())
     }
 
-    /// Returns an iterator over all of the pieces on this board along with their corresponding locations.
-    pub fn all(&self) -> impl ExactSizeIterator<Item = (Square, Piece)> + '_ {
-        self.occupied()
-            .into_iter()
-            .map(|square| (square, self.piece_at(square).unwrap()))
+    /// Creates a [`BoardIter`] to iterate over all occupied [`Square`]s in this [`Board`].
+    pub const fn iter(&self) -> BoardIter<'_> {
+        BoardIter {
+            board: self,
+            occupancy: self.occupied(),
+        }
     }
 
     /// Returns an iterator over all of the pieces of `kind` on this board along with their corresponding locations.
-    pub fn all_of(&self, kind: PieceKind) -> impl ExactSizeIterator<Item = (Square, Piece)> + '_ {
-        self.kind(kind)
-            .into_iter()
-            .map(|square| (square, self.piece_at(square).unwrap()))
+    pub const fn all_of(&self, kind: PieceKind) -> BoardIter<'_> {
+        BoardIter {
+            board: self,
+            occupancy: self.kind(kind),
+        }
     }
 
     /// Returns an iterator over all of the pieces of `color` on this board along with their corresponding locations.
-    pub fn all_for(&self, color: Color) -> impl ExactSizeIterator<Item = (Square, Piece)> + '_ {
-        self.color(color)
-            .into_iter()
-            .map(|square| (square, self.piece_at(square).unwrap()))
+    pub const fn all_for(&self, color: Color) -> BoardIter<'_> {
+        BoardIter {
+            board: self,
+            occupancy: self.color(color),
+        }
     }
 
     /// Analogous to [`Board::piece`] with a [`Piece`]'s individual components.
@@ -941,23 +944,19 @@ impl Board {
     }
 
     /// Fetches a [`Bitboard`] containing the locations of all orthogonal sliding pieces (Rook, Queen).
-    pub const fn orthogonal_sliders(&self, color: Color) -> Bitboard {
-        (self.pieces[PieceKind::Rook.index()].or(self.pieces[PieceKind::Queen.index()]))
-            .and(self.color(color))
+    pub fn orthogonal_sliders(&self, color: Color) -> Bitboard {
+        (self.kind(PieceKind::Rook) | self.kind(PieceKind::Queen)) & self.color(color)
     }
 
     /// Fetches a [`Bitboard`] containing the locations of all diagonal sliding pieces (Bishop, Queen).
-    pub const fn diagonal_sliders(&self, color: Color) -> Bitboard {
-        (self.pieces[PieceKind::Bishop.index()].or(self.pieces[PieceKind::Queen.index()]))
-            .and(self.color(color))
+    pub fn diagonal_sliders(&self, color: Color) -> Bitboard {
+        (self.kind(PieceKind::Bishop) | self.kind(PieceKind::Queen)) & self.color(color)
     }
 
     /// Fetches a [`Bitboard`] containing the locations of all sliding pieces (Rook, Bishop, Queen).
-    pub const fn sliders(&self, color: Color) -> Bitboard {
-        (self.pieces[PieceKind::Rook.index()]
-            .or(self.pieces[PieceKind::Bishop.index()])
-            .or(self.pieces[PieceKind::Queen.index()]))
-        .and(self.color(color))
+    pub fn sliders(&self, color: Color) -> Bitboard {
+        (self.kind(PieceKind::Rook) | self.kind(PieceKind::Bishop) | self.kind(PieceKind::Queen))
+            & self.color(color)
     }
 
     /// Fetches the [`Bitboard`] for the King of the provided color.
@@ -968,6 +967,11 @@ impl Board {
     /// Fetches the [`Bitboard`] for the Pawns of the provided color.
     pub const fn pawns(&self, color: Color) -> Bitboard {
         self.piece_parts(color, PieceKind::Pawn)
+    }
+
+    /// Fetches the [`Bitboard`] for the Knights of the provided color.
+    pub const fn knights(&self, color: Color) -> Bitboard {
+        self.piece_parts(color, PieceKind::Knight)
     }
 
     /// Get all squares that are either empty or occupied by the enemy
@@ -981,14 +985,6 @@ impl Board {
     /// ```
     pub const fn enemy_or_empty(&self, color: Color) -> Bitboard {
         self.color(color).not()
-    }
-
-    /// Creates a [`BoardIter`] to iterate over all occupied [`Square`]s in this [`Board`].
-    pub const fn iter(&self) -> BoardIter<'_> {
-        BoardIter {
-            board: self,
-            occupancy: self.occupied(),
-        }
     }
 
     /// Generates a [FEN](https://www.chess.com/terms/fen-chess) string of this [`Board`].
@@ -1101,6 +1097,22 @@ impl IndexMut<Color> for Board {
     }
 }
 
+impl<'a> IntoIterator for &'a Board {
+    type IntoIter = BoardIter<'a>;
+    type Item = <BoardIter<'a> as Iterator>::Item;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut Board {
+    type IntoIter = BoardIter<'a>;
+    type Item = <BoardIter<'a> as Iterator>::Item;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 impl fmt::Debug for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let format = |to_fmt: &[(Bitboard, &str)]| {
@@ -1154,8 +1166,14 @@ impl fmt::Debug for Board {
     }
 }
 
+/// An iterator over a set of squares on a [`Board`].
+///
+/// Calls to [`Iterator::next`] will yield a tuple of a [`Square`] and a [`Piece`].
 pub struct BoardIter<'a> {
+    /// The board to retrieve pieces from.
     board: &'a Board,
+
+    /// The list of squares to iterate over.
     occupancy: Bitboard,
 }
 

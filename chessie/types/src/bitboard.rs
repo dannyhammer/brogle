@@ -61,6 +61,8 @@ impl Bitboard {
     pub const EDGES: Self = Self(0xFF818181818181FF);
     pub const CORNERS: Self = Self(0x8100000000000081);
     pub const CENTER: Self = Self(0x0000001818000000);
+    pub const BACK_RANKS: Self = Self(0xFF000000000000FF);
+    pub const PAWN_RANKS: Self = Self(0x00FF00000000FF00);
 
     /// Constructs a new [`Bitboard`] from the provided bit pattern.
     ///

@@ -4,13 +4,13 @@ use colored::*;
 
 use chessie::{perft, Position};
 
+/// Total number of nodes in the `standard.epd` test suite.
+const TOTAL_NODES_IN_SUITE: u64 = 4805793839;
+
 fn main() {
     let contents = std::fs::read_to_string("chessie/tests/standard.epd").unwrap();
 
-    let lines = contents.lines().collect::<Vec<&str>>();
-    let len = lines.len();
-
-    let mut total_nodes = 0;
+    let mut total_nodes_tested = 0;
 
     let now = Instant::now();
     for (i, entry) in contents.lines().enumerate() {
@@ -34,11 +34,11 @@ fn main() {
             let start = Instant::now();
             let nodes = perft(&position, depth);
             let elapsed = start.elapsed();
-            total_nodes += nodes;
+            total_nodes_tested += nodes;
 
             assert_eq!(
                 nodes, expected,
-                "\n{i} Perft({depth}, \"{fen}\") failed\nExpected: {expected}\nGot     : {nodes}",
+                "\nTest #{i}: Perft({depth}, \"{fen}\") failed\nExpected: {expected}\nGot     : {nodes}",
             );
             print!("{}", "[PASS]".green());
             let nps = nodes as f32 / elapsed.as_secs_f32();
@@ -47,8 +47,9 @@ fn main() {
         }
 
         let elapsed = now.elapsed();
-        let percentage = ((1.0 + i as f32) / len as f32) * 100.0;
-        let nps = total_nodes as f32 / elapsed.as_secs_f32();
+        // let percentage = ((1.0 + i as f32) / len as f32) * 100.0;
+        let percentage = ((total_nodes_tested as f32) / TOTAL_NODES_IN_SUITE as f32) * 100.0;
+        let nps = total_nodes_tested as f32 / elapsed.as_secs_f32();
         let m_nps = nps / 1_000_000.0;
         print!("{}", "[INFO]".cyan());
         println!(" {percentage:>3.1}% completed, avg NPS: {nps:.0}, avg mNPS {m_nps:.1}",);
@@ -56,12 +57,12 @@ fn main() {
     let elapsed = now.elapsed();
 
     // Math
-    let nps = total_nodes as f32 / elapsed.as_secs_f32();
+    let nps = total_nodes_tested as f32 / elapsed.as_secs_f32();
     let m_nps = nps / 1_000_000.0;
 
     println!();
     println!("Elapsed Time:          {elapsed:.1?}");
-    println!("Total Nodes:           {total_nodes}");
+    println!("Total Nodes:           {total_nodes_tested}");
     println!("Nodes / Sec:           {nps:.0}");
     println!("M Nodes / Sec:         {m_nps:.1}");
 }

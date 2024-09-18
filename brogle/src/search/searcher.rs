@@ -131,7 +131,7 @@ impl<'a> Searcher<'a> {
         }
 
         // If we've no legal moves available, it's either checkmate or stalemate.
-        let mut moves = game.legal_moves();
+        let mut moves = game.get_legal_moves();
         if moves.is_empty() {
             // Prefer earlier mates, and drawing is better than being mated.
             let score = if game.is_in_check() {
@@ -229,7 +229,7 @@ impl<'a> Searcher<'a> {
 
         // Check for mate in qsearch if and only if we're in check.
         let mut moves = if game.is_in_check() {
-            let moves = game.legal_moves();
+            let moves = game.get_legal_moves();
 
             // If we're in check and have no legal moves, we can return a mate score
             if moves.is_empty() {
@@ -238,7 +238,7 @@ impl<'a> Searcher<'a> {
 
             moves
         } else {
-            let captures = game.legal_captures();
+            let captures = game.get_legal_captures();
 
             // Can't check for mates in normal qsearch, since we're not looking at *all* moves.
             if captures.is_empty() {
@@ -363,10 +363,10 @@ fn score_move(game: &Game, mv: &Move, tt_bestmove: Option<Move>) -> i32 {
 
     // Going somewhere attacked by an opponent is not a good idea, but may be necessary,
     // so negate it, but not by much
-    let attacks = game.attacks_by_color(game.current_player().opponent());
-    if attacks.get(mv.to()) {
-        score -= value_of(kind) / 10;
-    }
+    // let attacks = game.attacks_by_color(game.current_player().opponent());
+    // if attacks.get(mv.to()) {
+    // score -= value_of(kind) / 10;
+    // }
 
     -score // We're sorting, so a lower number is better
 }

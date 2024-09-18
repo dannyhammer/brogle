@@ -466,6 +466,12 @@ impl Default for Move {
     }
 }
 
+impl<T: AsRef<str>> PartialEq<T> for Move {
+    fn eq(&self, other: &T) -> bool {
+        self.to_uci().eq(other.as_ref())
+    }
+}
+
 #[cfg(test)]
 mod test {
 
