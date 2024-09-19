@@ -148,7 +148,7 @@ impl Move {
     /// let e7e8n = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Knight));
     /// assert_eq!(e7e8n.to_string(), "e7e8n");
     /// ```
-    pub const fn new(from: Square, to: Square, kind: MoveKind) -> Self {
+    pub fn new(from: Square, to: Square, kind: MoveKind) -> Self {
         let from = from.inner() as u16;
         let to = to.inner() as u16;
         let flag = Self::get_bit_flag(kind);
@@ -157,7 +157,7 @@ impl Move {
     }
 
     /// Internal function to convert a [`MoveKind`] into a bit flag to encode this move internally.
-    const fn get_bit_flag(kind: MoveKind) -> u16 {
+    fn get_bit_flag(kind: MoveKind) -> u16 {
         use MoveKind::*;
         match kind {
             Quiet => Self::FLAG_QUIET,
@@ -171,14 +171,14 @@ impl Move {
                 PieceKind::Knight => Self::FLAG_CAPTURE_PROMO_KNIGHT,
                 PieceKind::Rook => Self::FLAG_CAPTURE_PROMO_ROOK,
                 PieceKind::Bishop => Self::FLAG_CAPTURE_PROMO_BISHOP,
-                _ => unreachable!(),
+                _ => unreachable!("Cannot promote to a {}", promotion.name()),
             },
             Promote(promotion) => match promotion {
                 PieceKind::Queen => Self::FLAG_PROMO_QUEEN,
                 PieceKind::Knight => Self::FLAG_PROMO_KNIGHT,
                 PieceKind::Rook => Self::FLAG_PROMO_ROOK,
                 PieceKind::Bishop => Self::FLAG_PROMO_BISHOP,
-                _ => unreachable!(),
+                _ => unreachable!("Cannot promote to a {}", promotion.name()),
             },
         }
     }
@@ -191,7 +191,7 @@ impl Move {
     /// let e2e3 = Move::new_quiet(Square::E2, Square::E3);
     /// assert_eq!(e2e3.to_string(), "e2e3");
     /// ```
-    pub const fn new_quiet(from: Square, to: Square) -> Self {
+    pub fn new_quiet(from: Square, to: Square) -> Self {
         Self::new(from, to, MoveKind::Quiet)
     }
 
@@ -241,7 +241,7 @@ impl Move {
     /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Queen));
     /// assert_eq!(e7e8q.kind(), MoveKind::Promote(PieceKind::Queen));
     /// ```
-    pub const fn kind(&self) -> MoveKind {
+    pub fn kind(&self) -> MoveKind {
         let bits = self.0 & Self::FLG_MASK;
         match bits {
             Self::FLAG_QUIET => MoveKind::Quiet,
@@ -258,7 +258,7 @@ impl Move {
             Self::FLAG_CAPTURE_PROMO_KNIGHT => MoveKind::PromoCapt(PieceKind::Knight),
             Self::FLAG_CAPTURE_PROMO_ROOK => MoveKind::PromoCapt(PieceKind::Rook),
             Self::FLAG_CAPTURE_PROMO_BISHOP => MoveKind::PromoCapt(PieceKind::Bishop),
-            _ => unimplemented!(),
+            _ => unimplemented!("Invalid bit pattern provided: {bits:b}"),
         }
     }
 
@@ -273,7 +273,7 @@ impl Move {
     /// assert_eq!(to, Square::E8);
     /// assert_eq!(kind, MoveKind::Promote(PieceKind::Queen));
     /// ```
-    pub const fn parts(&self) -> (Square, Square, MoveKind) {
+    pub fn parts(&self) -> (Square, Square, MoveKind) {
         (self.from(), self.to(), self.kind())
     }
 

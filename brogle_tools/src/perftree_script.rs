@@ -18,7 +18,7 @@ fn main() {
     let mut engine = Engine::from_fen(fen).expect("Invalid FEN provided");
     engine
         .make_move(moves.split_ascii_whitespace())
-        .expect("msg");
+        .expect("Failed to apply move to position");
 
     _ = engine.perft(depth, false, true);
 }

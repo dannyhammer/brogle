@@ -214,26 +214,21 @@ pub fn perft_full(position: &Position, depth: usize) -> PerftResult {
 
 /// Perform a perft at the specified depth, collecting only data about the number of possible states (nodes).
 pub fn perft(position: &Position, depth: usize) -> u64 {
+    // Create a new move generation structure from the provided position
+    let game = Game::new(position.clone());
+
     // Bulk counting; no need to recurse again just to apply a singular move and return 1.
     if depth == 1 {
-        let game = Game::new(position.clone());
         let moves = game.get_legal_moves();
         return moves.len() as u64;
     }
-
     // Recursion limit; return 1, since we're fathoming this node.
-    if depth == 0 {
+    else if depth == 0 {
         return 1;
     }
 
-    let mut nodes = 0;
-    let game = Game::new(position.clone());
-
-    for mv in game.iter() {
-        let new_pos = position.clone().with_move_made(mv);
-
-        nodes += perft(&new_pos, depth - 1);
-    }
-
-    nodes
+    // Recursively accumulate the nodes from the remaining depths
+    game.iter().fold(0, |nodes, mv| {
+        nodes + perft(&position.clone().with_move_made(mv), depth - 1)
+    })
 }

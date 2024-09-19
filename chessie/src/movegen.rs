@@ -183,14 +183,9 @@ impl<'a> MoveGenIter<'a> {
             }
             // If the Pawn reached the back rank, it's a promotion
             else if to.rank() == Rank::eighth(color) {
-                // Fetch the kind of piece to which this Pawn will be promoted
-                let promotion = match self.promotion {
-                    0 => PieceKind::Queen,
-                    1 => PieceKind::Knight,
-                    2 => PieceKind::Rook,
-                    3 => PieceKind::Bishop,
-                    _ => unreachable!(),
-                };
+                // Fetch the kind of piece to which this Pawn will be promoted.
+                // We add 1 here to shift our range to exclude the Pawn.
+                let promotion = PieceKind::from_bits_unchecked(self.promotion + 1);
 
                 // Increment the promotion index, resetting to 4 if it reaches 4.
                 self.promotion = (self.promotion + 1) & 3;

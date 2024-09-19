@@ -454,7 +454,9 @@ impl Position {
                 to
             };
 
-            let captured = self.board_mut().take(captured_square).unwrap();
+            let Some(captured) = self.board_mut().take(captured_square) else {
+                panic!("Failed to apply {mv:?} to {self}: No piece found at {captured_square}");
+            };
             let captured_color = captured.color();
 
             // If the capture was on a rook's starting square, disable that side's castling.
@@ -658,7 +660,7 @@ impl Board {
 
         // Check if the placements string is the correct length
         if placements.matches('/').count() != 7 {
-            bail!("Invalid FEN string: Missing placements for all 8 ranks.");
+            bail!("Missing placements for all 8 ranks.");
         }
 
         // Need to reverse this so that White pieces are at the "bottom" of the board
@@ -678,7 +680,7 @@ impl Board {
                 } else {
                     // If the next char was not a piece, increment our File counter, checking for errors along the way
                     let Some(empty) = piece_char.to_digit(10) else {
-                        bail!("Invalid FEN string: Found non-piece, non-numeric char {piece_char} when parsing FEN.");
+                        bail!("Found non-piece, non-numeric char {piece_char:?} when parsing FEN.");
                     };
                     file += empty as u8
                 }

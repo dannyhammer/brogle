@@ -14,6 +14,10 @@ name = "move_generator"
 path = "src/move_generator.rs"
 
 [[bin]]
+name = "movegen_debugger"
+path = "src/movegen_debugger.rs"
+
+[[bin]]
 name = "perftree_script"
 path = "src/perftree_script.rs"
 
@@ -27,6 +31,7 @@ path = "src/perft_bench.rs"
 
 
 [dependencies]
+anyhow = "1.0.86"
 brogle = { path = "../brogle" }
 chessie = { path = "../chessie" }
 egui-macroquad = "0.15.0"
