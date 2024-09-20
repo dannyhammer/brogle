@@ -16,27 +16,27 @@ use super::{
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct CastlingRights {
     /// If a right is `Some(square)`, then `square` is the *rook*'s location
-    pub(crate) kingside: [Option<Square>; Color::COUNT],
-    pub(crate) queenside: [Option<Square>; Color::COUNT],
+    pub(crate) short: [Option<Square>; Color::COUNT],
+    pub(crate) long: [Option<Square>; Color::COUNT],
 }
 
 impl CastlingRights {
     pub const fn new() -> Self {
         Self {
-            kingside: [None; Color::COUNT],
-            queenside: [None; Color::COUNT],
+            short: [None; Color::COUNT],
+            long: [None; Color::COUNT],
         }
     }
 
     pub fn from_uci(uci: &str) -> Result<Self> {
-        let mut kingside = [None; Color::COUNT];
-        let mut queenside = [None; Color::COUNT];
+        let mut short = [None; Color::COUNT];
+        let mut long = [None; Color::COUNT];
 
         if uci.contains(['K', 'k', 'Q', 'q']) {
-            kingside[Color::White] = uci.contains('K').then_some(Square::H1);
-            queenside[Color::White] = uci.contains('Q').then_some(Square::A1);
-            kingside[Color::Black] = uci.contains('k').then_some(Square::H8);
-            queenside[Color::Black] = uci.contains('q').then_some(Square::A8);
+            short[Color::White] = uci.contains('K').then_some(Square::H1);
+            long[Color::White] = uci.contains('Q').then_some(Square::A1);
+            short[Color::Black] = uci.contains('k').then_some(Square::H8);
+            long[Color::Black] = uci.contains('q').then_some(Square::A8);
         } else if uci.chars().any(|c| File::from_char(c).is_ok()) {
             eprintln!("Warning: Chess960 FEN detected for castling rights: {uci:?}");
             eprintln!("Chess960 is not currently supported");
@@ -50,33 +50,30 @@ impl CastlingRights {
 
                 let king_file = File::E; // TODO: Fetch King's file the rest of the FEN
                 if file > king_file {
-                    kingside[color] = Some(rook_square);
+                    short[color] = Some(rook_square);
                 } else {
-                    queenside[color] = Some(rook_square);
+                    long[color] = Some(rook_square);
                 }
             }
              */
         }
 
-        Ok(Self {
-            kingside,
-            queenside,
-        })
+        Ok(Self { short, long })
     }
 
     pub fn to_uci(&self) -> String {
         let mut castling = String::with_capacity(4);
 
-        if self.kingside[Color::White].is_some() {
+        if self.short[Color::White].is_some() {
             castling.push('K');
         }
-        if self.queenside[Color::White].is_some() {
+        if self.long[Color::White].is_some() {
             castling.push('Q');
         }
-        if self.kingside[Color::Black].is_some() {
+        if self.short[Color::Black].is_some() {
             castling.push('k');
         }
-        if self.queenside[Color::Black].is_some() {
+        if self.long[Color::Black].is_some() {
             castling.push('q')
         }
 
@@ -98,10 +95,10 @@ impl CastlingRights {
     /// assert_eq!(none.index(), 0);
     /// ```
     pub const fn index(&self) -> usize {
-        (self.kingside[0].is_some() as usize)
-            | (self.kingside[1].is_some() as usize) << 1
-            | (self.queenside[0].is_some() as usize) << 2
-            | (self.queenside[1].is_some() as usize) << 3
+        (self.short[0].is_some() as usize)
+            | (self.short[1].is_some() as usize) << 1
+            | (self.long[0].is_some() as usize) << 2
+            | (self.long[1].is_some() as usize) << 3
     }
 }
 
@@ -330,10 +327,10 @@ impl Position {
         &mut self.board
     }
 
-    /// Returns `true` if `color` can castle (either Kingside or Queenside).
+    /// Returns `true` if `color` can castle (either short or long).
     pub const fn can_castle(&self, color: Color) -> bool {
-        self.castling_rights().kingside[color.index()].is_some()
-            || self.castling_rights().queenside[color.index()].is_some()
+        self.castling_rights().short[color.index()].is_some()
+            || self.castling_rights().long[color.index()].is_some()
     }
 
     /// Two positions are considered repetitions if they share the same piece layout, castling rights, and en passant square.
@@ -383,21 +380,21 @@ impl Position {
 
         match kind {
             // If the move is pawn-specific, ensure it's a pawn moving
-            MoveKind::EnPassantCapture | MoveKind::PawnPushTwo | MoveKind::Promote(_) => {
+            MoveKind::EnPassantCapture | MoveKind::PawnDoublePush => {
                 if !piece.is_pawn() {
                     bail!("Tried to do a pawn move (EP, Push 2, Promote) with a piece that isn't a pawn");
                 }
             }
             // If castling, ensure we have the right to
-            MoveKind::KingsideCastle => {
-                if self.castling_rights.kingside[piece.color()].is_none() {
-                    bail!("Tried to castle (kingside) without rights");
+            MoveKind::ShortCastle => {
+                if self.castling_rights.short[piece.color()].is_none() {
+                    bail!("Tried to castle (short) without rights");
                 }
             }
             // If castling, ensure we have the right to
-            MoveKind::QueensideCastle => {
-                if self.castling_rights.queenside[piece.color()].is_none() {
-                    bail!("Tried to castle (queenside) without rights");
+            MoveKind::LongCastle => {
+                if self.castling_rights.long[piece.color()].is_none() {
+                    bail!("Tried to castle (long) without rights");
                 }
             }
             // Quiet moves are fine
@@ -464,13 +461,13 @@ impl Position {
             // TODO: Chess960
             if to == Square::A1.rank_relative_to(captured_color) {
                 self.key.hash_castling_rights(&self.castling_rights);
-                self.castling_rights.queenside[captured_color].take();
+                self.castling_rights.long[captured_color].take();
                 self.key.hash_castling_rights(&self.castling_rights);
             }
 
             if to == Square::H1.rank_relative_to(captured_color) {
                 self.key.hash_castling_rights(&self.castling_rights);
-                self.castling_rights.kingside[captured_color].take();
+                self.castling_rights.short[captured_color].take();
                 self.key.hash_castling_rights(&self.castling_rights);
             }
 
@@ -493,8 +490,8 @@ impl Position {
             // Disable castling
             // Hashing must be done before and after castling rights are changed so that the proper hash key is used
             self.key.hash_castling_rights(&self.castling_rights);
-            self.castling_rights.kingside[color] = None;
-            self.castling_rights.queenside[color] = None;
+            self.castling_rights.short[color] = None;
+            self.castling_rights.long[color] = None;
             self.key.hash_castling_rights(&self.castling_rights);
         }
 
@@ -505,21 +502,21 @@ impl Position {
                 // Disable castling if a rook moved
                 if from == Square::A1.rank_relative_to(color) {
                     self.key.hash_castling_rights(&self.castling_rights);
-                    self.castling_rights.queenside[color].take();
+                    self.castling_rights.long[color].take();
                     self.key.hash_castling_rights(&self.castling_rights);
                 }
 
                 if from == Square::H1.rank_relative_to(color) {
                     self.key.hash_castling_rights(&self.castling_rights);
-                    self.castling_rights.kingside[color].take();
+                    self.castling_rights.short[color].take();
                     self.key.hash_castling_rights(&self.castling_rights);
                 }
             }
             PieceKind::King => {
                 // Disable all castling
                 self.key.hash_castling_rights(&self.castling_rights);
-                self.castling_rights.kingside[color] = None;
-                self.castling_rights.queenside[color] = None;
+                self.castling_rights.short[color] = None;
+                self.castling_rights.long[color] = None;
                 self.key.hash_castling_rights(&self.castling_rights);
             }
             _ => {}
@@ -624,11 +621,14 @@ impl fmt::Debug for Position {
 /// Internally uses a collection of [`Bitboard`]s to keep track of piece/color locations.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Board {
-    /// All squares occupied by a specific color
+    /// All squares occupied by a specific color.
     colors: [Bitboard; Color::COUNT],
 
-    /// All squares occupied by a specific piece kind
+    /// All squares occupied by a specific piece kind.
     pieces: [Bitboard; PieceKind::COUNT],
+
+    /// Redundant mailbox to speed up the [`Board::piece_at`] functions.
+    mailbox: [Option<Piece>; Square::COUNT],
 }
 
 impl Board {
@@ -644,6 +644,7 @@ impl Board {
         Self {
             colors: [Bitboard::EMPTY_BOARD; Color::COUNT],
             pieces: [Bitboard::EMPTY_BOARD; PieceKind::COUNT],
+            mailbox: [None; Square::COUNT],
         }
     }
 
@@ -690,6 +691,7 @@ impl Board {
         Ok(board)
     }
 
+    /*
     /// Returns an instance of this [`Board`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
     ///
     /// If `mask` contains only 1 square, use [`Board::with`] instead, as it is likely to be faster.
@@ -704,7 +706,9 @@ impl Board {
 
         Self { colors, pieces }
     }
+     */
 
+    /*
     /// Returns an instance of this [`Board`] that has all bits specified by `mask` cleared.
     pub fn without(self, mask: Bitboard) -> Self {
         let not_mask = !mask;
@@ -721,6 +725,7 @@ impl Board {
 
         Self { colors, pieces }
     }
+      */
 
     /// Returns `true` if there is a piece at the given [`Square`], else `false`.
     ///
@@ -730,8 +735,8 @@ impl Board {
     /// let board = Board::default();
     /// assert_eq!(board.has(Square::B1), true);
     /// ```
-    pub fn has(&self, square: Square) -> bool {
-        self.occupied().get(square)
+    pub const fn has(&self, square: Square) -> bool {
+        self.mailbox[square.index()].is_some()
     }
 
     /// Places the provided [`Piece`] and the supplied [`Square`].
@@ -747,6 +752,7 @@ impl Board {
     pub fn place(&mut self, piece: Piece, square: Square) {
         self[piece.color()].set(square);
         self[piece.kind()].set(square);
+        self.mailbox[square] = Some(piece);
     }
 
     /// Clears the supplied [`Square`] of any pieces.
@@ -759,10 +765,14 @@ impl Board {
     /// assert_eq!(board.to_fen(), "k7/8/8/8/8/8/8/7K");
     /// ```
     pub fn clear(&mut self, square: Square) {
-        if let Some(piece) = self.piece_at(square) {
-            self[piece.color()].clear(square);
-            self[piece.kind()].clear(square);
-        }
+        // if let Some(piece) = self.piece_at(square) {
+        //     // if let Some(piece) = self.mailbox[square].take() {
+        //     self[piece.color()].clear(square);
+        //     self[piece.kind()].clear(square);
+        //     self.mailbox[square] = None;
+        // }
+
+        self.take(square);
     }
 
     /// Takes the [`Piece`] from a given [`Square`], if there is one present.
@@ -777,8 +787,12 @@ impl Board {
     /// assert_eq!(taken, Some(white_knight));
     /// ```
     pub fn take(&mut self, square: Square) -> Option<Piece> {
-        let piece = self.piece_at(square)?;
-        self.clear(square);
+        // Take the piece from the mailbox, exiting early if there is none
+        let piece = self.mailbox[square].take()?;
+
+        // If there was a piece, clear the internal bitboards.
+        self.colors[piece.color()].clear(square);
+        self.pieces[piece.kind()].clear(square);
 
         Some(piece)
     }
@@ -806,17 +820,8 @@ impl Board {
     /// assert_eq!(board.color_at(Square::E8), Some(Color::Black));
     /// assert!(board.color_at(Square::E4).is_none());
     /// ```
-    pub const fn color_at(&self, square: Square) -> Option<Color> {
-        let mut i = 0;
-        while i < Color::COUNT {
-            if self.colors[i].get(square) {
-                // If it was found, we have the correct PieceKind, so break
-                return Some(Color::from_bits_unchecked(i as u8));
-            }
-            i += 1;
-        }
-
-        None
+    pub fn color_at(&self, square: Square) -> Option<Color> {
+        self.mailbox[square].map(|piece| piece.color())
     }
 
     /// Fetches the [`PieceKind`] of the piece at the provided [`Square`], if there is one.
@@ -828,17 +833,8 @@ impl Board {
     /// assert_eq!(board.kind_at(Square::A2), Some(PieceKind::Pawn));
     /// assert!(board.kind_at(Square::E4).is_none());
     /// ```
-    pub const fn kind_at(&self, square: Square) -> Option<PieceKind> {
-        let mut i = 0;
-        while i < PieceKind::COUNT {
-            if self.pieces[i].get(square) {
-                // If it was found, we have the correct PieceKind, so break
-                return Some(PieceKind::from_bits_unchecked(i as u8));
-            }
-            i += 1;
-        }
-
-        None
+    pub fn kind_at(&self, square: Square) -> Option<PieceKind> {
+        self.mailbox[square].map(|piece| piece.kind())
     }
 
     /// Fetches the [`Piece`] of the piece at the provided [`Square`], if there is one.
@@ -851,10 +847,15 @@ impl Board {
     /// assert_eq!(board.piece_at(Square::A2).unwrap().color(), Color::White);
     /// assert!(board.piece_at(Square::E4).is_none());
     /// ```
-    pub fn piece_at(&self, square: Square) -> Option<Piece> {
-        let kind = self.kind_at(square)?;
-        let color = self.color_at(square)?;
-        Some(Piece::new(color, kind))
+    pub const fn piece_at(&self, square: Square) -> Option<Piece> {
+        self.mailbox[square.index()]
+    }
+
+    /// Fetches the [`Piece`] of the piece at the provided [`Square`], without checking if one is there.
+    ///
+    /// This is an internal function, and should never be called unless you know what you're doing (hint: you probably don't).
+    pub(crate) fn piece_at_unchecked(&self, square: Square) -> Piece {
+        unsafe { self.piece_at(square).unwrap_unchecked() }
     }
 
     /// Fetches the [`Bitboard`] corresponding to the supplied [`PieceKind`].
@@ -1099,6 +1100,19 @@ impl IndexMut<Color> for Board {
     }
 }
 
+impl Index<Square> for Board {
+    type Output = Option<Piece>;
+    fn index(&self, index: Square) -> &Self::Output {
+        &self.mailbox[index]
+    }
+}
+
+impl IndexMut<Square> for Board {
+    fn index_mut(&mut self, index: Square) -> &mut Self::Output {
+        &mut self.mailbox[index]
+    }
+}
+
 impl<'a> IntoIterator for &'a Board {
     type IntoIter = BoardIter<'a>;
     type Item = <BoardIter<'a> as Iterator>::Item;
@@ -1183,9 +1197,11 @@ impl<'a> Iterator for BoardIter<'a> {
     type Item = (Square, Piece);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let lsb = self.occupancy.pop_lsb()?;
-        let piece = self.board.piece_at(lsb)?;
-        Some((lsb, piece))
+        let square = self.occupancy.pop_lsb()?;
+
+        // Safety: Because we early return when calling `pop_lsb` above, there is guaranteed to be a piece at `square`.
+        let piece = self.board.piece_at_unchecked(square);
+        Some((square, piece))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

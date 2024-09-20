@@ -151,7 +151,7 @@ impl<'a> Searcher<'a> {
 
         for (i, mv) in moves.into_iter().enumerate() {
             // Make the score move on the position, getting a new position in return
-            let new_pos = game.clone().with_move_made(mv);
+            let new_pos = game.with_move_made(mv);
 
             // If it's a draw, don't recurse, but set the score to 0 and continue as normal
             let score = if new_pos.is_repetition() || new_pos.can_draw_by_fifty() {
@@ -264,7 +264,7 @@ impl<'a> Searcher<'a> {
         // Only search moves
         for mv in moves {
             // Make the score move on the position, getting a new position in return
-            let new_pos = game.clone().with_move_made(mv);
+            let new_pos = game.with_move_made(mv);
 
             // Recursively search our opponent's responses
             let score = -self.quiescence(&new_pos, ply + 1, -beta, -alpha)?;

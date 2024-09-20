@@ -791,7 +791,7 @@ impl fmt::Debug for Square {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[repr(transparent)]
 pub struct Rank(pub(crate) u8);
 
@@ -1077,9 +1077,15 @@ macro_rules! impl_binary_ops_with_num {
 impl_binary_ops_with_num!(Rank);
 impl_try_from_num!(Rank);
 
-impl<T: AsRef<str>> PartialEq<T> for Rank {
-    fn eq(&self, other: &T) -> bool {
-        self.as_ref().eq(other.as_ref())
+impl PartialEq<char> for Rank {
+    fn eq(&self, other: &char) -> bool {
+        self.char().eq(other)
+    }
+}
+
+impl PartialEq<str> for Rank {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str().eq(other)
     }
 }
 
@@ -1160,7 +1166,7 @@ impl fmt::Debug for Rank {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct File(pub(crate) u8);
 
 impl File {
@@ -1327,9 +1333,15 @@ impl File {
 impl_binary_ops_with_num!(File);
 impl_try_from_num!(File);
 
-impl<T: AsRef<str>> PartialEq<T> for File {
-    fn eq(&self, other: &T) -> bool {
-        self.as_ref().eq(other.as_ref())
+impl PartialEq<char> for File {
+    fn eq(&self, other: &char) -> bool {
+        self.char().eq(other)
+    }
+}
+
+impl PartialEq<str> for File {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str().eq(other)
     }
 }
 

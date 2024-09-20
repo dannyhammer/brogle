@@ -403,12 +403,16 @@ impl Bitboard {
     /// Returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].
     ///
     /// If `self` is empty, this yields `None`,
-    pub const fn lsb(&self) -> Option<Square> {
-        if self.is_empty() {
-            None
-        } else {
-            Some(Square(self.0.trailing_zeros() as u8))
-        }
+    pub fn lsb(&self) -> Option<Square> {
+        self.is_nonempty()
+            .then(|| Square(self.0.trailing_zeros() as u8))
+    }
+
+    /// Returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].
+    ///
+    /// It is undefined behavior to call this function when `self` is empty.
+    pub fn lsb_unchecked(&self) -> Square {
+        Square(self.0.trailing_zeros() as u8)
     }
 
     /// Pops and returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].

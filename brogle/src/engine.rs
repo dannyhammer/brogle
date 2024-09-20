@@ -362,14 +362,14 @@ impl Engine {
         // Man, I wish I could just pass `split` and `pretty` in directly
         if split {
             if pretty {
-                print_perft::<true, true>(self.game.position(), depth);
+                print_perft::<true, true>(&self.game, depth);
             } else {
-                print_perft::<false, true>(self.game.position(), depth);
+                print_perft::<false, true>(&self.game, depth);
             }
         } else if pretty {
-            print_perft::<true, false>(self.game.position(), depth);
+            print_perft::<true, false>(&self.game, depth);
         } else {
-            print_perft::<false, false>(self.game.position(), depth);
+            print_perft::<false, false>(&self.game, depth);
         }
         Ok(())
     }

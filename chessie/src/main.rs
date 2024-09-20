@@ -16,12 +16,23 @@ fn main() {
     // let fen = "8/8/8/8/8/1kn5/8/K7 w - - 0 1"; // Stalemate
     // let fen = "8/8/8/8/8/1k6/1q6/K7 w - - 0 1"; // Checkmate
     // let fen = "k7/8/8/8/8/8/5p2/3K1R2 w - - 0 1"; // King cannot move d1e1
+    // let fen = "k3n3/5P2/8/8/8/8/1n6/K7 w - - 0 1";
+
     let pos = Position::from_fen(fen).unwrap();
 
     // let mask = pos.pawns(Color::White);
     // let mask = Square::B7.bitboard();
     // let mask = Square::E1.bitboard();
     let game = Game::new(pos);
+    // eprintln!("{pos:?}");
+
+    // let mv_str = "f7f8q";
+    // let mv_str = "f7f8b";
+    // let mv_str = "f7e8q";
+    // let mv_str = "f7e8b";
+    // let mv_str = "a1b2";
+    // let mv = Move::from_uci(&pos, mv_str).unwrap();
+    // println!("{mv:?}");
 
     eprintln!("{game:?}");
 

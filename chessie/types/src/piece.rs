@@ -744,6 +744,18 @@ impl Piece {
     pub fn inverted(self) -> Self {
         Self::new(self.color().opponent(), self.kind())
     }
+
+    /// Fetches a human-readable name for this [`Piece`].
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Piece;
+    /// let white_queen = Piece::WHITE_QUEEN;
+    /// assert_eq!(white_queen.name(), "white queen");
+    /// ```
+    pub fn name(&self) -> String {
+        format!("{} {}", self.color().name(), self.kind().name())
+    }
 }
 
 impl<T> Index<Piece> for [T; PieceKind::COUNT] {
@@ -805,9 +817,9 @@ macro_rules! impl_common_traits {
         }
 
         impl fmt::Debug for $type {
-            /// Debug formatting displays a $type as its UCI char and index value.
+            /// Debug formatting displays a $type as its human-readable name and index value.
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "\"{self}\" ({})", self.index())
+                write!(f, "\"{}\" ({})", self.name(), self.index())
             }
         }
     };

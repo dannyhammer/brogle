@@ -5,3 +5,9 @@ members = [
     "chessie",
     "brogle_tools",
 ]
+
+
+# Used to enable debug symbols for running with cargo flamegraph
+# TODO: Remove this on publish
+# [profile.release]
+# debug = true

@@ -1,38 +1,89 @@
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, u16};
 
 use anyhow::{anyhow, Result};
 
 use super::{Piece, PieceKind, Position, Square};
 
 /// Represents the different kinds of moves that can be made during a chess game.
+///
+/// Internally, these are represented by bit flags, which allows a compact representation of the [`Move`] struct.
+/// You do not need to know the bit flag values. They are only relevant internally.
+/// If you care, though, they are fetched from the [chess programming wiki](https://www.chessprogramming.org/Encoding_Moves#From-To_Based).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+#[repr(u16)]
 pub enum MoveKind {
     /// Involves only a single piece moving from one location to another, and does not change the quantity or kind of any pieces on the board.
-    Quiet,
-
-    /// Involves the King and a Rook sliding past each other on the King's side of the board.
-    KingsideCastle,
-
-    /// Involves the King and a Rook sliding past each other on the Queen's side of the board.
-    QueensideCastle,
+    Quiet = 0 << Move::FLG_BITS,
 
     /// A special case on a Pawn's first move, wherein it can advance two squares forward.
-    PawnPushTwo,
+    PawnDoublePush = 1 << Move::FLG_BITS,
+
+    /// Involves the King and a Rook sliding past each other on the King's side of the board.
+    ShortCastle = 2 << Move::FLG_BITS,
+
+    /// Involves the King and a Rook sliding past each other on the Queen's side of the board.
+    LongCastle = 3 << Move::FLG_BITS,
 
     /// Involves a piece moving onto a square occupied by an opponent's piece, removing it from the board.
-    Capture,
+    Capture = 4 << Move::FLG_BITS,
 
     /// A special variant of capturing that occurs when a Pawn executes En Passant.
-    EnPassantCapture,
+    EnPassantCapture = 5 << Move::FLG_BITS,
 
-    /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming another kind of piece, such as a Knight or Queen.
-    Promote(PieceKind),
+    /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming a [`PieceKind::Knight`].
+    PromoteKnight = 8 << Move::FLG_BITS,
 
-    /// Involves a Pawn moving onto a square on the opponent's side of the board that is occupied by an opponent's piece, removing it from the board, and promoting this Pawn to something else.
-    PromoCapt(PieceKind),
+    /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming a [`PieceKind::Bishop`].
+    PromoteBishop = 9 << Move::FLG_BITS,
+
+    /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming a [`PieceKind::Rook`].
+    PromoteRook = 10 << Move::FLG_BITS,
+
+    /// Involves a Pawn reaching the opponent's side of the board (rank 8 for White, rank 1 for Black) and becoming a [`PieceKind::Queen`].
+    PromoteQueen = 11 << Move::FLG_BITS,
+
+    /// Involves a Pawn moving onto a square on the opponent's side of the board that is occupied by an opponent's piece, removing it from the board, and promoting this Pawn to a [`PieceKind::Knight`].
+    CaptureAndPromoteKnight = 12 << Move::FLG_BITS,
+
+    /// Involves a Pawn moving onto a square on the opponent's side of the board that is occupied by an opponent's piece, removing it from the board, and promoting this Pawn to a [`PieceKind::Bishop`].
+    CaptureAndPromoteBishop = 13 << Move::FLG_BITS,
+
+    /// Involves a Pawn moving onto a square on the opponent's side of the board that is occupied by an opponent's piece, removing it from the board, and promoting this Pawn to a [`PieceKind::Rook`].
+    CaptureAndPromoteRook = 14 << Move::FLG_BITS,
+
+    /// Involves a Pawn moving onto a square on the opponent's side of the board that is occupied by an opponent's piece, removing it from the board, and promoting this Pawn to a [`PieceKind::Queen`].
+    CaptureAndPromoteQueen = 15 << Move::FLG_BITS,
 }
 
 impl MoveKind {
+    /// Creates a new [`MoveKind`] that is a promotion to the provided [`PieceKind`].
+    ///
+    /// # Panics
+    /// This function will panic if `promotion` is not a Knight, Bishop, Rook, or Queen.
+    pub fn promotion(promotion: PieceKind) -> Self {
+        match promotion {
+            PieceKind::Knight => Self::PromoteKnight,
+            PieceKind::Bishop => Self::PromoteBishop,
+            PieceKind::Rook => Self::PromoteRook,
+            PieceKind::Queen => Self::PromoteQueen,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Creates a new [`MoveKind`] that is a capture and promotion to the provided [`PieceKind`].
+    ///
+    /// # Panics
+    /// This function will panic if `promotion` is not a Knight, Bishop, Rook, or Queen.
+    pub fn promotion_capture(promotion: PieceKind) -> Self {
+        match promotion {
+            PieceKind::Knight => Self::CaptureAndPromoteKnight,
+            PieceKind::Bishop => Self::CaptureAndPromoteBishop,
+            PieceKind::Rook => Self::CaptureAndPromoteRook,
+            PieceKind::Queen => Self::CaptureAndPromoteQueen,
+            _ => unreachable!(),
+        }
+    }
+
     /// Determines the appropriate [`MoveKind`] for moving the `piece` at `from` onto `to`, within the provided `position`.
     ///
     /// If `promotion` was provided and other parameters specify that this is a pawn moving to the eighth rank,
@@ -43,7 +94,7 @@ impl MoveKind {
     /// # use chessie::{Position, MoveKind, Piece, PieceKind, Square};
     /// let pos = Position::default();
     /// let kind = MoveKind::new(Piece::WHITE_PAWN, Square::E2, Square::E4, &pos, None);
-    /// assert_eq!(kind, MoveKind::PawnPushTwo);
+    /// assert_eq!(kind, MoveKind::PawnDoublePush);
     /// ```
     pub fn new(
         piece: Piece,
@@ -68,9 +119,9 @@ impl MoveKind {
             if let Some(promotion) = promotion {
                 // If this move also captures, it's a capture-promote
                 if kind == Self::Capture {
-                    kind = Self::PromoCapt(promotion);
+                    kind = Self::promotion_capture(promotion);
                 } else {
-                    kind = Self::Promote(promotion);
+                    kind = Self::promotion(promotion);
                 }
             }
             // If this pawn is moving to the en passant square, it's en passant
@@ -79,17 +130,28 @@ impl MoveKind {
             }
             // If the Pawn is moving two ranks, it's a double push
             else if from.rank().abs_diff(to.rank()) == 2 {
-                kind = Self::PawnPushTwo;
+                kind = Self::PawnDoublePush;
             }
         } else if piece.is_king() && from == Square::E1.rank_relative_to(color) {
             if to == Square::G1.rank_relative_to(color) {
-                kind = Self::KingsideCastle;
+                kind = Self::ShortCastle;
             } else if to == Square::C1.rank_relative_to(color) {
-                kind = Self::QueensideCastle;
+                kind = Self::LongCastle;
             }
         }
 
         kind
+    }
+
+    /// Fetches the [`PieceKind`] to promote to, if `self` is a promotion.
+    pub fn get_promotion(&self) -> Option<PieceKind> {
+        match self {
+            Self::PromoteQueen | Self::CaptureAndPromoteQueen => Some(PieceKind::Queen),
+            Self::PromoteKnight | Self::CaptureAndPromoteKnight => Some(PieceKind::Knight),
+            Self::PromoteRook | Self::CaptureAndPromoteRook => Some(PieceKind::Rook),
+            Self::PromoteBishop | Self::CaptureAndPromoteBishop => Some(PieceKind::Bishop),
+            _ => None,
+        }
     }
 }
 
@@ -121,8 +183,7 @@ impl Move {
     /// Start index of flag bits.
     const FLG_BITS: u16 = 12;
 
-    /// Flags fetched from [chess programming wiki](https://www.chessprogramming.org/Encoding_Moves#From-To_Based)
-    const FLAG_QUIET: u16 = 0 << Self::FLG_BITS;
+    // const FLAG_QUIET: u16 = 0 << Self::FLG_BITS;
     const FLAG_PAWN_DOUBLE: u16 = 1 << Self::FLG_BITS;
     const FLAG_CASTLE_SHORT: u16 = 2 << Self::FLG_BITS;
     const FLAG_CASTLE_LONG: u16 = 3 << Self::FLG_BITS;
@@ -142,45 +203,14 @@ impl Move {
     /// # Example
     /// ```
     /// # use chessie::{Move, Square, MoveKind, PieceKind};
-    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnPushTwo);
+    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnDoublePush);
     /// assert_eq!(e2e4.to_string(), "e2e4");
     ///
-    /// let e7e8n = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Knight));
+    /// let e7e8n = Move::new(Square::E7, Square::E8, MoveKind::promotion(PieceKind::Knight));
     /// assert_eq!(e7e8n.to_string(), "e7e8n");
     /// ```
     pub fn new(from: Square, to: Square, kind: MoveKind) -> Self {
-        let from = from.inner() as u16;
-        let to = to.inner() as u16;
-        let flag = Self::get_bit_flag(kind);
-
-        Self(flag | to << Self::DST_BITS | from)
-    }
-
-    /// Internal function to convert a [`MoveKind`] into a bit flag to encode this move internally.
-    fn get_bit_flag(kind: MoveKind) -> u16 {
-        use MoveKind::*;
-        match kind {
-            Quiet => Self::FLAG_QUIET,
-            PawnPushTwo => Self::FLAG_PAWN_DOUBLE,
-            Capture => Self::FLAG_CAPTURE,
-            EnPassantCapture => Self::FLAG_EP_CAPTURE,
-            KingsideCastle => Self::FLAG_CASTLE_SHORT,
-            QueensideCastle => Self::FLAG_CASTLE_LONG,
-            PromoCapt(promotion) => match promotion {
-                PieceKind::Queen => Self::FLAG_CAPTURE_PROMO_QUEEN,
-                PieceKind::Knight => Self::FLAG_CAPTURE_PROMO_KNIGHT,
-                PieceKind::Rook => Self::FLAG_CAPTURE_PROMO_ROOK,
-                PieceKind::Bishop => Self::FLAG_CAPTURE_PROMO_BISHOP,
-                _ => unreachable!("Cannot promote to a {}", promotion.name()),
-            },
-            Promote(promotion) => match promotion {
-                PieceKind::Queen => Self::FLAG_PROMO_QUEEN,
-                PieceKind::Knight => Self::FLAG_PROMO_KNIGHT,
-                PieceKind::Rook => Self::FLAG_PROMO_ROOK,
-                PieceKind::Bishop => Self::FLAG_PROMO_BISHOP,
-                _ => unreachable!("Cannot promote to a {}", promotion.name()),
-            },
-        }
+        Self(kind as u16 | (to.inner() as u16) << Self::DST_BITS | from.inner() as u16)
     }
 
     /// Creates a new [`Move`] from the given [`Square`]s that does not promote a piece.
@@ -212,7 +242,7 @@ impl Move {
     /// # Example
     /// ```
     /// # use chessie::{Move, Square, MoveKind};
-    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnPushTwo);
+    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnDoublePush);
     /// let from = e2e4.from();
     /// assert_eq!(from, Square::E2);
     /// ```
@@ -225,7 +255,7 @@ impl Move {
     /// # Example
     /// ```
     /// # use chessie::{Move, Square, MoveKind};
-    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnPushTwo);
+    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnDoublePush);
     /// let to = e2e4.to();
     /// assert_eq!(to, Square::E4);
     /// ```
@@ -238,28 +268,13 @@ impl Move {
     /// # Example
     /// ```
     /// # use chessie::{Move, MoveKind, PieceKind, Square};
-    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Queen));
-    /// assert_eq!(e7e8q.kind(), MoveKind::Promote(PieceKind::Queen));
+    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::promotion(PieceKind::Queen));
+    /// assert_eq!(e7e8q.kind(), MoveKind::promotion(PieceKind::Queen));
     /// ```
     pub fn kind(&self) -> MoveKind {
-        let bits = self.0 & Self::FLG_MASK;
-        match bits {
-            Self::FLAG_QUIET => MoveKind::Quiet,
-            Self::FLAG_PAWN_DOUBLE => MoveKind::PawnPushTwo,
-            Self::FLAG_CASTLE_SHORT => MoveKind::KingsideCastle,
-            Self::FLAG_CASTLE_LONG => MoveKind::QueensideCastle,
-            Self::FLAG_CAPTURE => MoveKind::Capture,
-            Self::FLAG_EP_CAPTURE => MoveKind::EnPassantCapture,
-            Self::FLAG_PROMO_QUEEN => MoveKind::Promote(PieceKind::Queen),
-            Self::FLAG_PROMO_KNIGHT => MoveKind::Promote(PieceKind::Knight),
-            Self::FLAG_PROMO_ROOK => MoveKind::Promote(PieceKind::Rook),
-            Self::FLAG_PROMO_BISHOP => MoveKind::Promote(PieceKind::Bishop),
-            Self::FLAG_CAPTURE_PROMO_QUEEN => MoveKind::PromoCapt(PieceKind::Queen),
-            Self::FLAG_CAPTURE_PROMO_KNIGHT => MoveKind::PromoCapt(PieceKind::Knight),
-            Self::FLAG_CAPTURE_PROMO_ROOK => MoveKind::PromoCapt(PieceKind::Rook),
-            Self::FLAG_CAPTURE_PROMO_BISHOP => MoveKind::PromoCapt(PieceKind::Bishop),
-            _ => unimplemented!("Invalid bit pattern provided: {bits:b}"),
-        }
+        // Safety: Since a `Move` can ONLY be constructed through the public API,
+        // any instance of a `Move` is guaranteed to have a valid bit pattern for its `MoveKind`.
+        unsafe { std::mem::transmute(self.0 & Self::FLG_MASK) }
     }
 
     /// Fetches the parts of this [`Move`] in a tuple of `(from, to, kind)`.
@@ -267,11 +282,11 @@ impl Move {
     /// # Example
     /// ```
     /// # use chessie::{Move, MoveKind, PieceKind, Square};
-    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Queen));
+    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::promotion(PieceKind::Queen));
     /// let (from, to, kind) = e7e8q.parts();
     /// assert_eq!(from, Square::E7);
     /// assert_eq!(to, Square::E8);
-    /// assert_eq!(kind, MoveKind::Promote(PieceKind::Queen));
+    /// assert_eq!(kind, MoveKind::promotion(PieceKind::Queen));
     /// ```
     pub fn parts(&self) -> (Square, Square, MoveKind) {
         (self.from(), self.to(), self.kind())
@@ -315,7 +330,7 @@ impl Move {
     /// # Example
     /// ```
     /// # use chessie::{Move, Square, MoveKind};
-    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnPushTwo);
+    /// let e2e4 = Move::new(Square::E2, Square::E4, MoveKind::PawnDoublePush);
     /// assert_eq!(e2e4.is_pawn_double_push(), true);
     /// ```
     pub const fn is_pawn_double_push(&self) -> bool {
@@ -327,10 +342,10 @@ impl Move {
     /// # Example
     /// ```
     /// # use chessie::{Move, MoveKind, PieceKind, Square};
-    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Queen));
+    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::promotion(PieceKind::Queen));
     /// assert_eq!(e7e8q.is_promotion(), true);
     ///
-    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::PromoCapt(PieceKind::Queen));
+    /// let e7e8q = Move::new(Square::E7, Square::E8, MoveKind::promotion_capture(PieceKind::Queen));
     /// assert_eq!(e7e8q.is_promotion(), true);
     /// ```
     pub const fn is_promotion(&self) -> bool {
@@ -349,7 +364,7 @@ impl Move {
     /// let b7c8b = Move::from_uci(&position, "b7c8b").unwrap();
     /// assert_eq!(b7c8b.promotion(), Some(PieceKind::Bishop));
     /// ```
-    pub const fn promotion(&self) -> Option<PieceKind> {
+    pub fn promotion(&self) -> Option<PieceKind> {
         match self.0 & Self::FLG_MASK {
             Self::FLAG_PROMO_QUEEN | Self::FLAG_CAPTURE_PROMO_QUEEN => Some(PieceKind::Queen),
             Self::FLAG_PROMO_KNIGHT | Self::FLAG_CAPTURE_PROMO_KNIGHT => Some(PieceKind::Knight),
@@ -395,7 +410,7 @@ impl Move {
     /// let position = Position::from_fen("n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ").unwrap();
     /// let b7c8b = Move::from_uci(&position, "b7c8b");
     /// assert!(b7c8b.is_ok());
-    /// assert_eq!(b7c8b.unwrap(), Move::new(Square::B7, Square::C8, MoveKind::PromoCapt(PieceKind::Bishop)));
+    /// assert_eq!(b7c8b.unwrap(), Move::new(Square::B7, Square::C8, MoveKind::promotion_capture(PieceKind::Bishop)));
     /// ```
     pub fn from_uci(position: &Position, uci: &str) -> Result<Self> {
         // Extract the to/from squares
@@ -430,7 +445,7 @@ impl Move {
     /// # Example
     /// ```
     /// # use chessie::{Move, Square, MoveKind, PieceKind};
-    /// let e7e8Q = Move::new(Square::E7, Square::E8, MoveKind::Promote(PieceKind::Queen));
+    /// let e7e8Q = Move::new(Square::E7, Square::E8, MoveKind::promotion(PieceKind::Queen));
     /// assert_eq!(e7e8Q.to_uci(), "e7e8q");
     /// ```
     pub fn to_uci(&self) -> String {
@@ -481,91 +496,100 @@ mod test {
     fn test_move_is_capture() {
         let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_capture());
-        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_capture());
-        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_capture());
-        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_capture());
+        assert!(!Move::new(from, to, MoveKind::ShortCastle).is_capture());
+        assert!(!Move::new(from, to, MoveKind::LongCastle).is_capture());
+        assert!(!Move::new(from, to, MoveKind::PawnDoublePush).is_capture());
         assert!(Move::new(from, to, MoveKind::Capture).is_capture());
         assert!(Move::new(from, to, MoveKind::EnPassantCapture).is_capture());
-        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_capture());
-        assert!(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)).is_capture());
+        assert!(!Move::new(from, to, MoveKind::promotion(PieceKind::Queen)).is_capture());
+        assert!(Move::new(from, to, MoveKind::promotion_capture(PieceKind::Queen)).is_capture());
     }
 
     #[test]
     fn test_move_is_en_passant() {
         let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_en_passant());
-        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_en_passant());
-        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_en_passant());
-        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_en_passant());
+        assert!(!Move::new(from, to, MoveKind::ShortCastle).is_en_passant());
+        assert!(!Move::new(from, to, MoveKind::LongCastle).is_en_passant());
+        assert!(!Move::new(from, to, MoveKind::PawnDoublePush).is_en_passant());
         assert!(!Move::new(from, to, MoveKind::Capture).is_en_passant());
         assert!(Move::new(from, to, MoveKind::EnPassantCapture).is_en_passant());
-        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_en_passant());
-        assert!(!Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)).is_en_passant());
+        assert!(!Move::new(from, to, MoveKind::promotion(PieceKind::Queen)).is_en_passant());
+        assert!(
+            !Move::new(from, to, MoveKind::promotion_capture(PieceKind::Queen)).is_en_passant()
+        );
     }
 
     #[test]
     fn test_move_is_short_castle() {
         let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_short_castle());
-        assert!(Move::new(from, to, MoveKind::KingsideCastle).is_short_castle());
-        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_short_castle());
-        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_short_castle());
+        assert!(Move::new(from, to, MoveKind::ShortCastle).is_short_castle());
+        assert!(!Move::new(from, to, MoveKind::LongCastle).is_short_castle());
+        assert!(!Move::new(from, to, MoveKind::PawnDoublePush).is_short_castle());
         assert!(!Move::new(from, to, MoveKind::Capture).is_short_castle());
         assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_short_castle());
-        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_short_castle());
-        assert!(!Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)).is_short_castle());
+        assert!(!Move::new(from, to, MoveKind::promotion(PieceKind::Queen)).is_short_castle());
+        assert!(
+            !Move::new(from, to, MoveKind::promotion_capture(PieceKind::Queen)).is_short_castle()
+        );
     }
 
     #[test]
     fn test_move_is_long_castle() {
         let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_long_castle());
-        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_long_castle());
-        assert!(Move::new(from, to, MoveKind::QueensideCastle).is_long_castle());
-        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_long_castle());
+        assert!(!Move::new(from, to, MoveKind::ShortCastle).is_long_castle());
+        assert!(Move::new(from, to, MoveKind::LongCastle).is_long_castle());
+        assert!(!Move::new(from, to, MoveKind::PawnDoublePush).is_long_castle());
         assert!(!Move::new(from, to, MoveKind::Capture).is_long_castle());
         assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_long_castle());
-        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_long_castle());
-        assert!(!Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)).is_long_castle());
+        assert!(!Move::new(from, to, MoveKind::promotion(PieceKind::Queen)).is_long_castle());
+        assert!(
+            !Move::new(from, to, MoveKind::promotion_capture(PieceKind::Queen)).is_long_castle()
+        );
     }
 
     #[test]
     fn test_move_is_castle() {
         let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_castle());
-        assert!(Move::new(from, to, MoveKind::KingsideCastle).is_castle());
-        assert!(Move::new(from, to, MoveKind::QueensideCastle).is_castle());
-        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_castle());
+        assert!(Move::new(from, to, MoveKind::ShortCastle).is_castle());
+        assert!(Move::new(from, to, MoveKind::LongCastle).is_castle());
+        assert!(!Move::new(from, to, MoveKind::PawnDoublePush).is_castle());
         assert!(!Move::new(from, to, MoveKind::Capture).is_castle());
         assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_castle());
-        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_castle());
-        assert!(!Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)).is_castle());
+        assert!(!Move::new(from, to, MoveKind::promotion(PieceKind::Queen)).is_castle());
+        assert!(!Move::new(from, to, MoveKind::promotion_capture(PieceKind::Queen)).is_castle());
     }
 
     #[test]
     fn test_move_is_pawn_double_push() {
         let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_pawn_double_push());
-        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_pawn_double_push());
-        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_pawn_double_push());
-        assert!(Move::new(from, to, MoveKind::PawnPushTwo).is_pawn_double_push());
+        assert!(!Move::new(from, to, MoveKind::ShortCastle).is_pawn_double_push());
+        assert!(!Move::new(from, to, MoveKind::LongCastle).is_pawn_double_push());
+        assert!(Move::new(from, to, MoveKind::PawnDoublePush).is_pawn_double_push());
         assert!(!Move::new(from, to, MoveKind::Capture).is_pawn_double_push());
         assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_pawn_double_push());
-        assert!(!Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_pawn_double_push());
-        assert!(!Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)).is_pawn_double_push());
+        assert!(!Move::new(from, to, MoveKind::promotion(PieceKind::Queen)).is_pawn_double_push());
+        assert!(
+            !Move::new(from, to, MoveKind::promotion_capture(PieceKind::Queen))
+                .is_pawn_double_push()
+        );
     }
 
     #[test]
     fn test_move_is_promotion() {
         let (from, to) = (Square::A1, Square::H8);
         assert!(!Move::new(from, to, MoveKind::Quiet).is_promotion());
-        assert!(!Move::new(from, to, MoveKind::KingsideCastle).is_promotion());
-        assert!(!Move::new(from, to, MoveKind::QueensideCastle).is_promotion());
-        assert!(!Move::new(from, to, MoveKind::PawnPushTwo).is_promotion());
+        assert!(!Move::new(from, to, MoveKind::ShortCastle).is_promotion());
+        assert!(!Move::new(from, to, MoveKind::LongCastle).is_promotion());
+        assert!(!Move::new(from, to, MoveKind::PawnDoublePush).is_promotion());
         assert!(!Move::new(from, to, MoveKind::Capture).is_promotion());
         assert!(!Move::new(from, to, MoveKind::EnPassantCapture).is_promotion());
-        assert!(Move::new(from, to, MoveKind::Promote(PieceKind::Queen)).is_promotion());
-        assert!(Move::new(from, to, MoveKind::PromoCapt(PieceKind::Queen)).is_promotion());
+        assert!(Move::new(from, to, MoveKind::promotion(PieceKind::Queen)).is_promotion());
+        assert!(Move::new(from, to, MoveKind::promotion_capture(PieceKind::Queen)).is_promotion());
     }
 
     /// Helper function to assert that the `uci` move is parsed as `expected` on the position created from `fen`.
@@ -587,7 +611,7 @@ mod test {
         test_move_parse(pawn_fen, "a2a3", mv);
 
         // Pawn double push
-        let mv = Move::new(Square::A2, Square::A4, MoveKind::PawnPushTwo);
+        let mv = Move::new(Square::A2, Square::A4, MoveKind::PawnDoublePush);
         test_move_parse(pawn_fen, "a2a4", mv);
 
         // Pawn capture
@@ -599,18 +623,26 @@ mod test {
         test_move_parse(pawn_fen, "g5f6", mv);
 
         // Pawn promotion to queen
-        let mv = Move::new(Square::B7, Square::B8, MoveKind::Promote(PieceKind::Queen));
+        let mv = Move::new(
+            Square::B7,
+            Square::B8,
+            MoveKind::promotion(PieceKind::Queen),
+        );
         test_move_parse(pawn_fen, "b7b8Q", mv);
 
         // Pawn promotion to Knight
-        let mv = Move::new(Square::B7, Square::B8, MoveKind::Promote(PieceKind::Knight));
+        let mv = Move::new(
+            Square::B7,
+            Square::B8,
+            MoveKind::promotion(PieceKind::Knight),
+        );
         test_move_parse(pawn_fen, "b7b8n", mv);
 
         // Pawn capture promotion to queen
         let mv = Move::new(
             Square::B7,
             Square::C8,
-            MoveKind::PromoCapt(PieceKind::Queen),
+            MoveKind::promotion_capture(PieceKind::Queen),
         );
         test_move_parse(pawn_fen, "b7c8q", mv);
 
@@ -618,7 +650,7 @@ mod test {
         let mv = Move::new(
             Square::B7,
             Square::C8,
-            MoveKind::PromoCapt(PieceKind::Knight),
+            MoveKind::promotion_capture(PieceKind::Knight),
         );
         test_move_parse(pawn_fen, "b7c8N", mv);
 
@@ -626,19 +658,19 @@ mod test {
         let king_fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
 
         // Kingside (short) castling (White)
-        let mv = Move::new(Square::E1, Square::G1, MoveKind::KingsideCastle);
+        let mv = Move::new(Square::E1, Square::G1, MoveKind::ShortCastle);
         test_move_parse(king_fen, "e1g1", mv);
 
         // Queenside (long) castling (White)
-        let mv = Move::new(Square::E1, Square::C1, MoveKind::QueensideCastle);
+        let mv = Move::new(Square::E1, Square::C1, MoveKind::LongCastle);
         test_move_parse(king_fen, "e1c1", mv);
 
         // Kingside (short) castling (Black)
-        let mv = Move::new(Square::E8, Square::G8, MoveKind::KingsideCastle);
+        let mv = Move::new(Square::E8, Square::G8, MoveKind::ShortCastle);
         test_move_parse(king_fen, "e8g8", mv);
 
         // Queenside (long) castling (Black)
-        let mv = Move::new(Square::E8, Square::C8, MoveKind::QueensideCastle);
+        let mv = Move::new(Square::E8, Square::C8, MoveKind::LongCastle);
         test_move_parse(king_fen, "e8c8", mv);
     }
 }

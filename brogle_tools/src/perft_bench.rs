@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use colored::*;
 
-use chessie::{perft, Position};
+use chessie::{perft, Game};
 
 /// Total number of nodes in the `standard.epd` test suite.
 const TOTAL_NODES_IN_SUITE: u64 = 4805793839;
@@ -29,7 +29,7 @@ fn main() {
                 .unwrap();
             let expected = perft_data.get(3..).unwrap().trim().parse::<u64>().unwrap();
 
-            let position = Position::from_fen(fen).unwrap();
+            let position = Game::from_fen(fen).unwrap();
 
             let start = Instant::now();
             let nodes = perft(&position, depth);

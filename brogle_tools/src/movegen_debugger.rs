@@ -314,7 +314,7 @@ fn main() {
     let checker = PerftChecker::new(&args[1]);
 
     let contents = std::fs::read_to_string(PATH_TO_EPD).unwrap();
-    for epd in contents.lines().skip(1) {
+    for epd in contents.lines() {
         if let Err(e) = checker.check_epd(epd) {
             eprintln!("\n{e}");
             break;

@@ -141,10 +141,10 @@ impl<'a> MoveGenIter<'a> {
     /// as only the King is allowed to move during a double check.
     pub fn only_moves_from(mut self, mask: impl Into<Bitboard>) -> Self {
         // If in double check, we cannot generate moves for anything other than the King
-        self.from_mask = if self.game.checkers().population() <= 1 {
-            mask.into()
-        } else {
+        self.from_mask = if self.game.is_in_double_check() {
             self.game.king(self.game.side_to_move())
+        } else {
+            mask.into()
         };
 
         self
@@ -165,24 +165,20 @@ impl<'a> MoveGenIter<'a> {
 
     /// Constructs a [`Move`], given the `from` and `to` squares, as well as the struct's internal context.
     fn serialize_move(&mut self, from: Square, to: Square) -> Move {
-        let piece = self.game.piece_at(from).unwrap(); // Safe unwrap because there must be a piece here for us to move.
+        let piece = self.game.piece_at_unchecked(from); // Safe because there must be a piece here for us to move.
+
         let color = self.game.side_to_move();
 
         // By default, the move is either quiet or a capture
-        let kind = if self.game.has(to) {
+        let mut kind = if self.game.has(to) {
             MoveKind::Capture
         } else {
             MoveKind::Quiet
         };
 
-        // Pawns have a lot of special cases
         if piece.is_pawn() {
-            // If `to` is two squares ahead, it's a Pawn double-push
-            let kind = if Some(to) == from.forward_by(color, 2) {
-                MoveKind::PawnPushTwo
-            }
-            // If the Pawn reached the back rank, it's a promotion
-            else if to.rank() == Rank::eighth(color) {
+            // If a promotion was provided, it's a promotion of some kind
+            if to.rank() == Rank::eighth(color) {
                 // Fetch the kind of piece to which this Pawn will be promoted.
                 // We add 1 here to shift our range to exclude the Pawn.
                 let promotion = PieceKind::from_bits_unchecked(self.promotion + 1);
@@ -190,60 +186,30 @@ impl<'a> MoveGenIter<'a> {
                 // Increment the promotion index, resetting to 4 if it reaches 4.
                 self.promotion = (self.promotion + 1) & 3;
 
-                // If there was a piece at the destination, it's a promotion and a capture
+                // If this move also captures, it's a capture-promote
                 if kind == MoveKind::Capture {
-                    MoveKind::PromoCapt(promotion)
+                    kind = MoveKind::promotion_capture(promotion);
                 } else {
-                    MoveKind::Promote(promotion)
+                    kind = MoveKind::promotion(promotion);
                 }
             }
-            // If the Pawn changed files and there isn't a piece at the destination, it's en passant
-            else if to.file() != from.file() && kind == MoveKind::Quiet {
-                MoveKind::EnPassantCapture
+            // If this pawn is moving to the en passant square, it's en passant
+            else if Some(to) == self.game.ep_square() {
+                kind = MoveKind::EnPassantCapture;
             }
-            // If all else failed, it's a quiet single pawn push
-            else {
-                kind
-            };
-
-            Move::new(from, to, kind)
-        }
-        // The King only has one special case- castling
-        else if piece.is_king() {
-            // If the King is moving from his start square, it could be castling
-            let kind = if from == Square::E1.rank_relative_to(color) {
-                let castling_rights = self.game.castling_rights();
-
-                // If we can short castle, and the destination square is either our short-side Rook (for Chess960)
-                //  or the standard G1 (color-relative), then this is a short castle.
-                if castling_rights.kingside[color]
-                    .is_some_and(|sq| to == sq || to == Square::G1.rank_relative_to(color))
-                {
-                    MoveKind::KingsideCastle
-                }
-                // If we can long castle, and the destination square is either our long-side Rook (for Chess960)
-                //  or the standard C1 (color-relative), then this is a long castle.
-                else if castling_rights.queenside[color]
-                    .is_some_and(|sq| to == sq || to == Square::C1.rank_relative_to(color))
-                {
-                    MoveKind::QueensideCastle
-                }
-                // Otherwise, this isn't a castling move.
-                else {
-                    kind
-                }
+            // If the Pawn is moving two ranks, it's a double push
+            else if from.rank().abs_diff(to.rank()) == 2 {
+                kind = MoveKind::PawnDoublePush;
             }
-            // If the King was not moving from his starting square, this cannot be castling.
-            else {
-                kind
-            };
+        } else if piece.is_king() && from == Square::E1.rank_relative_to(color) {
+            if to == Square::G1.rank_relative_to(color) {
+                kind = MoveKind::ShortCastle;
+            } else if to == Square::C1.rank_relative_to(color) {
+                kind = MoveKind::LongCastle;
+            }
+        }
 
-            Move::new(from, to, kind)
-        }
-        // All other pieces have simple moves- quiets or captures
-        else {
-            Move::new(from, to, kind)
-        }
+        Move::new(from, to, kind)
     }
 
     /// Progresses the iterator and yields the next [`Move`] available, if any remain.
@@ -252,7 +218,7 @@ impl<'a> MoveGenIter<'a> {
         // We loop here because the piece at the next square in the "from" mask may not have any legal moves, so we must skip it.
         while self.mobility.is_empty() {
             self.square = self.from_mask.pop_lsb()?;
-            let piece = self.game.piece_at(self.square)?; // We could safely `.unwrap()` this because there's guaranteed to be a piece here, but this looks cleaner
+            let piece = self.game.piece_at_unchecked(self.square); // Square is guaranteed to have piece on it.
 
             // Mask off anything not in the "to" mask
             self.mobility =
@@ -260,7 +226,7 @@ impl<'a> MoveGenIter<'a> {
         }
 
         // Create a `Move` struct from the move data.
-        let to = self.mobility.lsb()?; // We could safely `.unwrap()` here because of the loop above that ensures `self.current_mobility` is nonempty.
+        let to = self.mobility.lsb_unchecked(); // Guaranteed to be at least one destination square, from the loop above.
         let mv = self.serialize_move(self.square, to);
 
         // If a Pawn promotion occurred, we may need to enumerate more promotions
@@ -342,7 +308,7 @@ pub fn compute_pinmask_for(board: &Board, square: Square, color: Color) -> Bitbo
 /// If Pawn pushes were included in this "attack map", then the King would not be able to
 /// move to squares otherwise be safe, as the move generator would think that a Pawn's
 /// threat of pushing could check the King.
-pub fn attacks_for(piece: &Piece, square: Square, blockers: Bitboard) -> Bitboard {
+pub const fn attacks_for(piece: Piece, square: Square, blockers: Bitboard) -> Bitboard {
     match piece.kind() {
         PieceKind::Pawn => pawn_attacks(square, piece.color()),
         PieceKind::Knight => knight_attacks(square),
@@ -428,20 +394,28 @@ pub const fn pawn_moves(square: Square, color: Color, blockers: Bitboard) -> Bit
     pushes.or(attacks)
 }
 
+// const PAWN_ATTACKS: [&'static [Bitboard; 64]; 2] = [&WHITE_PAWN_ATTACKS, &BLACK_PAWN_ATTACKS];
+// const PAWN_PUSHES: [&'static [Bitboard; 64]; 2] = [&WHITE_PAWN_PUSHES, &BLACK_PAWN_PUSHES];
+
 /// Fetch the raw, unblocked pushes for a pawn of the provided color on the provided square.
 pub const fn pawn_pushes(square: Square, color: Color) -> Bitboard {
-    [
-        WHITE_PAWN_PUSHES[square.index()],
-        BLACK_PAWN_PUSHES[square.index()],
-    ][color.index()]
+    // [
+    //     WHITE_PAWN_PUSHES[square.index()],
+    //     BLACK_PAWN_PUSHES[square.index()],
+    // ][color.index()]
+
+    match color {
+        Color::White => WHITE_PAWN_PUSHES[square.index()],
+        Color::Black => BLACK_PAWN_PUSHES[square.index()],
+    }
 }
 
 /// Fetch the raw, unblocked attacks for a pawn of the provided color on the provided square.
 pub const fn pawn_attacks(square: Square, color: Color) -> Bitboard {
-    [
-        WHITE_PAWN_ATTACKS[square.index()],
-        BLACK_PAWN_ATTACKS[square.index()],
-    ][color.index()]
+    match color {
+        Color::White => WHITE_PAWN_ATTACKS[square.index()],
+        Color::Black => BLACK_PAWN_ATTACKS[square.index()],
+    }
 }
 
 struct MagicEntry {
