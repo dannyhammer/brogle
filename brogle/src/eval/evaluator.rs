@@ -24,7 +24,7 @@ pub struct Evaluator<'a> {
 impl<'a> Evaluator<'a> {
     /// Create a new [`Evaluator`] instance to evaluate the supplied [`Game`].
     pub fn new(game: &'a Game) -> Self {
-        let endgame_weight = endgame_weight(game.board(), game.current_player().opponent());
+        let endgame_weight = endgame_weight(game.board(), game.side_to_move().opponent());
 
         Self {
             game,
@@ -45,7 +45,7 @@ impl<'a> Evaluator<'a> {
 
     /// Run the evaluator, yielding a result that is positive if good for the current player and negative if good for the opponent.
     pub fn eval_current_player(&self) -> Score {
-        self.eval(self.game.current_player())
+        self.eval(self.game.side_to_move())
     }
 
     /// Compute the evaluation score for `color` only.

@@ -21,7 +21,7 @@ impl ZobristKey {
             position.board(),
             position.ep_square(),
             position.castling_rights(),
-            position.current_player(),
+            position.side_to_move(),
         )
     }
 
@@ -35,7 +35,7 @@ impl ZobristKey {
         let mut key = Self::default();
 
         // Hash all pieces on the board
-        for (square, piece) in board.all() {
+        for (square, piece) in board.iter() {
             key.hash_piece(square, piece);
         }
 

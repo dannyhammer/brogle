@@ -7,149 +7,73 @@ use std::{
 use anyhow::{anyhow, bail, Result};
 
 use super::{
-    Bitboard, Color, File, Move, MoveGenerator, MoveKind, Piece, PieceKind, Rank, Square,
-    ZobristKey, FEN_STARTPOS, NUM_CASTLING_RIGHTS,
+    Bitboard, Color, File, Move, MoveKind, Piece, PieceKind, Rank, Square, ZobristKey,
+    FEN_STARTPOS, NUM_CASTLING_RIGHTS,
 };
-
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct Game {
-    movegen: MoveGenerator,
-    history: Vec<ZobristKey>,
-}
-
-impl Game {
-    /// Creates a new, empty [`Game`].
-    pub fn new() -> Self {
-        Self {
-            movegen: MoveGenerator::new_legal(Position::new()),
-            history: Vec::with_capacity(128),
-        }
-    }
-
-    /// Creates a new [`Game`] from the provided FEN string.
-    pub fn from_fen(fen: &str) -> Result<Self> {
-        Ok(Self {
-            movegen: MoveGenerator::new_legal(Position::from_fen(fen)?),
-            history: Vec::with_capacity(128),
-        })
-    }
-
-    /// Consumes `self` and returns a [`Game`] after having applied the provided [`Move`].
-    pub fn with_move_made(mut self, mv: Move) -> Self {
-        self.make_move(mv);
-        self
-    }
-
-    /// Returns `true` if the game is in a position that is identical to the position it was in before.
-    ///
-    /// This is for checking "two-fold" repetition.
-    ///
-    ///
-    /// # Example
-    /// ```
-    /// # use chessie::{Game, Move};
-    /// let mut game = Game::default();
-    /// game.make_move(Move::from_uci(&game, "b1a3").unwrap());
-    /// assert_eq!(game.is_repetition(), false);
-    /// game.make_move(Move::from_uci(&game, "b8a6").unwrap());
-    /// assert_eq!(game.is_repetition(), false);
-    /// game.make_move(Move::from_uci(&game, "a3b1").unwrap());
-    /// assert_eq!(game.is_repetition(), false);
-    /// game.make_move(Move::from_uci(&game, "a6b8").unwrap());
-    /// assert_eq!(game.is_repetition(), true);
-    /// ```
-    pub fn is_repetition(&self) -> bool {
-        for prev in self.history.iter().rev().skip(1).step_by(2) {
-            if *prev == self.position().key() {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    /// Applies the move, if it is legal to make. If it is not legal, returns an `Err` explaining why.
-    pub fn make_move_checked(&mut self, mv: Move) -> Result<()> {
-        self.check_legality_of(mv)?;
-        self.make_move(mv);
-        Ok(())
-    }
-
-    /// Applies the provided [`Move`]. No enforcement of legality.
-    pub fn make_move(&mut self, mv: Move) {
-        self.history.push(self.position().key());
-        let new_pos = self.position().clone().with_move_made(mv);
-        self.movegen = MoveGenerator::new_legal(new_pos);
-    }
-
-    /// Applies the provided [`Move`]s. No enforcement of legality.
-    pub fn make_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
-        for mv in moves {
-            self.make_move(mv);
-        }
-    }
-}
-
-impl Deref for Game {
-    type Target = MoveGenerator;
-    fn deref(&self) -> &Self::Target {
-        &self.movegen
-    }
-}
 
 // TODO: Refactor this to be Option<square> instead of bool arrays
 /// Represents the castling rights of both players
 #[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
 pub struct CastlingRights {
     /// If a right is `Some(square)`, then `square` is the *rook*'s location
-    pub(crate) kingside: [Option<Square>; Color::COUNT],
-    pub(crate) queenside: [Option<Square>; Color::COUNT],
+    pub(crate) short: [Option<Square>; Color::COUNT],
+    pub(crate) long: [Option<Square>; Color::COUNT],
 }
 
 impl CastlingRights {
     pub const fn new() -> Self {
         Self {
-            kingside: [None; Color::COUNT],
-            queenside: [None; Color::COUNT],
+            short: [None; Color::COUNT],
+            long: [None; Color::COUNT],
         }
     }
 
     pub fn from_uci(uci: &str) -> Result<Self> {
-        let mut kingside = [None; Color::COUNT];
-        let mut queenside = [None; Color::COUNT];
+        let mut short = [None; Color::COUNT];
+        let mut long = [None; Color::COUNT];
 
         if uci.contains(['K', 'k', 'Q', 'q']) {
-            kingside[Color::White] = uci.contains('K').then_some(Square::H1);
-            queenside[Color::White] = uci.contains('Q').then_some(Square::A1);
-            kingside[Color::Black] = uci.contains('k').then_some(Square::H8);
-            queenside[Color::Black] = uci.contains('q').then_some(Square::A8);
-        } else {
+            short[Color::White] = uci.contains('K').then_some(Square::H1);
+            long[Color::White] = uci.contains('Q').then_some(Square::A1);
+            short[Color::Black] = uci.contains('k').then_some(Square::H8);
+            long[Color::Black] = uci.contains('q').then_some(Square::A8);
+        } else if uci.chars().any(|c| File::from_char(c).is_ok()) {
+            eprintln!("Warning: Chess960 FEN detected for castling rights: {uci:?}");
+            eprintln!("Chess960 is not currently supported");
+            /*
             // TODO: Support Chess960
-            // Don't we need the King's square here?
-            // for c in uci.chars() {
-            //     let color = Color::from_bool(c.is_ascii_lowercase());
-            // }
+            for c in uci.chars() {
+                let color = Color::from_bool(c.is_ascii_lowercase());
+                let file = File::from_char(c)?;
+                let rank = Rank::first(color);
+                let rook_square = Square::new(file, rank);
+
+                let king_file = File::E; // TODO: Fetch King's file the rest of the FEN
+                if file > king_file {
+                    short[color] = Some(rook_square);
+                } else {
+                    long[color] = Some(rook_square);
+                }
+            }
+             */
         }
 
-        Ok(Self {
-            kingside,
-            queenside,
-        })
+        Ok(Self { short, long })
     }
 
     pub fn to_uci(&self) -> String {
         let mut castling = String::with_capacity(4);
 
-        if self.kingside[Color::White].is_some() {
+        if self.short[Color::White].is_some() {
             castling.push('K');
         }
-        if self.queenside[Color::White].is_some() {
+        if self.long[Color::White].is_some() {
             castling.push('Q');
         }
-        if self.kingside[Color::Black].is_some() {
+        if self.short[Color::Black].is_some() {
             castling.push('k');
         }
-        if self.queenside[Color::Black].is_some() {
+        if self.long[Color::Black].is_some() {
             castling.push('q')
         }
 
@@ -171,10 +95,10 @@ impl CastlingRights {
     /// assert_eq!(none.index(), 0);
     /// ```
     pub const fn index(&self) -> usize {
-        (self.kingside[0].is_some() as usize)
-            | (self.kingside[1].is_some() as usize) << 1
-            | (self.queenside[0].is_some() as usize) << 2
-            | (self.queenside[1].is_some() as usize) << 3
+        (self.short[0].is_some() as usize)
+            | (self.short[1].is_some() as usize) << 1
+            | (self.long[0].is_some() as usize) << 2
+            | (self.long[1].is_some() as usize) << 3
     }
 }
 
@@ -229,8 +153,8 @@ pub struct Position {
     /// Bitboard representation of the game board.
     board: Board,
 
-    /// Side to move.
-    current_player: Color,
+    /// The [`Color`] of the current player.
+    side_to_move: Color,
 
     /// Castling rights for each player.
     castling_rights: CastlingRights,
@@ -239,8 +163,8 @@ pub struct Position {
     ep_square: Option<Square>,
 
     /// Used to enforce the fifty-move rule.
-    /// - Is incremented after each move.
-    /// - Is reset after a capture or a pawn moves.
+    /// - Incremented after each move.
+    /// - Reset after a capture or a pawn moves.
     halfmove: usize,
 
     /// Number of moves since the beginning of the game.
@@ -276,7 +200,7 @@ impl Position {
 
         Self {
             board,
-            current_player,
+            side_to_move: current_player,
             castling_rights,
             ep_square,
             halfmove: 0,
@@ -295,7 +219,7 @@ impl Position {
         pos.board = Board::from_fen(placements)?;
 
         let active_color = split.next().unwrap_or("w");
-        pos.current_player = Color::from_str(active_color)?;
+        pos.side_to_move = Color::from_str(active_color)?;
 
         let castling = split.next().unwrap_or("KQkq");
         pos.castling_rights = CastlingRights::from_uci(castling)?;
@@ -330,7 +254,7 @@ impl Position {
     /// Generates a FEN string from this [`Position`].
     pub fn to_fen(&self) -> String {
         let placements = self.board().to_fen();
-        let active_color = self.current_player();
+        let active_color = self.side_to_move();
         let castling = self.castling_rights.to_uci();
 
         let en_passant_target = if let Some(square) = self.ep_square {
@@ -346,8 +270,8 @@ impl Position {
     }
 
     /// Returns the current player as a [`Color`].
-    pub const fn current_player(&self) -> Color {
-        self.current_player
+    pub const fn side_to_move(&self) -> Color {
+        self.side_to_move
     }
 
     /// If en passant can be performed, returns the en passant [`Square`].
@@ -358,7 +282,7 @@ impl Position {
     /// If en passant can be performed, returns the destination of a pawn that would perform en passant.
     pub fn ep_target_square(&self) -> Option<Square> {
         self.ep_square()
-            .map(|ep_square| ep_square.backward_by(self.current_player(), 1).unwrap())
+            .map(|ep_square| ep_square.backward_by(self.side_to_move(), 1).unwrap())
     }
 
     /// Returns the [`CastlingRights`] of the current position.
@@ -390,7 +314,7 @@ impl Position {
 
     /// Toggles the current player from White to Black (or vice versa).
     pub fn toggle_current_player(&mut self) {
-        self.current_player = self.current_player.opponent();
+        self.side_to_move = self.side_to_move.opponent();
     }
 
     /// Fetches this position's [`Board`]
@@ -403,10 +327,10 @@ impl Position {
         &mut self.board
     }
 
-    /// Returns `true` if `color` can castle (either Kingside or Queenside).
+    /// Returns `true` if `color` can castle (either short or long).
     pub const fn can_castle(&self, color: Color) -> bool {
-        self.castling_rights().kingside[color.index()].is_some()
-            || self.castling_rights().queenside[color.index()].is_some()
+        self.castling_rights().short[color.index()].is_some()
+            || self.castling_rights().long[color.index()].is_some()
     }
 
     /// Two positions are considered repetitions if they share the same piece layout, castling rights, and en passant square.
@@ -414,7 +338,7 @@ impl Position {
     /// Fullmove and Halfmove clocks are ignored.
     pub fn is_repetition_of(&self, other: &Self) -> bool {
         self.board() == other.board()
-            && self.current_player() == other.current_player()
+            && self.side_to_move() == other.side_to_move()
             && self.castling_rights() == other.castling_rights()
             && self.ep_square() == other.ep_square()
     }
@@ -423,7 +347,7 @@ impl Position {
     ///
     /// If `Ok()`, the move is legal.
     /// If `Err(msg)`, then `msg` will be a reason as to why it's not legal.
-    fn check_legality_of(&self, mv: Move) -> Result<()> {
+    pub fn check_legality_of(&self, mv: Move) -> Result<()> {
         let (from, to, kind) = mv.parts();
 
         // If there's no piece here, illegal move
@@ -432,7 +356,7 @@ impl Position {
         };
 
         // If it's not this piece's color's turn, illegal move
-        if piece.color() != self.current_player() {
+        if piece.color() != self.side_to_move() {
             bail!("Tried to move a piece that wasn't yours");
         }
 
@@ -456,21 +380,21 @@ impl Position {
 
         match kind {
             // If the move is pawn-specific, ensure it's a pawn moving
-            MoveKind::EnPassantCapture | MoveKind::PawnPushTwo | MoveKind::Promote(_) => {
+            MoveKind::EnPassantCapture | MoveKind::PawnDoublePush => {
                 if !piece.is_pawn() {
                     bail!("Tried to do a pawn move (EP, Push 2, Promote) with a piece that isn't a pawn");
                 }
             }
             // If castling, ensure we have the right to
-            MoveKind::KingsideCastle => {
-                if self.castling_rights.kingside[piece.color()].is_none() {
-                    bail!("Tried to castle (kingside) without rights");
+            MoveKind::ShortCastle => {
+                if self.castling_rights.short[piece.color()].is_none() {
+                    bail!("Tried to castle (short) without rights");
                 }
             }
             // If castling, ensure we have the right to
-            MoveKind::QueensideCastle => {
-                if self.castling_rights.queenside[piece.color()].is_none() {
-                    bail!("Tried to castle (queenside) without rights");
+            MoveKind::LongCastle => {
+                if self.castling_rights.long[piece.color()].is_none() {
+                    bail!("Tried to castle (long) without rights");
                 }
             }
             // Quiet moves are fine
@@ -516,7 +440,7 @@ impl Position {
 
         // Increment move counters
         self.halfmove += 1; // This is reset if a capture occurs or a pawn moves
-        self.fullmove += self.current_player().index();
+        self.fullmove += self.side_to_move().index();
 
         // First, deal with special cases like captures and castling
         if mv.is_capture() {
@@ -527,7 +451,9 @@ impl Position {
                 to
             };
 
-            let captured = self.board_mut().take(captured_square).unwrap();
+            let Some(captured) = self.board_mut().take(captured_square) else {
+                panic!("Failed to apply {mv:?} to {self}: No piece found at {captured_square}");
+            };
             let captured_color = captured.color();
 
             // If the capture was on a rook's starting square, disable that side's castling.
@@ -535,13 +461,13 @@ impl Position {
             // TODO: Chess960
             if to == Square::A1.rank_relative_to(captured_color) {
                 self.key.hash_castling_rights(&self.castling_rights);
-                self.castling_rights.queenside[captured_color].take();
+                self.castling_rights.long[captured_color].take();
                 self.key.hash_castling_rights(&self.castling_rights);
             }
 
             if to == Square::H1.rank_relative_to(captured_color) {
                 self.key.hash_castling_rights(&self.castling_rights);
-                self.castling_rights.kingside[captured_color].take();
+                self.castling_rights.short[captured_color].take();
                 self.key.hash_castling_rights(&self.castling_rights);
             }
 
@@ -564,8 +490,8 @@ impl Position {
             // Disable castling
             // Hashing must be done before and after castling rights are changed so that the proper hash key is used
             self.key.hash_castling_rights(&self.castling_rights);
-            self.castling_rights.kingside[color] = None;
-            self.castling_rights.queenside[color] = None;
+            self.castling_rights.short[color] = None;
+            self.castling_rights.long[color] = None;
             self.key.hash_castling_rights(&self.castling_rights);
         }
 
@@ -576,21 +502,21 @@ impl Position {
                 // Disable castling if a rook moved
                 if from == Square::A1.rank_relative_to(color) {
                     self.key.hash_castling_rights(&self.castling_rights);
-                    self.castling_rights.queenside[color].take();
+                    self.castling_rights.long[color].take();
                     self.key.hash_castling_rights(&self.castling_rights);
                 }
 
                 if from == Square::H1.rank_relative_to(color) {
                     self.key.hash_castling_rights(&self.castling_rights);
-                    self.castling_rights.kingside[color].take();
+                    self.castling_rights.short[color].take();
                     self.key.hash_castling_rights(&self.castling_rights);
                 }
             }
             PieceKind::King => {
                 // Disable all castling
                 self.key.hash_castling_rights(&self.castling_rights);
-                self.castling_rights.kingside[color] = None;
-                self.castling_rights.queenside[color] = None;
+                self.castling_rights.short[color] = None;
+                self.castling_rights.long[color] = None;
                 self.key.hash_castling_rights(&self.castling_rights);
             }
             _ => {}
@@ -611,7 +537,7 @@ impl Position {
         self.toggle_current_player();
 
         // Toggle the hash of the current player
-        self.key.hash_side_to_move(self.current_player());
+        self.key.hash_side_to_move(self.side_to_move());
     }
 }
 
@@ -659,7 +585,7 @@ impl fmt::Debug for Position {
             if rank == Rank::SEVEN {
                 board_str += &format!("           FEN: {}", self.to_fen());
             } else if rank == Rank::SIX {
-                board_str += &format!("          Side: {}", self.current_player());
+                board_str += &format!("          Side: {}", self.side_to_move());
             } else if rank == Rank::FIVE {
                 board_str += &format!("      Castling: {}", self.castling_rights());
             } else if rank == Rank::FOUR {
@@ -695,11 +621,14 @@ impl fmt::Debug for Position {
 /// Internally uses a collection of [`Bitboard`]s to keep track of piece/color locations.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Board {
-    /// All squares occupied by a specific color
+    /// All squares occupied by a specific color.
     colors: [Bitboard; Color::COUNT],
 
-    /// All squares occupied by a specific piece kind
+    /// All squares occupied by a specific piece kind.
     pieces: [Bitboard; PieceKind::COUNT],
+
+    /// Redundant mailbox to speed up the [`Board::piece_at`] functions.
+    mailbox: [Option<Piece>; Square::COUNT],
 }
 
 impl Board {
@@ -715,6 +644,7 @@ impl Board {
         Self {
             colors: [Bitboard::EMPTY_BOARD; Color::COUNT],
             pieces: [Bitboard::EMPTY_BOARD; PieceKind::COUNT],
+            mailbox: [None; Square::COUNT],
         }
     }
 
@@ -731,7 +661,7 @@ impl Board {
 
         // Check if the placements string is the correct length
         if placements.matches('/').count() != 7 {
-            bail!("Invalid FEN string: Missing placements for all 8 ranks.");
+            bail!("Missing placements for all 8 ranks.");
         }
 
         // Need to reverse this so that White pieces are at the "bottom" of the board
@@ -751,7 +681,7 @@ impl Board {
                 } else {
                     // If the next char was not a piece, increment our File counter, checking for errors along the way
                     let Some(empty) = piece_char.to_digit(10) else {
-                        bail!("Invalid FEN string: Found non-piece, non-numeric char {piece_char} when parsing FEN.");
+                        bail!("Found non-piece, non-numeric char {piece_char:?} when parsing FEN.");
                     };
                     file += empty as u8
                 }
@@ -761,9 +691,10 @@ impl Board {
         Ok(board)
     }
 
+    /*
     /// Returns an instance of this [`Board`] that has the additional bits specified by `mask` set, according to the [`Piece`] supplied.
     ///
-    /// If `mask` contains only 1 square, use [`Board::with_piece`] instead, as it is likely to be faster.
+    /// If `mask` contains only 1 square, use [`Board::with`] instead, as it is likely to be faster.
     pub const fn with(self, mask: Bitboard, piece: Piece) -> Self {
         let (color, kind) = piece.parts();
 
@@ -775,23 +706,26 @@ impl Board {
 
         Self { colors, pieces }
     }
+     */
 
+    /*
     /// Returns an instance of this [`Board`] that has all bits specified by `mask` cleared.
     pub fn without(self, mask: Bitboard) -> Self {
         let not_mask = !mask;
 
         let mut colors = self.colors;
         for color in Color::all() {
-            colors[color] = colors[color] & not_mask;
+            colors[color] &= not_mask;
         }
 
         let mut pieces = self.pieces;
         for kind in PieceKind::all() {
-            pieces[kind] = pieces[kind] & not_mask;
+            pieces[kind] &= not_mask;
         }
 
         Self { colors, pieces }
     }
+      */
 
     /// Returns `true` if there is a piece at the given [`Square`], else `false`.
     ///
@@ -801,8 +735,8 @@ impl Board {
     /// let board = Board::default();
     /// assert_eq!(board.has(Square::B1), true);
     /// ```
-    pub fn has(&self, square: Square) -> bool {
-        self.occupied().get(square)
+    pub const fn has(&self, square: Square) -> bool {
+        self.mailbox[square.index()].is_some()
     }
 
     /// Places the provided [`Piece`] and the supplied [`Square`].
@@ -818,6 +752,7 @@ impl Board {
     pub fn place(&mut self, piece: Piece, square: Square) {
         self[piece.color()].set(square);
         self[piece.kind()].set(square);
+        self.mailbox[square] = Some(piece);
     }
 
     /// Clears the supplied [`Square`] of any pieces.
@@ -830,10 +765,14 @@ impl Board {
     /// assert_eq!(board.to_fen(), "k7/8/8/8/8/8/8/7K");
     /// ```
     pub fn clear(&mut self, square: Square) {
-        if let Some(piece) = self.piece_at(square) {
-            self[piece.color()].clear(square);
-            self[piece.kind()].clear(square);
-        }
+        // if let Some(piece) = self.piece_at(square) {
+        //     // if let Some(piece) = self.mailbox[square].take() {
+        //     self[piece.color()].clear(square);
+        //     self[piece.kind()].clear(square);
+        //     self.mailbox[square] = None;
+        // }
+
+        self.take(square);
     }
 
     /// Takes the [`Piece`] from a given [`Square`], if there is one present.
@@ -848,8 +787,12 @@ impl Board {
     /// assert_eq!(taken, Some(white_knight));
     /// ```
     pub fn take(&mut self, square: Square) -> Option<Piece> {
-        let piece = self.piece_at(square)?;
-        self.clear(square);
+        // Take the piece from the mailbox, exiting early if there is none
+        let piece = self.mailbox[square].take()?;
+
+        // If there was a piece, clear the internal bitboards.
+        self.colors[piece.color()].clear(square);
+        self.pieces[piece.kind()].clear(square);
 
         Some(piece)
     }
@@ -877,17 +820,8 @@ impl Board {
     /// assert_eq!(board.color_at(Square::E8), Some(Color::Black));
     /// assert!(board.color_at(Square::E4).is_none());
     /// ```
-    pub const fn color_at(&self, square: Square) -> Option<Color> {
-        let mut i = 0;
-        while i < Color::COUNT {
-            if self.colors[i].get(square) {
-                // If it was found, we have the correct PieceKind, so break
-                return Some(Color::from_bits_unchecked(i as u8));
-            }
-            i += 1;
-        }
-
-        None
+    pub fn color_at(&self, square: Square) -> Option<Color> {
+        self.mailbox[square].map(|piece| piece.color())
     }
 
     /// Fetches the [`PieceKind`] of the piece at the provided [`Square`], if there is one.
@@ -899,17 +833,8 @@ impl Board {
     /// assert_eq!(board.kind_at(Square::A2), Some(PieceKind::Pawn));
     /// assert!(board.kind_at(Square::E4).is_none());
     /// ```
-    pub const fn kind_at(&self, square: Square) -> Option<PieceKind> {
-        let mut i = 0;
-        while i < PieceKind::COUNT {
-            if self.pieces[i].get(square) {
-                // If it was found, we have the correct PieceKind, so break
-                return Some(PieceKind::from_bits_unchecked(i as u8));
-            }
-            i += 1;
-        }
-
-        None
+    pub fn kind_at(&self, square: Square) -> Option<PieceKind> {
+        self.mailbox[square].map(|piece| piece.kind())
     }
 
     /// Fetches the [`Piece`] of the piece at the provided [`Square`], if there is one.
@@ -922,10 +847,15 @@ impl Board {
     /// assert_eq!(board.piece_at(Square::A2).unwrap().color(), Color::White);
     /// assert!(board.piece_at(Square::E4).is_none());
     /// ```
-    pub fn piece_at(&self, square: Square) -> Option<Piece> {
-        let kind = self.kind_at(square)?;
-        let color = self.color_at(square)?;
-        Some(Piece::new(color, kind))
+    pub const fn piece_at(&self, square: Square) -> Option<Piece> {
+        self.mailbox[square.index()]
+    }
+
+    /// Fetches the [`Piece`] of the piece at the provided [`Square`], without checking if one is there.
+    ///
+    /// This is an internal function, and should never be called unless you know what you're doing (hint: you probably don't).
+    pub(crate) fn piece_at_unchecked(&self, square: Square) -> Piece {
+        unsafe { self.piece_at(square).unwrap_unchecked() }
     }
 
     /// Fetches the [`Bitboard`] corresponding to the supplied [`PieceKind`].
@@ -984,25 +914,28 @@ impl Board {
         self.piece_parts(piece.color(), piece.kind())
     }
 
-    /// Returns an iterator over all of the pieces on this board along with their corresponding locations.
-    pub fn all(&self) -> impl ExactSizeIterator<Item = (Square, Piece)> + '_ {
-        self.occupied()
-            .into_iter()
-            .map(|square| (square, self.piece_at(square).unwrap()))
+    /// Creates a [`BoardIter`] to iterate over all occupied [`Square`]s in this [`Board`].
+    pub const fn iter(&self) -> BoardIter<'_> {
+        BoardIter {
+            board: self,
+            occupancy: self.occupied(),
+        }
     }
 
     /// Returns an iterator over all of the pieces of `kind` on this board along with their corresponding locations.
-    pub fn all_of(&self, kind: PieceKind) -> impl ExactSizeIterator<Item = (Square, Piece)> + '_ {
-        self.kind(kind)
-            .into_iter()
-            .map(|square| (square, self.piece_at(square).unwrap()))
+    pub const fn all_of(&self, kind: PieceKind) -> BoardIter<'_> {
+        BoardIter {
+            board: self,
+            occupancy: self.kind(kind),
+        }
     }
 
     /// Returns an iterator over all of the pieces of `color` on this board along with their corresponding locations.
-    pub fn all_for(&self, color: Color) -> impl ExactSizeIterator<Item = (Square, Piece)> + '_ {
-        self.color(color)
-            .into_iter()
-            .map(|square| (square, self.piece_at(square).unwrap()))
+    pub const fn all_for(&self, color: Color) -> BoardIter<'_> {
+        BoardIter {
+            board: self,
+            occupancy: self.color(color),
+        }
     }
 
     /// Analogous to [`Board::piece`] with a [`Piece`]'s individual components.
@@ -1014,23 +947,19 @@ impl Board {
     }
 
     /// Fetches a [`Bitboard`] containing the locations of all orthogonal sliding pieces (Rook, Queen).
-    pub const fn orthogonal_sliders(&self, color: Color) -> Bitboard {
-        (self.pieces[PieceKind::Rook.index()].or(self.pieces[PieceKind::Queen.index()]))
-            .and(self.color(color))
+    pub fn orthogonal_sliders(&self, color: Color) -> Bitboard {
+        (self.kind(PieceKind::Rook) | self.kind(PieceKind::Queen)) & self.color(color)
     }
 
     /// Fetches a [`Bitboard`] containing the locations of all diagonal sliding pieces (Bishop, Queen).
-    pub const fn diagonal_sliders(&self, color: Color) -> Bitboard {
-        (self.pieces[PieceKind::Bishop.index()].or(self.pieces[PieceKind::Queen.index()]))
-            .and(self.color(color))
+    pub fn diagonal_sliders(&self, color: Color) -> Bitboard {
+        (self.kind(PieceKind::Bishop) | self.kind(PieceKind::Queen)) & self.color(color)
     }
 
     /// Fetches a [`Bitboard`] containing the locations of all sliding pieces (Rook, Bishop, Queen).
-    pub const fn sliders(&self, color: Color) -> Bitboard {
-        (self.pieces[PieceKind::Rook.index()]
-            .or(self.pieces[PieceKind::Bishop.index()])
-            .or(self.pieces[PieceKind::Queen.index()]))
-        .and(self.color(color))
+    pub fn sliders(&self, color: Color) -> Bitboard {
+        (self.kind(PieceKind::Rook) | self.kind(PieceKind::Bishop) | self.kind(PieceKind::Queen))
+            & self.color(color)
     }
 
     /// Fetches the [`Bitboard`] for the King of the provided color.
@@ -1041,6 +970,11 @@ impl Board {
     /// Fetches the [`Bitboard`] for the Pawns of the provided color.
     pub const fn pawns(&self, color: Color) -> Bitboard {
         self.piece_parts(color, PieceKind::Pawn)
+    }
+
+    /// Fetches the [`Bitboard`] for the Knights of the provided color.
+    pub const fn knights(&self, color: Color) -> Bitboard {
+        self.piece_parts(color, PieceKind::Knight)
     }
 
     /// Get all squares that are either empty or occupied by the enemy
@@ -1054,14 +988,6 @@ impl Board {
     /// ```
     pub const fn enemy_or_empty(&self, color: Color) -> Bitboard {
         self.color(color).not()
-    }
-
-    /// Creates a [`BoardIter`] to iterate over all occupied [`Square`]s in this [`Board`].
-    pub const fn iter(&self) -> BoardIter<'_> {
-        BoardIter {
-            board: self,
-            occupancy: self.occupied(),
-        }
     }
 
     /// Generates a [FEN](https://www.chess.com/terms/fen-chess) string of this [`Board`].
@@ -1174,6 +1100,35 @@ impl IndexMut<Color> for Board {
     }
 }
 
+impl Index<Square> for Board {
+    type Output = Option<Piece>;
+    fn index(&self, index: Square) -> &Self::Output {
+        &self.mailbox[index]
+    }
+}
+
+impl IndexMut<Square> for Board {
+    fn index_mut(&mut self, index: Square) -> &mut Self::Output {
+        &mut self.mailbox[index]
+    }
+}
+
+impl<'a> IntoIterator for &'a Board {
+    type IntoIter = BoardIter<'a>;
+    type Item = <BoardIter<'a> as Iterator>::Item;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut Board {
+    type IntoIter = BoardIter<'a>;
+    type Item = <BoardIter<'a> as Iterator>::Item;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 impl fmt::Debug for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let format = |to_fmt: &[(Bitboard, &str)]| {
@@ -1227,8 +1182,14 @@ impl fmt::Debug for Board {
     }
 }
 
+/// An iterator over a set of squares on a [`Board`].
+///
+/// Calls to [`Iterator::next`] will yield a tuple of a [`Square`] and a [`Piece`].
 pub struct BoardIter<'a> {
+    /// The board to retrieve pieces from.
     board: &'a Board,
+
+    /// The list of squares to iterate over.
     occupancy: Bitboard,
 }
 
@@ -1236,9 +1197,11 @@ impl<'a> Iterator for BoardIter<'a> {
     type Item = (Square, Piece);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let lsb = self.occupancy.pop_lsb()?;
-        let piece = self.board.piece_at(lsb)?;
-        Some((lsb, piece))
+        let square = self.occupancy.pop_lsb()?;
+
+        // Safety: Because we early return when calling `pop_lsb` above, there is guaranteed to be a piece at `square`.
+        let piece = self.board.piece_at_unchecked(square);
+        Some((square, piece))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

@@ -277,10 +277,20 @@ impl PieceKind {
     /// Number of piece variants.
     pub const COUNT: usize = 6;
 
-    /// An array of all 6 [`PieceKind`]s, starting with Pawn.
+    /// An array of all 6 [`PieceKind`]s.
+    ///
+    /// In the order: `Pawn`, `Knight`, `Bishop`, `Rook`, `Queen`, `King`.
     pub const fn all() -> [Self; Self::COUNT] {
         use PieceKind::*;
         [Pawn, Knight, Bishop, Rook, Queen, King]
+    }
+
+    /// An array of 5 non-King [`PieceKind`]s.
+    ///
+    /// In the order: `Pawn`, `Knight`, `Bishop`, `Rook`, `Queen`.
+    pub const fn all_except_king() -> [Self; Self::COUNT - 1] {
+        use PieceKind::*;
+        [Pawn, Knight, Bishop, Rook, Queen]
     }
 
     /// An iterator over all [`PieceKind`]s, starting with Pawn.
@@ -734,6 +744,18 @@ impl Piece {
     pub fn inverted(self) -> Self {
         Self::new(self.color().opponent(), self.kind())
     }
+
+    /// Fetches a human-readable name for this [`Piece`].
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Piece;
+    /// let white_queen = Piece::WHITE_QUEEN;
+    /// assert_eq!(white_queen.name(), "white queen");
+    /// ```
+    pub fn name(&self) -> String {
+        format!("{} {}", self.color().name(), self.kind().name())
+    }
 }
 
 impl<T> Index<Piece> for [T; PieceKind::COUNT] {
@@ -795,9 +817,9 @@ macro_rules! impl_common_traits {
         }
 
         impl fmt::Debug for $type {
-            /// Debug formatting displays a $type as its UCI char and index value.
+            /// Debug formatting displays a $type as its human-readable name and index value.
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "\"{self}\" ({})", self.index())
+                write!(f, "\"{}\" ({})", self.name(), self.index())
             }
         }
     };

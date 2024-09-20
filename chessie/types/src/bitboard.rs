@@ -61,6 +61,8 @@ impl Bitboard {
     pub const EDGES: Self = Self(0xFF818181818181FF);
     pub const CORNERS: Self = Self(0x8100000000000081);
     pub const CENTER: Self = Self(0x0000001818000000);
+    pub const BACK_RANKS: Self = Self(0xFF000000000000FF);
+    pub const PAWN_RANKS: Self = Self(0x00FF00000000FF00);
 
     /// Constructs a new [`Bitboard`] from the provided bit pattern.
     ///
@@ -142,6 +144,27 @@ impl Bitboard {
     /// ```
     pub const fn from_bool(value: bool) -> Self {
         Self((value as u64).wrapping_neg() & u64::MAX)
+    }
+
+    /// If `value` is `Some`, this converts the inner `T` using the appropriate [`Bitboard::from`] implementation.
+    ///
+    /// If `value` is `None`, this yields an empty bitboard.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::{Bitboard, Square};
+    /// assert_eq!(Bitboard::from_option(Some(Square::A1)), Square::A1.bitboard());
+    /// assert_eq!(Bitboard::from_option::<Square>(None), Bitboard::EMPTY_BOARD);
+    /// ```
+    pub fn from_option<T>(value: Option<T>) -> Self
+    where
+        Self: From<T>,
+    {
+        if let Some(t) = value {
+            Self::from(t)
+        } else {
+            Self::default()
+        }
     }
 
     /// Returns a [`Bitboard`] of this [`Color`]'s first rank.
@@ -378,15 +401,23 @@ impl Bitboard {
     }
 
     /// Returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].
-    pub const fn lsb(&self) -> Option<Square> {
-        if self.is_empty() {
-            None
-        } else {
-            Some(Square(self.0.trailing_zeros() as u8))
-        }
+    ///
+    /// If `self` is empty, this yields `None`,
+    pub fn lsb(&self) -> Option<Square> {
+        self.is_nonempty()
+            .then(|| Square(self.0.trailing_zeros() as u8))
+    }
+
+    /// Returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].
+    ///
+    /// It is undefined behavior to call this function when `self` is empty.
+    pub fn lsb_unchecked(&self) -> Square {
+        Square(self.0.trailing_zeros() as u8)
     }
 
     /// Pops and returns the index of the lowest non-zero bit of this [`Bitboard`], as a [`Square`].
+    ///
+    /// If `self` is empty, this yields `None`,
     pub fn pop_lsb(&mut self) -> Option<Square> {
         let lsb = self.lsb();
         self.clear_lsb();
@@ -703,27 +734,40 @@ impl FromStr for Bitboard {
 
 macro_rules! impl_bitwise_op {
     // Impl op and op_assign for Self
-    ($op:tt, $op_assign:tt, $func:ident, $func_assign:ident, $op_tok:tt) => {
+    ($op:tt, $op_assign:tt, $func:ident, $func_assign:ident) => {
         impl std::ops::$op for Bitboard {
             type Output = Self;
             fn $func(self, rhs: Self) -> Self::Output {
-                Self(self.0 $op_tok rhs.0)
+                Self(self.0.$func(rhs.0))
             }
         }
 
         impl std::ops::$op_assign for Bitboard {
             fn $func_assign(&mut self, rhs: Self) {
-                *self = *self $op_tok rhs;
+                self.0.$func_assign(rhs.0);
+            }
+        }
+
+        impl std::ops::$op<Square> for Bitboard {
+            type Output = Self;
+            fn $func(self, rhs: Square) -> Self::Output {
+                self.$func(rhs.bitboard())
+            }
+        }
+
+        impl std::ops::$op_assign<Square> for Bitboard {
+            fn $func_assign(&mut self, rhs: Square) {
+                self.$func_assign(rhs.bitboard());
             }
         }
     };
 }
 
-impl_bitwise_op!(BitAnd, BitAndAssign, bitand, bitand_assign, &);
-impl_bitwise_op!(BitOr, BitOrAssign, bitor, bitor_assign, |);
-impl_bitwise_op!(BitXor, BitXorAssign, bitxor, bitxor_assign, ^);
-impl_bitwise_op!(Shl, ShlAssign, shl, shl_assign, <<);
-impl_bitwise_op!(Shr, ShrAssign, shr, shr_assign, >>);
+impl_bitwise_op!(BitAnd, BitAndAssign, bitand, bitand_assign);
+impl_bitwise_op!(BitOr, BitOrAssign, bitor, bitor_assign);
+impl_bitwise_op!(BitXor, BitXorAssign, bitxor, bitxor_assign);
+impl_bitwise_op!(Shl, ShlAssign, shl, shl_assign);
+impl_bitwise_op!(Shr, ShrAssign, shr, shr_assign);
 
 impl Not for Bitboard {
     type Output = Self;
@@ -793,11 +837,7 @@ where
 {
     /// If `value` is `None`, this yields an empty [`Bitboard`].
     fn from(value: Option<T>) -> Self {
-        if let Some(t) = value {
-            Self::from(t)
-        } else {
-            Self::default()
-        }
+        Self::from_option(value)
     }
 }
 
@@ -822,6 +862,12 @@ impl From<Rank> for Bitboard {
 impl From<u64> for Bitboard {
     fn from(value: u64) -> Self {
         Self::new(value)
+    }
+}
+
+impl From<bool> for Bitboard {
+    fn from(value: bool) -> Self {
+        Self::from_bool(value)
     }
 }
 

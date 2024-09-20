@@ -1,8 +1,8 @@
-use chessie::{perft, Position};
+use chessie::{perft, Game};
 
 fn test_perft_fen_nodes(depth: usize, fen: &str, expected: u64) {
-    let mut position = Position::from_fen(fen).unwrap();
-    let res = perft(&mut position, depth);
+    let position = Game::from_fen(fen).unwrap();
+    let res = perft(&position, depth);
     assert_eq!(res, expected);
 }
 
@@ -20,7 +20,7 @@ fn test_standard_epd() {
             let expected = u64::from_str_radix(perft_data.get(3..).unwrap().trim(), 10).unwrap();
             // println!("perft({depth}, \"{fen}\") := {expected}");
 
-            let mut position = Position::from_fen(fen).unwrap();
+            let mut position = Game::from_fen(fen).unwrap();
 
             let nodes = perft(&mut position, depth);
 

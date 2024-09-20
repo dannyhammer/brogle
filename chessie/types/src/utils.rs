@@ -9,9 +9,12 @@ use rand::random;
 pub const FEN_STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 /// A popular FEN string for debugging move generation.
-pub const FEN_KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -";
+pub const FEN_KIWIPETE: &str =
+    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
-/// <https://www.chessprogramming.org/Chess_Position#cite_note-4>
+/// Maximum possible number of moves in a given chess position.
+///
+/// Found [here](<https://www.chessprogramming.org/Chess_Position#cite_note-4>)
 pub const MAX_NUM_MOVES: usize = 218;
 
 /// Number of possible combinations of castling rights.
@@ -69,42 +72,21 @@ pub fn generate_ray_table_datfiles<P: AsRef<Path>>(outdir: P) -> std::io::Result
     // 2D Bitboard array being cast to u8 (8 u8 in a u64)
 
     // Generate the blobs
-    let ray_between_inclusive: [u8; 32_768] =
-        unsafe { std::mem::transmute(generate_ray_between_inclusive_table()) };
     let ray_between_exclusive: [u8; 32_768] =
-        unsafe { std::mem::transmute(generate_ray_between_exclusive_table()) };
+        unsafe { std::mem::transmute(generate_ray_between_table()) };
     let ray_containing: [u8; 32_768] =
         unsafe { std::mem::transmute(generate_ray_containing_table()) };
 
     // Write the blobs
     let path = |name| Path::new(outdir.as_ref()).join(name);
 
-    std::fs::write(path("ray_between_inclusive.dat"), ray_between_inclusive)?;
-    std::fs::write(path("ray_between_exclusive.dat"), ray_between_exclusive)?;
+    std::fs::write(path("ray_between.dat"), ray_between_exclusive)?;
     std::fs::write(path("ray_containing.dat"), ray_containing)?;
 
     Ok(())
 }
 
-fn generate_ray_between_inclusive_table() -> [[Bitboard; Square::COUNT]; Square::COUNT] {
-    let mut rays = [[Bitboard::EMPTY_BOARD; Square::COUNT]; Square::COUNT];
-
-    for from in Square::iter() {
-        for (df, dr) in QUEEN_DELTAS {
-            let mut ray = from.bitboard(); // Include `from`
-            let mut to = from;
-            while let Some(shifted) = to.offset(df, dr) {
-                ray.set(shifted);
-                to = shifted;
-                rays[from][to] = ray;
-            }
-        }
-    }
-
-    rays
-}
-
-fn generate_ray_between_exclusive_table() -> [[Bitboard; Square::COUNT]; Square::COUNT] {
+fn generate_ray_between_table() -> [[Bitboard; Square::COUNT]; Square::COUNT] {
     let mut rays = [[Bitboard::EMPTY_BOARD; Square::COUNT]; Square::COUNT];
 
     for from in Square::iter() {
@@ -502,7 +484,7 @@ fn try_magic(
     // We need to check if the table will be valid for every possible configuration of blockers
     for blockers in magic_data.blockers.subsets() {
         let attacks = compute_blocked_attacks(deltas, square, blockers);
-        let entry = &mut table[magic_index(&magic_data, blockers)];
+        let entry = &mut table[magic_index(magic_data, blockers)];
 
         // If the entry is empty, we can fill it
         if entry.is_empty() {

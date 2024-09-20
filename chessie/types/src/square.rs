@@ -22,14 +22,14 @@ use super::{Bitboard, Color};
 /// This bit pattern is also known as [Least Significant File Mapping](https://www.chessprogramming.org/Square_Mapping_Considerations#Deduction_on_Files_and_Ranks),
 /// so `square = file + rank * 8`. The indices of each square on the board is given as follows:
 /// ```text
-/// 8| 56 57 58 59 59 61 62 62
+/// 8| 56 57 58 59 59 61 62 63
 /// 7| 48 49 50 51 52 53 54 55
 /// 6| 40 41 42 43 44 45 46 47
 /// 5| 32 33 34 35 36 37 38 39
 /// 4| 24 25 26 27 28 29 30 31
 /// 3| 16 17 18 19 20 21 22 23
-/// 2| 08 09 10 11 12 13 14 15
-/// 1| 00 01 02 03 04 05 06 07
+/// 2|  8  9 10 11 12 13 14 15
+/// 1|  0  1  2  3  4  5  6  7
 ///  +------------------------
 ///    a  b  c  d  e  f  g  h   
 /// ```
@@ -113,10 +113,6 @@ impl Square {
     pub const MIN: u8 = 0;
     pub const MAX: u8 = 63;
     pub const COUNT: usize = 64;
-
-    pub const KING_START_SQUARES: [Self; 2] = [Self::E1, Self::E8];
-    pub const KINGSIDE_CASTLE_SQUARES: [Self; 2] = [Self::G1, Self::G8];
-    pub const QUEENSIDE_CASTLE_SQUARES: [Self; 2] = [Self::C1, Self::C8];
 
     const FILE_MASK: u8 = 0b0000_0111;
     const RANK_MASK: u8 = 0b0011_1000;
@@ -429,6 +425,66 @@ impl Square {
         !self.is_light()
     }
 
+    /// Returns the number of files away `self` is from `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Square;
+    /// assert_eq!(Square::C5.distance_files(Square::C2), 0);
+    /// assert_eq!(Square::C5.distance_files(Square::B2), 1);
+    /// assert_eq!(Square::A1.distance_files(Square::H1), 7);
+    /// ```
+    pub const fn distance_files(&self, other: Self) -> u8 {
+        self.file().0.abs_diff(other.file().0)
+    }
+
+    /// Returns the number of ranks away `self` is from `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Square;
+    /// assert_eq!(Square::C5.distance_ranks(Square::B5), 0);
+    /// assert_eq!(Square::C5.distance_ranks(Square::C4), 1);
+    /// assert_eq!(Square::A1.distance_ranks(Square::A8), 7);
+    /// ```
+    pub const fn distance_ranks(&self, other: Self) -> u8 {
+        self.rank().0.abs_diff(other.rank().0)
+    }
+
+    /// Returns the number of squares away `self` is from `other` using [Manhattan distance](https://en.wikipedia.org/wiki/Taxicab_geometry).
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Square;
+    /// assert_eq!(Square::C5.distance_manhattan(Square::C5), 0);
+    /// assert_eq!(Square::C5.distance_manhattan(Square::B5), 1);
+    /// assert_eq!(Square::C5.distance_manhattan(Square::B4), 2);
+    /// assert_eq!(Square::A1.distance_manhattan(Square::H8), 14);
+    /// ```
+    pub const fn distance_manhattan(&self, other: Self) -> u8 {
+        self.distance_files(other) + self.distance_ranks(other)
+    }
+
+    /// Returns the number of squares away `self` is from `other` using [Chebyshev distance](https://en.wikipedia.org/wiki/Chebyshev_distance).
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Square;
+    /// assert_eq!(Square::C5.distance_chebyshev(Square::C5), 0);
+    /// assert_eq!(Square::C5.distance_chebyshev(Square::B5), 1);
+    /// assert_eq!(Square::C5.distance_chebyshev(Square::B4), 1);
+    /// assert_eq!(Square::A1.distance_chebyshev(Square::H8), 7);
+    /// ```
+    pub const fn distance_chebyshev(&self, other: Self) -> u8 {
+        let file_dist = self.distance_files(other);
+        let rank_dist = self.distance_ranks(other);
+        if file_dist > rank_dist {
+            file_dist
+        } else {
+            rank_dist
+        }
+    }
+
     /// Returns `true` if `self` and `other` lie on the same diagonal.
     ///
     /// # Example
@@ -735,7 +791,7 @@ impl fmt::Debug for Square {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[repr(transparent)]
 pub struct Rank(pub(crate) u8);
 
@@ -904,15 +960,29 @@ impl Rank {
         (bits <= Self::MAX).then_some(Self::new_unchecked(bits))
     }
 
+    /// Flips this [`Rank`].
     pub const fn flipped(self) -> Self {
         Self(Self::MAX - self.0)
     }
 
+    /// If `color` is White, does nothing.
+    /// If `color` is Black, flips `self`.
     pub const fn relative_to(self, color: Color) -> Self {
         match color {
             Color::White => self,
             Color::Black => self.flipped(),
         }
+    }
+
+    /// Computes the absolute difference between `self` and `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::Rank;
+    /// assert_eq!(Rank::SEVEN.abs_diff(Rank::FIVE), 2);
+    /// ```
+    pub const fn abs_diff(&self, other: Self) -> u8 {
+        self.0.abs_diff(other.0)
     }
 }
 
@@ -1007,9 +1077,15 @@ macro_rules! impl_binary_ops_with_num {
 impl_binary_ops_with_num!(Rank);
 impl_try_from_num!(Rank);
 
-impl<T: AsRef<str>> PartialEq<T> for Rank {
-    fn eq(&self, other: &T) -> bool {
-        self.as_ref().eq(other.as_ref())
+impl PartialEq<char> for Rank {
+    fn eq(&self, other: &char) -> bool {
+        self.char().eq(other)
+    }
+}
+
+impl PartialEq<str> for Rank {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str().eq(other)
     }
 }
 
@@ -1090,7 +1166,7 @@ impl fmt::Debug for Rank {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct File(pub(crate) u8);
 
 impl File {
@@ -1151,7 +1227,13 @@ impl File {
     }
 
     pub fn from_char(file: char) -> Result<Self> {
-        debug_assert!(file.is_ascii(), "File chars must be ASCII!");
+        if !file.is_ascii_alphabetic() {
+            bail!(
+                "Invalid char for File: Must be between [{}, {}]. Got {file}",
+                'a',
+                'h'
+            );
+        }
 
         // Subtract the ASCII value for `a` (or `A`) to zero the number
         let file_int = file as u8 - if file.is_ascii_lowercase() { 'a' } else { 'A' } as u8;
@@ -1226,14 +1308,40 @@ impl File {
     pub const fn flipped(self) -> Self {
         Self(Self::MAX - self.0)
     }
+
+    /// If `color` is White, does nothing.
+    /// If `color` is Black, flips `self`.
+    pub const fn relative_to(self, color: Color) -> Self {
+        match color {
+            Color::White => self,
+            Color::Black => self.flipped(),
+        }
+    }
+
+    /// Computes the absolute difference between `self` and `other`.
+    ///
+    /// # Example
+    /// ```
+    /// # use types::File;
+    /// assert_eq!(File::B.abs_diff(File::H), 6);
+    /// ```
+    pub const fn abs_diff(&self, other: Self) -> u8 {
+        self.0.abs_diff(other.0)
+    }
 }
 
 impl_binary_ops_with_num!(File);
 impl_try_from_num!(File);
 
-impl<T: AsRef<str>> PartialEq<T> for File {
-    fn eq(&self, other: &T) -> bool {
-        self.as_ref().eq(other.as_ref())
+impl PartialEq<char> for File {
+    fn eq(&self, other: &char) -> bool {
+        self.char().eq(other)
+    }
+}
+
+impl PartialEq<str> for File {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str().eq(other)
     }
 }
 
