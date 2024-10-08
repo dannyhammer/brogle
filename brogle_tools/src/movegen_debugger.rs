@@ -60,13 +60,16 @@ impl<'a> PerftChecker<'a> {
         let results = stdout
             .lines()
             .filter_map(|line| {
-                // If there is no space to delimit the move and the node count, then we've reached the end
-                let mid = line.find(' ')?;
+                // Split the move and node count
+                let mut split = line.split_ascii_whitespace();
 
-                // Split the move and the node count
-                let (mv, nodes) = line.split_at(mid);
-                let mv = mv.trim().to_string();
-                let nodes = nodes.trim().parse().expect("Failed to parse node count");
+                // If `next()` fails, we've reached the end of the splitperft results
+                let mv = split.next()?.trim().to_string();
+                let nodes = split
+                    .next()?
+                    .trim()
+                    .parse()
+                    .expect("Failed to parse node count");
 
                 Some((mv, nodes))
             })

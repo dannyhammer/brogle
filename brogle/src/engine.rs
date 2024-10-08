@@ -678,7 +678,7 @@ impl UciEngine for Engine {
                         // Assistance provided by @Ciekce on Discord
                         // https://github.com/Ciekce/Stormphrax/blob/main/src/search.cpp#L1163
                         let score = if data.score.is_mate() {
-                            let dist = Score::MATE - data.score; // distance to mate (in plies)
+                            let dist = Score::MATE - data.score.abs(); // distance to mate (in plies)
                             let moves_to_mate = if data.score.0 > 0 {
                                 dist.0 + 1
                             } else {

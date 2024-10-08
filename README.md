@@ -1,3 +1,11 @@
+# **Deprecation**
+
+This repo was my first foray into chess programming, and it taught me a lot!
+I've since split apart the various pieces here into their own repositories.
+The primary ones I'd have you visit are [`chessie`](https://github.com/dannyhammer/chessie), my chess move generation library, and [`toad`](https://github.com/dannyhammer/toad), the engine that succeeded `brogle`.
+
+I'm leaving this repository up for now, but may remove it in the future.
+
 # Brogle
 
 Brogle (pronounced 'brog-lee' (like 'broccoli')) is a UCI-compatible chess engine.
